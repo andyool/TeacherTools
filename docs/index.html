@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Tools - Download</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 50px 40px;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 40px;
+        }
+        .download-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .download-btn {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 25px 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            min-width: 200px;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        .icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .version {
+            font-size: 0.85em;
+            opacity: 0.9;
+            margin-top: 8px;
+        }
+        .info {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Teacher Tools</h1>
+        <p class="subtitle">Interactive lesson creation made simple</p>
+        
+        <div class="download-buttons">
+            <a href="https://github.com/andyool/TeacherTools/releases/download/v1.0/TeacherTools-mac.dmg" class="download-btn">
+                <span class="icon">🍎</span>
+                <span>macOS</span>
+                <span class="version">Intel & Apple Silicon</span>
+            </a>
+            <a href="https://github.com/andyool/TeacherTools/releases/download/v1.0/TeacherTools-windows.exe" class="download-btn">
+                <span class="icon">🪟</span>
+                <span>Windows</span>
+                <span class="version">Windows 10+</span>
+            </a>
+        </div>
+        
+        <div class="info">
+            <p>💡 Free tool for educators to create engaging interactive lessons</p>
+        </div>
+    </div>
+</body>
+</html>
