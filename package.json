@@ -18,7 +18,12 @@
     "build:renderer": "tsc -p tsconfig.json && vite build",
     "build:main": "tsc -p tsconfig.node.json",
     "preview": "vite preview",
+    "release:patch": "npm version patch && git push origin HEAD --follow-tags",
+    "release:minor": "npm version minor && git push origin HEAD --follow-tags",
+    "release:major": "npm version major && git push origin HEAD --follow-tags",
     "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:release": "npm run build && electron-builder --mac --win",
     "dist:win": "npm run build && electron-builder --win --x64",
     "dist:win:dir": "npm run build && electron-builder --win dir --x64",
     "dist:win:portable": "npm run build && electron-builder --win portable --x64",
@@ -50,20 +55,49 @@
       "package.json"
     ],
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "release"
     },
     "mac": {
+      "artifactName": "TeacherTools-mac-${arch}.${ext}",
       "category": "public.app-category.education",
       "target": [
-        "dmg",
-        "zip"
-      ]
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "identity": null
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
+    },
+    "nsis": {
+      "artifactName": "TeacherTools-windows-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "TeacherTools-windows-portable.${ext}"
     }
   }
 }

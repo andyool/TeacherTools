@@ -1,5 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties, RefObject } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState
+} from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
@@ -8,10 +15,12 @@ import type {
   WidgetPopoutId,
   WindowBounds
 } from './electron-types';
+import { buildQrSvgPath, QrCode } from './qrcode';
 
 type TimerSnapshot = {
   baseDurationMs: number;
   endsAt: number | null;
+  lastCompletionAcknowledgedAt: number | null;
   pausedRemainingMs: number;
   lastCompletedAt: number | null;
 };
@@ -75,6 +84,51 @@ type LessonPlanEntry = {
 type PlannerSnapshot = {
   activeDateByListId: Record<string, string>;
   entriesByListId: Record<string, Record<string, LessonPlanEntry>>;
+};
+
+type AssessmentTrackerStatus = 'planned' | 'set' | 'marking' | 'complete';
+type HomeworkTrackerStatus = 'set' | 'collecting' | 'reviewed' | 'complete';
+
+type HomeworkAssessmentEntryBase = {
+  classLabel: string;
+  classListId: string | null;
+  description: string;
+  dueDate: string;
+  id: string;
+  reminderDaysBefore: number;
+  title: string;
+  updatedAt: number;
+};
+
+type AssessmentTrackerEntry = HomeworkAssessmentEntryBase & {
+  status: AssessmentTrackerStatus;
+};
+
+type HomeworkTrackerEntry = HomeworkAssessmentEntryBase & {
+  status: HomeworkTrackerStatus;
+};
+
+type HomeworkAssessmentTrackerSnapshot = {
+  assessments: AssessmentTrackerEntry[];
+  homework: HomeworkTrackerEntry[];
+};
+
+type AssessmentTrackerDraft = {
+  classListId: string;
+  description: string;
+  dueDate: string;
+  reminderDaysBefore: number;
+  status: AssessmentTrackerStatus;
+  title: string;
+};
+
+type HomeworkTrackerDraft = {
+  classListId: string;
+  description: string;
+  dueDate: string;
+  reminderDaysBefore: number;
+  status: HomeworkTrackerStatus;
+  title: string;
 };
 
 type BellScheduleDayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
@@ -169,6 +223,40 @@ type BellTimelineEntry = {
 };
 
 type WidgetId = WidgetPopoutId;
+type ColorModeSwatchId =
+  | 'sand'
+  | 'apricot'
+  | 'coral'
+  | 'gold'
+  | 'mint'
+  | 'teal'
+  | 'sky'
+  | 'ocean'
+  | 'lavender'
+  | 'berry';
+type ColorModeSwatch = {
+  id: ColorModeSwatchId;
+  label: string;
+  panelBorder: string;
+  panelBottom: string;
+  panelTop: string;
+  widgetBorder: string;
+  widgetFill: string;
+  widgetHighlight: string;
+  widgetInk: string;
+};
+type ColorModePreferences = {
+  backgroundColorId: ColorModeSwatchId;
+  widgetColorsByWidgetId: Record<WidgetId, ColorModeSwatchId>;
+};
+type ColorModeHoverPaletteTarget = {
+  anchorRect: DOMRect;
+  widgetId: WidgetId;
+};
+type ColorModeAppearanceContextValue = {
+  preferences: ColorModePreferences;
+  theme: ThemeMode;
+};
 type WidgetWidthCategory = 'double' | 'single';
 
 type WidgetLayout = {
@@ -192,6 +280,13 @@ type DashboardLayoutsSnapshot = {
   layoutsByListId: Record<string, WidgetLayout>;
 };
 
+type QrWidgetPreviewState = {
+  error: string | null;
+  hostLabel: string | null;
+  normalizedUrl: string | null;
+  qrCode: QrCode | null;
+};
+
 type ResizeCorner = 'bottom-left' | 'bottom-right';
 type InterfaceScaleControlsState = {
   canDecreaseInterfaceScale: boolean;
@@ -209,6 +304,25 @@ const TIMER_PRESETS = [
 ];
 
 const CUSTOM_TIMER_MAX_MINUTES = 60;
+const TRACKER_REMINDER_OPTIONS = [
+  { label: 'No reminder', value: 0 },
+  { label: '1 day before', value: 1 },
+  { label: '3 days before', value: 3 },
+  { label: '1 week before', value: 7 },
+  { label: '2 weeks before', value: 14 }
+] as const;
+const ASSESSMENT_TRACKER_STATUS_OPTIONS = [
+  { label: 'Planned', value: 'planned' },
+  { label: 'Set', value: 'set' },
+  { label: 'Marking', value: 'marking' },
+  { label: 'Complete', value: 'complete' }
+] as const satisfies ReadonlyArray<{ label: string; value: AssessmentTrackerStatus }>;
+const HOMEWORK_TRACKER_STATUS_OPTIONS = [
+  { label: 'Set', value: 'set' },
+  { label: 'Collecting', value: 'collecting' },
+  { label: 'Reviewed', value: 'reviewed' },
+  { label: 'Complete', value: 'complete' }
+] as const satisfies ReadonlyArray<{ label: string; value: HomeworkTrackerStatus }>;
 const GROUP_SIZE_MIN = 2;
 const GROUP_SIZE_MAX = 8;
 const GROUP_GRID_GAP = 8;
@@ -218,6 +332,7 @@ const GROUP_GRID_MIN_COLUMN_WIDTH = 136;
 const PICKER_SPINNER_WINDOW_SIZE = 5;
 const MIN_POPOVER_WIDTH = 320;
 const MIN_POPOVER_HEIGHT = 320;
+const QR_WIDGET_SVG_BORDER_MODULES = 2;
 const CLASS_LIST_TEXTAREA_MIN_HEIGHT = 176;
 const WINDOW_EDGE_MARGIN = 14;
 const LAYOUT_FALLBACK_KEY = '__default__';
@@ -306,6 +421,8 @@ const WIDGET_IDS: WidgetId[] = [
   'seating-chart',
   'bell-schedule',
   'planner',
+  'homework-assessment',
+  'qr-generator',
   'notes'
 ];
 const WIDGET_POPOUT_MIN_SIZES: Record<WidgetId, { minHeight: number; minWidth: number }> = {
@@ -314,10 +431,124 @@ const WIDGET_POPOUT_MIN_SIZES: Record<WidgetId, { minHeight: number; minWidth: n
   'group-maker': { minWidth: 320, minHeight: 280 },
   'seating-chart': { minWidth: 760, minHeight: 560 },
   'bell-schedule': { minWidth: 340, minHeight: 300 },
+  'homework-assessment': { minWidth: 520, minHeight: 520 },
+  'qr-generator': { minWidth: 320, minHeight: 320 },
   notes: { minWidth: 300, minHeight: 244 },
   planner: { minWidth: 360, minHeight: 420 }
 };
 const THEME_CYCLE_ORDER: ThemePreference[] = ['system', 'light', 'dark', 'color'];
+const COLOR_MODE_SWATCHES: ColorModeSwatch[] = [
+  {
+    id: 'sand',
+    label: 'Sand',
+    panelTop: '#efe2c0',
+    panelBottom: '#e7d4ab',
+    panelBorder: '#5d4522',
+    widgetFill: '#f6edd5',
+    widgetBorder: '#5d4522',
+    widgetHighlight: '#6b4b1d',
+    widgetInk: '#2f2212'
+  },
+  {
+    id: 'apricot',
+    label: 'Apricot',
+    panelTop: '#f2d1b2',
+    panelBottom: '#e9b98e',
+    panelBorder: '#7d4a20',
+    widgetFill: '#f7e3d2',
+    widgetBorder: '#7d4a20',
+    widgetHighlight: '#9a5a22',
+    widgetInk: '#3d2412'
+  },
+  {
+    id: 'coral',
+    label: 'Coral',
+    panelTop: '#f0beb8',
+    panelBottom: '#e79f96',
+    panelBorder: '#82342f',
+    widgetFill: '#f7dbd8',
+    widgetBorder: '#82342f',
+    widgetHighlight: '#a0443a',
+    widgetInk: '#3f1815'
+  },
+  {
+    id: 'gold',
+    label: 'Gold',
+    panelTop: '#efd88a',
+    panelBottom: '#e4bd57',
+    panelBorder: '#7f5b16',
+    widgetFill: '#f5e7be',
+    widgetBorder: '#7f5b16',
+    widgetHighlight: '#9a6d12',
+    widgetInk: '#36270f'
+  },
+  {
+    id: 'mint',
+    label: 'Mint',
+    panelTop: '#cde6c3',
+    panelBottom: '#a9d599',
+    panelBorder: '#2d6234',
+    widgetFill: '#e3f1dc',
+    widgetBorder: '#2d6234',
+    widgetHighlight: '#2f7b3f',
+    widgetInk: '#17311c'
+  },
+  {
+    id: 'teal',
+    label: 'Teal',
+    panelTop: '#bce3df',
+    panelBottom: '#8dcfc7',
+    panelBorder: '#225c60',
+    widgetFill: '#daf0ee',
+    widgetBorder: '#225c60',
+    widgetHighlight: '#257277',
+    widgetInk: '#102a2c'
+  },
+  {
+    id: 'sky',
+    label: 'Sky',
+    panelTop: '#c7dcf8',
+    panelBottom: '#97bdf2',
+    panelBorder: '#295283',
+    widgetFill: '#e0ecfc',
+    widgetBorder: '#295283',
+    widgetHighlight: '#2d64a7',
+    widgetInk: '#14253e'
+  },
+  {
+    id: 'ocean',
+    label: 'Ocean',
+    panelTop: '#b8d3ee',
+    panelBottom: '#80afd9',
+    panelBorder: '#21466a',
+    widgetFill: '#d9e8f7',
+    widgetBorder: '#21466a',
+    widgetHighlight: '#295980',
+    widgetInk: '#112337'
+  },
+  {
+    id: 'lavender',
+    label: 'Lavender',
+    panelTop: '#ddcff7',
+    panelBottom: '#b9a0eb',
+    panelBorder: '#5a3b88',
+    widgetFill: '#ede4fb',
+    widgetBorder: '#5a3b88',
+    widgetHighlight: '#6d47a4',
+    widgetInk: '#29193d'
+  },
+  {
+    id: 'berry',
+    label: 'Berry',
+    panelTop: '#e5c2da',
+    panelBottom: '#d898c0',
+    panelBorder: '#7a365b',
+    widgetFill: '#f2dcec',
+    widgetBorder: '#7a365b',
+    widgetHighlight: '#95406d',
+    widgetInk: '#341625'
+  }
+];
 const WIDGET_DETAILS: Record<
   WidgetId,
   {
@@ -356,6 +587,16 @@ const WIDGET_DETAILS: Record<
     description: 'Plan each class by date and keep lesson documents attached.',
     width: 'double'
   },
+  'homework-assessment': {
+    title: 'Homework / Assessment Tracker',
+    description: 'Track due dates, status, and reminders across classes.',
+    width: 'single'
+  },
+  'qr-generator': {
+    title: 'QR Generator',
+    description: 'Paste a link and generate a scan-ready QR code on the dashboard.',
+    width: 'single'
+  },
   notes: {
     title: 'Notes',
     description: 'Quick sticky notes for reminders, tasks, and prompts.',
@@ -369,11 +610,14 @@ const WIDGET_ESTIMATED_HEIGHTS: Record<WidgetId, number> = {
   'seating-chart': 352,
   'bell-schedule': 312,
   planner: 624,
+  'homework-assessment': 392,
+  'qr-generator': 428,
   notes: 246
 };
 const DEFAULT_TIMER: TimerSnapshot = {
   baseDurationMs: 5 * 60 * 1000,
   endsAt: null,
+  lastCompletionAcknowledgedAt: null,
   pausedRemainingMs: 5 * 60 * 1000,
   lastCompletedAt: null
 };
@@ -415,6 +659,11 @@ const DEFAULT_PLANNER: PlannerSnapshot = {
   entriesByListId: {}
 };
 
+const DEFAULT_HOMEWORK_ASSESSMENT_TRACKER: HomeworkAssessmentTrackerSnapshot = {
+  assessments: [],
+  homework: []
+};
+
 const DEFAULT_BELL_SCHEDULE_PROFILE = createBellScheduleProfile({
   id: 'bell-schedule-default-profile',
   name: 'Standard Week'
@@ -428,6 +677,159 @@ const DEFAULT_BELL_SCHEDULE: BellScheduleSnapshot = {
 const DEFAULT_SEATING_CHART: SeatingChartSnapshot = {
   chartsByListId: {}
 };
+const DEFAULT_COLOR_MODE_PREFERENCES: ColorModePreferences = {
+  backgroundColorId: 'sand',
+  widgetColorsByWidgetId: {
+    timer: 'coral',
+    picker: 'sky',
+    'group-maker': 'mint',
+    'seating-chart': 'ocean',
+    'bell-schedule': 'teal',
+    planner: 'gold',
+    'homework-assessment': 'sand',
+    'qr-generator': 'apricot',
+    notes: 'lavender'
+  }
+};
+const DEFAULT_COLOR_MODE_APPEARANCE: ColorModeAppearanceContextValue = {
+  preferences: DEFAULT_COLOR_MODE_PREFERENCES,
+  theme: 'light'
+};
+const ColorModeAppearanceContext = createContext<ColorModeAppearanceContextValue>(
+  DEFAULT_COLOR_MODE_APPEARANCE
+);
+const COLOR_MODE_POPOVER_WIDTH = 312;
+const COLOR_MODE_POPOVER_HEIGHT = 174;
+const COLOR_MODE_POPOVER_GAP = 14;
+
+function useColorModeAppearance() {
+  return useContext(ColorModeAppearanceContext);
+}
+
+function getColorModeSwatch(swatchId: ColorModeSwatchId) {
+  return COLOR_MODE_SWATCHES.find((swatch) => swatch.id === swatchId) ?? COLOR_MODE_SWATCHES[0];
+}
+
+function getColorModeWidgetStyle(
+  theme: ThemeMode,
+  preferences: ColorModePreferences,
+  widgetId: WidgetId
+): CSSProperties | undefined {
+  if (theme !== 'color') {
+    return undefined;
+  }
+
+  const swatch = getColorModeSwatch(preferences.widgetColorsByWidgetId[widgetId]);
+
+  return {
+    '--widget-card-fill': swatch.widgetFill,
+    '--widget-card-border': swatch.widgetBorder,
+    '--widget-card-shadow': hexToRgba(swatch.widgetBorder, 0.18),
+    '--widget-ink': swatch.widgetInk,
+    '--widget-highlight': swatch.widgetHighlight,
+    '--widget-highlight-soft': hexToRgba(swatch.widgetHighlight, 0.12),
+    '--widget-highlight-border': hexToRgba(swatch.widgetHighlight, 0.22),
+    '--widget-highlight-border-strong': hexToRgba(swatch.widgetHighlight, 0.36)
+  } as CSSProperties;
+}
+
+function getColorModePanelStyle(
+  theme: ThemeMode,
+  preferences: ColorModePreferences
+): CSSProperties | undefined {
+  if (theme !== 'color') {
+    return undefined;
+  }
+
+  const swatch = getColorModeSwatch(preferences.backgroundColorId);
+
+  return {
+    '--panel-fill-top': swatch.panelTop,
+    '--panel-fill-bottom': swatch.panelBottom,
+    '--panel-border': swatch.panelBorder,
+    '--panel-bottom-edge': hexToRgba(swatch.panelBorder, 0.18)
+  } as CSSProperties;
+}
+
+function getColorModePopoverPosition(anchorRect: DOMRect) {
+  const viewportPadding = 12;
+  const canPlaceRight =
+    anchorRect.right + COLOR_MODE_POPOVER_GAP + COLOR_MODE_POPOVER_WIDTH <=
+    window.innerWidth - viewportPadding;
+  const left = canPlaceRight
+    ? anchorRect.right + COLOR_MODE_POPOVER_GAP
+    : Math.max(viewportPadding, anchorRect.left - COLOR_MODE_POPOVER_GAP - COLOR_MODE_POPOVER_WIDTH);
+
+  return {
+    left,
+    side: canPlaceRight ? ('right' as const) : ('left' as const),
+    top: clampNumber(
+      anchorRect.top,
+      viewportPadding,
+      Math.max(viewportPadding, window.innerHeight - COLOR_MODE_POPOVER_HEIGHT - viewportPadding)
+    )
+  };
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const normalized = hex.trim().replace('#', '');
+  const fullHex =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((channel) => `${channel}${channel}`)
+          .join('')
+      : normalized;
+
+  if (fullHex.length !== 6) {
+    return `rgba(0, 0, 0, ${alpha})`;
+  }
+
+  const red = Number.parseInt(fullHex.slice(0, 2), 16);
+  const green = Number.parseInt(fullHex.slice(2, 4), 16);
+  const blue = Number.parseInt(fullHex.slice(4, 6), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function normalizeTimerSnapshot(raw: unknown, initialValue: TimerSnapshot): TimerSnapshot {
+  if (!raw || typeof raw !== 'object') {
+    return initialValue;
+  }
+
+  const nextRaw = raw as Partial<TimerSnapshot>;
+  const baseDurationMs =
+    typeof nextRaw.baseDurationMs === 'number' && Number.isFinite(nextRaw.baseDurationMs)
+      ? nextRaw.baseDurationMs
+      : initialValue.baseDurationMs;
+  const pausedRemainingMs =
+    typeof nextRaw.pausedRemainingMs === 'number' && Number.isFinite(nextRaw.pausedRemainingMs)
+      ? nextRaw.pausedRemainingMs
+      : baseDurationMs;
+
+  return {
+    baseDurationMs,
+    endsAt:
+      typeof nextRaw.endsAt === 'number' && Number.isFinite(nextRaw.endsAt) ? nextRaw.endsAt : null,
+    lastCompletionAcknowledgedAt:
+      typeof nextRaw.lastCompletionAcknowledgedAt === 'number' &&
+      Number.isFinite(nextRaw.lastCompletionAcknowledgedAt)
+        ? nextRaw.lastCompletionAcknowledgedAt
+        : null,
+    pausedRemainingMs,
+    lastCompletedAt:
+      typeof nextRaw.lastCompletedAt === 'number' && Number.isFinite(nextRaw.lastCompletedAt)
+        ? nextRaw.lastCompletedAt
+        : null
+  };
+}
+
+function hasUnacknowledgedTimerCompletion(timer: Pick<TimerSnapshot, 'lastCompletedAt' | 'lastCompletionAcknowledgedAt'>) {
+  return (
+    timer.lastCompletedAt !== null &&
+    timer.lastCompletedAt !== (timer.lastCompletionAcknowledgedAt ?? null)
+  );
+}
 
 const fallbackContext: DesktopWindowContext = {
   role: window.location.hash.includes('builder')
@@ -715,6 +1117,9 @@ function OverlayDot() {
     width: 86,
     height: 86
   });
+  const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER, {
+    normalize: normalizeTimerSnapshot
+  });
   const dragStateRef = useRef<{
     moved: boolean;
     pointerId: number;
@@ -722,12 +1127,30 @@ function OverlayDot() {
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
+  const now = useNow(timer.endsAt);
+  const remainingMs = timer.endsAt ? Math.max(timer.endsAt - now, 0) : timer.pausedRemainingMs;
+  const isTimerAlertActive = hasUnacknowledgedTimerCompletion(timer);
 
   useEffect(() => {
     window.electronAPI?.getOverlayBounds().then((bounds) => {
       overlayBoundsRef.current = bounds;
     });
   }, []);
+
+  useEffect(() => {
+    if (timer.endsAt && remainingMs === 0) {
+      setTimer((current) =>
+        current.endsAt === null
+          ? current
+          : {
+              ...current,
+              endsAt: null,
+              pausedRemainingMs: 0,
+              lastCompletedAt: Date.now()
+            }
+      );
+    }
+  }, [remainingMs, setTimer, timer.endsAt]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -792,6 +1215,14 @@ function OverlayDot() {
     }
 
     if (!dragged) {
+      setTimer((current) =>
+        hasUnacknowledgedTimerCompletion(current)
+          ? {
+              ...current,
+              lastCompletionAcknowledgedAt: current.lastCompletedAt
+            }
+          : current
+      );
       window.electronAPI?.togglePopover();
     }
   };
@@ -813,13 +1244,17 @@ function OverlayDot() {
       <div className="overlay-shell__dock">
         <button
           aria-label="Open teacher tools"
-        className="overlay-dot"
-        onPointerCancel={cancelPointerInteraction}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={finishPointerInteraction}
-        type="button"
-      >
+          className={`overlay-dot${isTimerAlertActive ? ' overlay-dot--timer-alert' : ''}`}
+          onPointerCancel={cancelPointerInteraction}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishPointerInteraction}
+          type="button"
+        >
+          <span
+            aria-hidden="true"
+            className="overlay-dot__alert"
+          />
           <svg
             aria-hidden="true"
             className="overlay-dot__art"
@@ -1177,6 +1612,7 @@ function useAutoFitWindowToContent({
 
 function TeacherPopover() {
   const classMenuRef = useRef<HTMLDivElement | null>(null);
+  const colorModePaletteCloseTimeoutRef = useRef<number | null>(null);
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
   const pickerSpinIntervalRef = useRef<number | null>(null);
@@ -1188,7 +1624,9 @@ function TeacherPopover() {
       startPointerX: number;
       startPointerY: number;
   } | null>(null);
-  const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER);
+  const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER, {
+    normalize: normalizeTimerSnapshot
+  });
   const [picker, setPicker] = usePickerState();
   const [groupMaker, setGroupMaker] = usePersistentState<GroupMakerSnapshot>(
     'teacher-tools.group-maker',
@@ -1199,7 +1637,12 @@ function TeacherPopover() {
   );
   const [dashboardLayouts, setDashboardLayouts] = useDashboardLayoutsState();
   const planner = useLessonPlannerController(picker.selectedListId);
+  const homeworkAssessmentTracker = useHomeworkAssessmentTrackerController(
+    picker.selectedListId,
+    picker.lists
+  );
   const bellSchedule = useBellScheduleController(picker.lists);
+  const qrGenerator = useQrWidgetState();
   const [stickyNotes, setStickyNotes] = usePersistentState<StickyNote[]>(
     'teacher-tools.note-items',
     []
@@ -1210,6 +1653,7 @@ function TeacherPopover() {
     0
   );
   const [themePreference, setThemePreference] = useThemePreferenceState();
+  const [colorModePreferences, setColorModePreferences] = useColorModePreferencesState();
   const {
     canDecreaseInterfaceScale,
     canIncreaseInterfaceScale,
@@ -1222,6 +1666,9 @@ function TeacherPopover() {
   const [spinnerIndex, setSpinnerIndex] = useState(0);
   const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
+  const [colorModeHoverTarget, setColorModeHoverTarget] = useState<ColorModeHoverPaletteTarget | null>(
+    null
+  );
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>(() =>
     computeDashboardMetrics(MIN_POPOVER_WIDTH)
   );
@@ -1307,6 +1754,63 @@ function TeacherPopover() {
     minHeight: MIN_POPOVER_HEIGHT
   });
 
+  const clearColorModePaletteCloseTimeout = () => {
+    if (colorModePaletteCloseTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(colorModePaletteCloseTimeoutRef.current);
+    colorModePaletteCloseTimeoutRef.current = null;
+  };
+
+  const openColorModePalette = (widgetId: WidgetId, anchorRect: DOMRect) => {
+    clearColorModePaletteCloseTimeout();
+    setColorModeHoverTarget({
+      widgetId,
+      anchorRect
+    });
+  };
+
+  const closeColorModePalette = () => {
+    clearColorModePaletteCloseTimeout();
+    setColorModeHoverTarget(null);
+  };
+
+  const scheduleColorModePaletteClose = () => {
+    clearColorModePaletteCloseTimeout();
+    colorModePaletteCloseTimeoutRef.current = window.setTimeout(() => {
+      setColorModeHoverTarget(null);
+      colorModePaletteCloseTimeoutRef.current = null;
+    }, 110);
+  };
+
+  const setWidgetColorModeSwatch = (widgetId: WidgetId, swatchId: ColorModeSwatchId) => {
+    setColorModePreferences((current) => {
+      if (current.widgetColorsByWidgetId[widgetId] === swatchId) {
+        return current;
+      }
+
+      return {
+        ...current,
+        widgetColorsByWidgetId: {
+          ...current.widgetColorsByWidgetId,
+          [widgetId]: swatchId
+        }
+      };
+    });
+  };
+
+  const setBackgroundColorModeSwatch = (swatchId: ColorModeSwatchId) => {
+    setColorModePreferences((current) =>
+      current.backgroundColorId === swatchId
+        ? current
+        : {
+            ...current,
+            backgroundColorId: swatchId
+          }
+    );
+  };
+
   useLayoutEffect(() => {
     const dashboardShell = dashboardShellRef.current;
 
@@ -1373,12 +1877,16 @@ function TeacherPopover() {
 
   useEffect(() => {
     if (timer.endsAt && remainingMs === 0) {
-      setTimer((current) => ({
-        ...current,
-        endsAt: null,
-        pausedRemainingMs: 0,
-        lastCompletedAt: Date.now()
-      }));
+      setTimer((current) =>
+        current.endsAt === null
+          ? current
+          : {
+              ...current,
+              endsAt: null,
+              pausedRemainingMs: 0,
+              lastCompletedAt: Date.now()
+            }
+      );
     }
   }, [remainingMs, setTimer, timer.endsAt]);
 
@@ -1473,6 +1981,42 @@ function TeacherPopover() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      clearColorModePaletteCloseTimeout();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (resolvedTheme === 'color' && draggedWidgetId === null) {
+      return;
+    }
+
+    closeColorModePalette();
+  }, [draggedWidgetId, resolvedTheme]);
+
+  useEffect(() => {
+    if (!colorModeHoverTarget || visibleWidgetIds.includes(colorModeHoverTarget.widgetId)) {
+      return;
+    }
+
+    closeColorModePalette();
+  }, [colorModeHoverTarget, visibleWidgetKey]);
+
+  useEffect(() => {
+    const handleViewportChange = () => {
+      closeColorModePalette();
+    };
+
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, []);
+
   const updateSelectedLayout = (updater: (layout: WidgetLayout) => WidgetLayout) => {
     setDashboardLayouts((current) => updateWidgetLayoutForList(current, picker.selectedListId, updater));
   };
@@ -1528,6 +2072,7 @@ function TeacherPopover() {
       return;
     }
 
+    closeColorModePalette();
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     widgetDragStateRef.current = {
@@ -1753,6 +2298,7 @@ function TeacherPopover() {
     setTimer({
       baseDurationMs: durationMs,
       endsAt: null,
+      lastCompletionAcknowledgedAt: timer.lastCompletionAcknowledgedAt,
       pausedRemainingMs: durationMs,
       lastCompletedAt: null
     });
@@ -1852,6 +2398,14 @@ function TeacherPopover() {
       onPointerMove: continueWidgetDrag,
       onPointerUp: finishWidgetDrag
     };
+    const colorModeHoverProps =
+      resolvedTheme === 'color'
+        ? {
+            onColorModeHoverEnter: (nextWidgetId: WidgetId, anchorRect: DOMRect) =>
+              openColorModePalette(nextWidgetId, anchorRect),
+            onColorModeHoverLeave: scheduleColorModePaletteClose
+          }
+        : {};
 
     const headerActions =
       widgetId === 'bell-schedule' ? (
@@ -1889,6 +2443,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <TimerWidgetContent
@@ -1928,6 +2483,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <PickerWidgetContent
@@ -1961,6 +2517,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <GroupMakerWidgetContent
@@ -2001,6 +2558,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <SeatingChartWidgetContent
@@ -2033,6 +2591,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <PlannerWidgetContent
@@ -2047,6 +2606,70 @@ function TeacherPopover() {
             selectedDate={planner.selectedDate}
             selectedList={selectedList}
             statusMessage={planner.statusMessage}
+          />
+        </WidgetCard>
+      );
+    }
+
+    if (widgetId === 'homework-assessment') {
+      return (
+        <WidgetCard
+          badge={homeworkAssessmentTracker.badgeLabel}
+          badgeTone={homeworkAssessmentTracker.badgeTone}
+          collapsed={collapsed}
+          description={homeworkAssessmentTracker.summaryDescription}
+          elementRef={(element) => setWidgetElementRef(widgetId, element)}
+          headerDragMode="interactive"
+          headerActions={headerActions}
+          isDragOver={isDragOver}
+          isDragging={isDragging}
+          key={widgetId}
+          onDoubleClick={() => toggleWidgetCollapsed(widgetId)}
+          onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
+          title={WIDGET_DETAILS[widgetId].title}
+          widgetId={widgetId}
+          widthCategory={widthCategory}
+          {...colorModeHoverProps}
+          {...dragProps}
+        >
+          <HomeworkAssessmentTrackerWidgetContent
+            controller={homeworkAssessmentTracker}
+            mode="dashboard"
+            onOpenManager={() => {
+              if (!isPopoutOpen) {
+                toggleWidgetPopout(widgetId);
+              }
+            }}
+          />
+        </WidgetCard>
+      );
+    }
+
+    if (widgetId === 'qr-generator') {
+      return (
+        <WidgetCard
+          badge={qrGenerator.preview.qrCode ? 'Ready' : null}
+          collapsed={collapsed}
+          description="Paste a link and the QR code appears right here."
+          elementRef={(element) => setWidgetElementRef(widgetId, element)}
+          headerDragMode="interactive"
+          headerActions={headerActions}
+          isDragOver={isDragOver}
+          isDragging={isDragging}
+          key={widgetId}
+          onDoubleClick={() => toggleWidgetCollapsed(widgetId)}
+          onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
+          title={WIDGET_DETAILS[widgetId].title}
+          widgetId={widgetId}
+          widthCategory={widthCategory}
+          {...colorModeHoverProps}
+          {...dragProps}
+        >
+          <QrGeneratorWidgetContent
+            linkDraft={qrGenerator.linkDraft}
+            onClear={qrGenerator.clearLink}
+            onDraftChange={qrGenerator.setLinkDraft}
+            preview={qrGenerator.preview}
           />
         </WidgetCard>
       );
@@ -2073,6 +2696,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
+          {...colorModeHoverProps}
           {...dragProps}
         >
           <BellScheduleWidgetContent
@@ -2105,6 +2729,7 @@ function TeacherPopover() {
         title={WIDGET_DETAILS[widgetId].title}
         widgetId={widgetId}
         widthCategory={widthCategory}
+        {...colorModeHoverProps}
         {...dragProps}
       >
         <NotesWidgetContent
@@ -2119,169 +2744,191 @@ function TeacherPopover() {
   };
 
   return (
-    <main
-      aria-label="Teacher tools popover"
-      className="window-stage window-stage--popover"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          window.electronAPI?.closePopover();
-        }
-      }}
+    <ColorModeAppearanceContext.Provider
+      value={{ preferences: colorModePreferences, theme: resolvedTheme }}
     >
-      <section className="panel panel--main" data-theme={resolvedTheme}>
-        <div aria-hidden="true" className="panel__glass" />
-        <div aria-hidden="true" className="panel__gloss" />
-        <div className="panel__content panel__content--main">
-          <header className="panel-header panel-header--main">
-            <div className="panel-header__title">
-              <span className="panel-kicker">{todayLabel}</span>
-              <h1 className="panel-title">TeacherTools</h1>
-            </div>
-
-            <div className="panel-toolbar">
-              <div className="picker-select picker-select--toolbar" ref={classMenuRef}>
-                <span className="toolbar-caption">Class</span>
-                <button
-                  className={`picker-select__trigger ${isClassMenuOpen ? 'picker-select__trigger--open' : ''}`}
-                  disabled={isPickerSpinning || picker.lists.length === 0}
-                  onClick={() => setIsClassMenuOpen((current) => !current)}
-                  type="button"
-                >
-                  <span>{selectedList?.name ?? 'Choose a list'}</span>
-                  <span className="picker-select__chevron">{isClassMenuOpen ? '–' : '+'}</span>
-                </button>
-
-                {isClassMenuOpen && (
-                  <div className="picker-select__menu picker-select__menu--toolbar">
-                    {picker.lists.length > 0 ? (
-                      picker.lists.map((list) => (
-                        <button
-                          className={`picker-select__option ${
-                            list.id === selectedList?.id ? 'picker-select__option--active' : ''
-                          }`}
-                          key={list.id}
-                          onClick={() => selectClassList(list.id)}
-                          type="button"
-                        >
-                          <span>{list.name}</span>
-                          <span>{list.students.length}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="empty-copy">No class lists yet.</p>
-                    )}
-                  </div>
-                )}
+      <main
+        aria-label="Teacher tools popover"
+        className="window-stage window-stage--popover"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            window.electronAPI?.closePopover();
+          }
+        }}
+      >
+        <section
+          className="panel panel--main"
+          data-theme={resolvedTheme}
+          style={getColorModePanelStyle(resolvedTheme, colorModePreferences)}
+        >
+          <div aria-hidden="true" className="panel__glass" />
+          <div aria-hidden="true" className="panel__gloss" />
+          <div className="panel__content panel__content--main">
+            <header className="panel-header panel-header--main">
+              <div className="panel-header__title">
+                <span className="panel-kicker">{todayLabel}</span>
+                <h1 className="panel-title">TeacherTools</h1>
               </div>
 
-              <div className="panel-actions">
-                <button
-                  className="toolbar-link"
-                  onClick={() => window.electronAPI?.toggleWidgetPicker()}
-                  type="button"
-                >
-                  Widgets
-                </button>
-                <button
-                  className="toolbar-link"
-                  onClick={() => window.electronAPI?.toggleClassListBuilder()}
-                  type="button"
-                >
-                  Classes
-                </button>
-                <InterfaceScaleControls
-                  canDecrease={canDecreaseInterfaceScale}
-                  canIncrease={canIncreaseInterfaceScale}
-                  onDecrease={decreaseInterfaceScale}
-                  onIncrease={increaseInterfaceScale}
-                  scale={interfaceScale}
-                />
-                <button
-                  aria-label={`Theme ${getThemePreferenceLabel(themePreference)}. Switch to ${getThemePreferenceLabel(nextThemePreference)}.`}
-                  className="icon-button button-tone--theme"
-                  data-tooltip-content={`Theme ${getThemePreferenceLabel(themePreference)} -> ${getThemePreferenceLabel(nextThemePreference)}`}
-                  onClick={() => setThemePreference(nextThemePreference)}
-                  type="button"
-                >
-                  <ThemeCycleIcon preference={themePreference} />
-                </button>
-                <button
-                  aria-label="Close panel"
-                  className="icon-button icon-button--close"
-                  onClick={() => window.electronAPI?.closePopover()}
-                  type="button"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div
-            className={`dashboard-shell ${draggedWidgetId ? 'dashboard-shell--dragging' : ''}`}
-            ref={dashboardShellRef}
-            style={
-              {
-                '--dashboard-column-gap': `${dashboardMetrics.gap}px`,
-                '--dashboard-lane-width': `${dashboardMetrics.laneWidth}px`
-              } as CSSProperties
-            }
-          >
-            {visibleWidgetIds.length > 0 ? (
-              <div className="dashboard-columns">
-                {dashboardColumns.map((column, columnIndex) => (
-                  <div
-                    className={`dashboard-column dashboard-column--span-${column.span}`}
-                    key={`dashboard-column-${columnIndex}`}
-                    style={{
-                      width:
-                        column.span === 2
-                          ? dashboardMetrics.laneWidth * 2 + dashboardMetrics.gap
-                          : dashboardMetrics.laneWidth
-                    }}
+              <div className="panel-toolbar">
+                <div className="picker-select picker-select--toolbar" ref={classMenuRef}>
+                  <span className="toolbar-caption">Class</span>
+                  <button
+                    className={`picker-select__trigger ${isClassMenuOpen ? 'picker-select__trigger--open' : ''}`}
+                    disabled={isPickerSpinning || picker.lists.length === 0}
+                    onClick={() => setIsClassMenuOpen((current) => !current)}
+                    type="button"
                   >
-                    {column.widgetIds.map((widgetId) => renderWidget(widgetId))}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <section className="widget-empty-state">
-                <p className="empty-copy">
-                  This class layout has no visible widgets right now. Open the widget picker to turn
-                  them back on.
-                </p>
-                <button
-                  className="primary-link"
-                  onClick={() => window.electronAPI?.toggleWidgetPicker()}
-                  type="button"
-                >
-                  Open widget picker
-                </button>
-              </section>
-            )}
-          </div>
-        </div>
-      </section>
+                    <span>{selectedList?.name ?? 'Choose a list'}</span>
+                    <span className="picker-select__chevron">{isClassMenuOpen ? '–' : '+'}</span>
+                  </button>
 
-      <button
-        aria-label="Resize window from bottom left corner"
-        className="resize-handle resize-handle--left"
-        onPointerCancel={endResize}
-        onPointerDown={(event) => beginResize('bottom-left', event)}
-        onPointerMove={continueResize}
-        onPointerUp={endResize}
-        type="button"
-      />
-      <button
-        aria-label="Resize window from bottom right corner"
-        className="resize-handle resize-handle--right"
-        onPointerCancel={endResize}
-        onPointerDown={(event) => beginResize('bottom-right', event)}
-        onPointerMove={continueResize}
-        onPointerUp={endResize}
-        type="button"
-      />
-    </main>
+                  {isClassMenuOpen && (
+                    <div className="picker-select__menu picker-select__menu--toolbar">
+                      {picker.lists.length > 0 ? (
+                        picker.lists.map((list) => (
+                          <button
+                            className={`picker-select__option ${
+                              list.id === selectedList?.id ? 'picker-select__option--active' : ''
+                            }`}
+                            key={list.id}
+                            onClick={() => selectClassList(list.id)}
+                            type="button"
+                          >
+                            <span>{list.name}</span>
+                            <span>{list.students.length}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="empty-copy">No class lists yet.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="panel-actions">
+                  <button
+                    className="toolbar-link"
+                    onClick={() => window.electronAPI?.toggleWidgetPicker()}
+                    type="button"
+                  >
+                    Widgets
+                  </button>
+                  <button
+                    className="toolbar-link"
+                    onClick={() => window.electronAPI?.toggleClassListBuilder()}
+                    type="button"
+                  >
+                    Classes
+                  </button>
+                  <InterfaceScaleControls
+                    canDecrease={canDecreaseInterfaceScale}
+                    canIncrease={canIncreaseInterfaceScale}
+                    onDecrease={decreaseInterfaceScale}
+                    onIncrease={increaseInterfaceScale}
+                    scale={interfaceScale}
+                  />
+                  <button
+                    aria-label={`Theme ${getThemePreferenceLabel(themePreference)}. Switch to ${getThemePreferenceLabel(nextThemePreference)}.`}
+                    className="icon-button button-tone--theme"
+                    data-tooltip-content={`Theme ${getThemePreferenceLabel(themePreference)} -> ${getThemePreferenceLabel(nextThemePreference)}`}
+                    onClick={() => setThemePreference(nextThemePreference)}
+                    type="button"
+                  >
+                    <ThemeCycleIcon preference={themePreference} />
+                  </button>
+                  <button
+                    aria-label="Close panel"
+                    className="icon-button icon-button--close"
+                    onClick={() => window.electronAPI?.closePopover()}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <div
+              className={`dashboard-shell ${draggedWidgetId ? 'dashboard-shell--dragging' : ''}`}
+              ref={dashboardShellRef}
+              style={
+                {
+                  '--dashboard-column-gap': `${dashboardMetrics.gap}px`,
+                  '--dashboard-lane-width': `${dashboardMetrics.laneWidth}px`
+                } as CSSProperties
+              }
+            >
+              {visibleWidgetIds.length > 0 ? (
+                <div className="dashboard-columns">
+                  {dashboardColumns.map((column, columnIndex) => (
+                    <div
+                      className={`dashboard-column dashboard-column--span-${column.span}`}
+                      key={`dashboard-column-${columnIndex}`}
+                      style={{
+                        width:
+                          column.span === 2
+                            ? dashboardMetrics.laneWidth * 2 + dashboardMetrics.gap
+                            : dashboardMetrics.laneWidth
+                      }}
+                    >
+                      {column.widgetIds.map((widgetId) => renderWidget(widgetId))}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <section className="widget-empty-state">
+                  <p className="empty-copy">
+                    This class layout has no visible widgets right now. Open the widget picker to turn
+                    them back on.
+                  </p>
+                  <button
+                    className="primary-link"
+                    onClick={() => window.electronAPI?.toggleWidgetPicker()}
+                    type="button"
+                  >
+                    Open widget picker
+                  </button>
+                </section>
+              )}
+            </div>
+          </div>
+
+          {resolvedTheme === 'color' && colorModeHoverTarget ? (
+            <ColorModeHoverPalette
+              backgroundColorId={colorModePreferences.backgroundColorId}
+              onBackgroundColorChange={setBackgroundColorModeSwatch}
+              onPointerEnter={clearColorModePaletteCloseTimeout}
+              onPointerLeave={scheduleColorModePaletteClose}
+              onWidgetColorChange={(swatchId) =>
+                setWidgetColorModeSwatch(colorModeHoverTarget.widgetId, swatchId)
+              }
+              target={colorModeHoverTarget}
+              widgetColorId={colorModePreferences.widgetColorsByWidgetId[colorModeHoverTarget.widgetId]}
+            />
+          ) : null}
+        </section>
+
+        <button
+          aria-label="Resize window from bottom left corner"
+          className="resize-handle resize-handle--left"
+          onPointerCancel={endResize}
+          onPointerDown={(event) => beginResize('bottom-left', event)}
+          onPointerMove={continueResize}
+          onPointerUp={endResize}
+          type="button"
+        />
+        <button
+          aria-label="Resize window from bottom right corner"
+          className="resize-handle resize-handle--right"
+          onPointerCancel={endResize}
+          onPointerDown={(event) => beginResize('bottom-right', event)}
+          onPointerMove={continueResize}
+          onPointerUp={endResize}
+          type="button"
+        />
+      </main>
+    </ColorModeAppearanceContext.Provider>
   );
 }
 
@@ -2295,6 +2942,7 @@ function WidgetPopoutWindow({
   const stageRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const [themePreference] = useThemePreferenceState();
+  const [colorModePreferences] = useColorModePreferencesState();
   const interfaceScaleControls = useInterfaceScaleControls();
   const resolvedTheme = useResolvedTheme(themePreference);
   const widgetMinSize = widgetId ? WIDGET_POPOUT_MIN_SIZES[widgetId] : null;
@@ -2343,49 +2991,61 @@ function WidgetPopoutWindow({
     content = <BellScheduleWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
   } else if (widgetId === 'planner') {
     content = <PlannerWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+  } else if (widgetId === 'homework-assessment') {
+    content = (
+      <HomeworkAssessmentTrackerWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+      />
+    );
+  } else if (widgetId === 'qr-generator') {
+    content = <QrGeneratorWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
   } else {
     content = <NotesWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
   }
 
   return (
-    <main
-      aria-label="Widget popout"
-      className="window-stage window-stage--builder window-stage--widget-popout"
-      ref={stageRef}
+    <ColorModeAppearanceContext.Provider
+      value={{ preferences: colorModePreferences, theme: resolvedTheme }}
     >
-      <section
-        className="panel panel--builder panel--widget-popout"
-        data-theme={resolvedTheme}
-        ref={panelRef}
+      <main
+        aria-label="Widget popout"
+        className="window-stage window-stage--builder window-stage--widget-popout"
+        ref={stageRef}
       >
-        <div aria-hidden="true" className="panel__glass" />
-        <div aria-hidden="true" className="panel__gloss" />
-        <div className="panel__content panel__content--popout">{content}</div>
-      </section>
+        <section
+          className="panel panel--builder panel--widget-popout"
+          data-theme={resolvedTheme}
+          ref={panelRef}
+        >
+          <div aria-hidden="true" className="panel__glass" />
+          <div aria-hidden="true" className="panel__gloss" />
+          <div className="panel__content panel__content--popout">{content}</div>
+        </section>
 
-      {widgetId ? (
-        <>
-          <button
-            aria-label="Resize window from bottom left corner"
-            className="resize-handle resize-handle--left"
-            onPointerCancel={endResize}
-            onPointerDown={(event) => beginResize('bottom-left', event)}
-            onPointerMove={continueResize}
-            onPointerUp={endResize}
-            type="button"
-          />
-          <button
-            aria-label="Resize window from bottom right corner"
-            className="resize-handle resize-handle--right"
-            onPointerCancel={endResize}
-            onPointerDown={(event) => beginResize('bottom-right', event)}
-            onPointerMove={continueResize}
-            onPointerUp={endResize}
-            type="button"
-          />
-        </>
-      ) : null}
-    </main>
+        {widgetId ? (
+          <>
+            <button
+              aria-label="Resize window from bottom left corner"
+              className="resize-handle resize-handle--left"
+              onPointerCancel={endResize}
+              onPointerDown={(event) => beginResize('bottom-left', event)}
+              onPointerMove={continueResize}
+              onPointerUp={endResize}
+              type="button"
+            />
+            <button
+              aria-label="Resize window from bottom right corner"
+              className="resize-handle resize-handle--right"
+              onPointerCancel={endResize}
+              onPointerDown={(event) => beginResize('bottom-right', event)}
+              onPointerMove={continueResize}
+              onPointerUp={endResize}
+              type="button"
+            />
+          </>
+        ) : null}
+      </main>
+    </ColorModeAppearanceContext.Provider>
   );
 }
 
@@ -2918,6 +3578,117 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
   );
 }
 
+function ColorModeHoverPalette({
+  backgroundColorId,
+  onBackgroundColorChange,
+  onPointerEnter,
+  onPointerLeave,
+  onWidgetColorChange,
+  target,
+  widgetColorId
+}: {
+  backgroundColorId: ColorModeSwatchId;
+  onBackgroundColorChange: (swatchId: ColorModeSwatchId) => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+  onWidgetColorChange: (swatchId: ColorModeSwatchId) => void;
+  target: ColorModeHoverPaletteTarget;
+  widgetColorId: ColorModeSwatchId;
+}) {
+  const widgetTitle = WIDGET_DETAILS[target.widgetId].title;
+  const position = getColorModePopoverPosition(target.anchorRect);
+
+  return (
+    <aside
+      aria-label={`Colour options for ${widgetTitle}`}
+      className={`color-mode-popover color-mode-popover--${position.side}`}
+      onMouseEnter={onPointerEnter}
+      onMouseLeave={onPointerLeave}
+      style={
+        {
+          left: `${position.left}px`,
+          top: `${position.top}px`
+        } as CSSProperties
+      }
+    >
+      <div className="color-mode-popover__header">
+        <span className="color-mode-popover__kicker">Colour mode</span>
+        <strong className="color-mode-popover__title">{widgetTitle}</strong>
+      </div>
+
+      <div className="color-mode-popover__section">
+        <span className="color-mode-popover__label">Widget</span>
+        <div className="color-mode-popover__swatches">
+          {COLOR_MODE_SWATCHES.map((swatch) => (
+            <ColorModeSwatchButton
+              appearance="widget"
+              isSelected={widgetColorId === swatch.id}
+              key={`widget-${swatch.id}`}
+              label={`Set ${widgetTitle} to ${swatch.label}`}
+              onClick={() => onWidgetColorChange(swatch.id)}
+              swatch={swatch}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="color-mode-popover__section">
+        <span className="color-mode-popover__label">Background</span>
+        <div className="color-mode-popover__swatches">
+          {COLOR_MODE_SWATCHES.map((swatch) => (
+            <ColorModeSwatchButton
+              appearance="background"
+              isSelected={backgroundColorId === swatch.id}
+              key={`background-${swatch.id}`}
+              label={`Set background to ${swatch.label}`}
+              onClick={() => onBackgroundColorChange(swatch.id)}
+              swatch={swatch}
+            />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function ColorModeSwatchButton({
+  appearance,
+  isSelected,
+  label,
+  onClick,
+  swatch
+}: {
+  appearance: 'background' | 'widget';
+  isSelected: boolean;
+  label: string;
+  onClick: () => void;
+  swatch: ColorModeSwatch;
+}) {
+  const previewStyle =
+    appearance === 'background'
+      ? {
+          background: `linear-gradient(180deg, ${swatch.panelTop}, ${swatch.panelBottom})`,
+          boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.panelBorder, 0.24)}`
+        }
+      : {
+          background: swatch.widgetFill,
+          boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.widgetBorder, 0.22)}`
+        };
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={isSelected}
+      className={`color-mode-popover__swatch ${isSelected ? 'color-mode-popover__swatch--selected' : ''}`}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      <span aria-hidden="true" className="color-mode-popover__swatch-preview" style={previewStyle} />
+    </button>
+  );
+}
+
 function WidgetCard({
   widgetId,
   badge,
@@ -2935,6 +3706,8 @@ function WidgetCard({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onColorModeHoverEnter,
+  onColorModeHoverLeave,
   onToggleCollapsed,
   showCollapse = true,
   title,
@@ -2956,11 +3729,16 @@ function WidgetCard({
   onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onColorModeHoverEnter?: (widgetId: WidgetId, anchorRect: DOMRect) => void;
+  onColorModeHoverLeave?: () => void;
   onToggleCollapsed?: () => void;
   showCollapse?: boolean;
   title: string;
   widthCategory: WidgetWidthCategory;
 }) {
+  const { preferences: colorModePreferences, theme } = useColorModeAppearance();
+  const colorModeStyle = getColorModeWidgetStyle(theme, colorModePreferences, widgetId);
+
   return (
     <article
       data-widget-id={widgetId}
@@ -2968,6 +3746,13 @@ function WidgetCard({
       className={`widget-card ${collapsed ? 'widget-card--collapsed' : ''} ${
         isDragging ? 'widget-card--dragging' : ''
       } ${isDragOver ? 'widget-card--drag-over' : ''} widget-card--${widthCategory}`}
+      onMouseEnter={(event: ReactMouseEvent<HTMLElement>) => {
+        onColorModeHoverEnter?.(widgetId, event.currentTarget.getBoundingClientRect());
+      }}
+      onMouseLeave={() => {
+        onColorModeHoverLeave?.();
+      }}
+      style={colorModeStyle}
     >
       <div
         className={`widget-card__header ${
@@ -3534,6 +4319,85 @@ function NotesWidgetContent({
   );
 }
 
+function QrGeneratorWidgetContent({
+  linkDraft,
+  onClear,
+  onDraftChange,
+  preview
+}: {
+  linkDraft: string;
+  onClear: () => void;
+  onDraftChange: (value: string) => void;
+  preview: QrWidgetPreviewState;
+}) {
+  const qrSvgViewBoxSize = preview.qrCode ? preview.qrCode.size + QR_WIDGET_SVG_BORDER_MODULES * 2 : 0;
+  const qrSvgPath = preview.qrCode
+    ? buildQrSvgPath(preview.qrCode, QR_WIDGET_SVG_BORDER_MODULES)
+    : '';
+
+  return (
+    <div className="qr-widget">
+      <div className="field-stack">
+        <label className="field-label" htmlFor="qr-generator-link">
+          Link
+        </label>
+        <input
+          className="text-field"
+          id="qr-generator-link"
+          onChange={(event) => onDraftChange(event.target.value)}
+          placeholder="https://school.example.com/check-in"
+          spellCheck={false}
+          type="text"
+          value={linkDraft}
+        />
+      </div>
+
+      {preview.qrCode ? (
+        <div className="qr-widget__preview-shell">
+          <div className="qr-widget__preview-card">
+            <svg
+              aria-label={`QR code for ${preview.normalizedUrl}`}
+              className="qr-widget__svg"
+              role="img"
+              viewBox={`0 0 ${qrSvgViewBoxSize} ${qrSvgViewBoxSize}`}
+            >
+              <rect fill="#ffffff" height={qrSvgViewBoxSize} rx="2" width={qrSvgViewBoxSize} />
+              <path d={qrSvgPath} fill="currentColor" />
+            </svg>
+          </div>
+
+          <div className="qr-widget__meta">
+            {preview.hostLabel ? <span className="pill">{preview.hostLabel}</span> : null}
+            <p className="helper-text qr-widget__url">{preview.normalizedUrl}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="widget-empty-state qr-widget__empty">
+          <p className="empty-copy">
+            {preview.error ?? 'Paste a web link and the QR code will generate here instantly.'}
+          </p>
+        </div>
+      )}
+
+      <div className="action-row qr-widget__actions">
+        <p className="helper-text">
+          {preview.qrCode
+            ? 'The code updates directly on the dashboard as you type.'
+            : 'Use a full web address or a domain name and the widget will handle the rest.'}
+        </p>
+        <button
+          className="secondary-link"
+          disabled={!linkDraft.trim()}
+          onClick={onClear}
+          type="button"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlannerWidgetContent({
   documents,
   entryDates,
@@ -3748,6 +4612,722 @@ function PlannerWidgetContent({
         )}
       </div>
     </div>
+  );
+}
+
+function HomeworkAssessmentTrackerWidgetContent({
+  controller,
+  mode,
+  onOpenManager
+}: {
+  controller: ReturnType<typeof useHomeworkAssessmentTrackerController>;
+  mode: 'dashboard' | 'popout';
+  onOpenManager?: () => void;
+}) {
+  const isPopout = mode === 'popout';
+  const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
+  const [editingHomeworkId, setEditingHomeworkId] = useState<string | null>(null);
+  const [assessmentDraft, setAssessmentDraft] = useState<AssessmentTrackerDraft>(() =>
+    createAssessmentTrackerDraft(controller.defaultClassListId)
+  );
+  const [homeworkDraft, setHomeworkDraft] = useState<HomeworkTrackerDraft>(() =>
+    createHomeworkTrackerDraft(controller.defaultClassListId)
+  );
+
+  useEffect(() => {
+    setAssessmentDraft((current) => ({
+      ...current,
+      classListId: resolveTrackerDraftClassListId(
+        current.classListId,
+        controller.defaultClassListId,
+        controller.classLists
+      )
+    }));
+    setHomeworkDraft((current) => ({
+      ...current,
+      classListId: resolveTrackerDraftClassListId(
+        current.classListId,
+        controller.defaultClassListId,
+        controller.classLists
+      )
+    }));
+  }, [controller.classLists, controller.defaultClassListId]);
+
+  const resetAssessmentDraft = (nextClassListId = assessmentDraft.classListId) => {
+    const resolvedClassListId = resolveTrackerDraftClassListId(
+      nextClassListId,
+      controller.defaultClassListId,
+      controller.classLists
+    );
+    setAssessmentDraft({
+      ...createAssessmentTrackerDraft(resolvedClassListId),
+      classListId: resolvedClassListId
+    });
+    setEditingAssessmentId(null);
+  };
+
+  const resetHomeworkDraft = (nextClassListId = homeworkDraft.classListId) => {
+    const resolvedClassListId = resolveTrackerDraftClassListId(
+      nextClassListId,
+      controller.defaultClassListId,
+      controller.classLists
+    );
+    setHomeworkDraft({
+      ...createHomeworkTrackerDraft(resolvedClassListId),
+      classListId: resolvedClassListId
+    });
+    setEditingHomeworkId(null);
+  };
+
+  const saveAssessment = () => {
+    const title = assessmentDraft.title.trim();
+    const dueDate = normalizeDateKey(assessmentDraft.dueDate);
+    const classListId = resolveTrackerDraftClassListId(
+      assessmentDraft.classListId,
+      controller.defaultClassListId,
+      controller.classLists
+    );
+
+    if (!title || !dueDate) {
+      return;
+    }
+
+    const nextEntry = {
+      classListId,
+      description: assessmentDraft.description.trim(),
+      dueDate,
+      reminderDaysBefore: assessmentDraft.reminderDaysBefore,
+      status: assessmentDraft.status,
+      title
+    };
+
+    if (editingAssessmentId) {
+      controller.updateAssessment(editingAssessmentId, nextEntry);
+    } else {
+      controller.addAssessment(nextEntry);
+    }
+
+    resetAssessmentDraft(classListId);
+  };
+
+  const saveHomework = () => {
+    const title = homeworkDraft.title.trim();
+    const dueDate = normalizeDateKey(homeworkDraft.dueDate);
+    const classListId = resolveTrackerDraftClassListId(
+      homeworkDraft.classListId,
+      controller.defaultClassListId,
+      controller.classLists
+    );
+
+    if (!title || !dueDate) {
+      return;
+    }
+
+    const nextEntry = {
+      classListId,
+      description: homeworkDraft.description.trim(),
+      dueDate,
+      reminderDaysBefore: homeworkDraft.reminderDaysBefore,
+      status: homeworkDraft.status,
+      title
+    };
+
+    if (editingHomeworkId) {
+      controller.updateHomework(editingHomeworkId, nextEntry);
+    } else {
+      controller.addHomework(nextEntry);
+    }
+
+    resetHomeworkDraft(classListId);
+  };
+
+  return (
+    <div className="tracker-widget">
+      <section className={`tracker-summary ${isPopout ? '' : 'tracker-summary--compact'}`}>
+        <section className="tracker-summary__section">
+          <div className="tracker-summary__section-head">
+            <span className="field-label">Assessments</span>
+            {controller.upcomingAssessments.length > 0 ? (
+              <span className="badge">{controller.upcomingAssessments.length}</span>
+            ) : null}
+          </div>
+
+          {controller.upcomingAssessments.length > 0 ? (
+            <div className="tracker-record-list">
+              {controller.upcomingAssessments.map((item) => (
+                <TrackerItemCard
+                  classLists={controller.classLists}
+                  compact
+                  item={item}
+                  key={item.id}
+                  kind="assessment"
+                  todayKey={controller.todayKey}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="empty-copy tracker-summary__empty">No assessments</p>
+          )}
+        </section>
+
+        <section className="tracker-summary__section">
+          <div className="tracker-summary__section-head">
+            <span className="field-label">Today</span>
+            {controller.homeworkDueToday.length > 0 ? (
+              <span className="badge">{controller.homeworkDueToday.length}</span>
+            ) : null}
+          </div>
+
+          {controller.homeworkDueToday.length > 0 ? (
+            <div className="tracker-record-list">
+              {controller.homeworkDueToday.map((item) => (
+                <TrackerItemCard
+                  classLists={controller.classLists}
+                  compact
+                  item={item}
+                  key={item.id}
+                  kind="homework"
+                  todayKey={controller.todayKey}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="empty-copy tracker-summary__empty">Nothing due today</p>
+          )}
+        </section>
+
+        {!isPopout && onOpenManager ? (
+          <div className="tracker-summary__footer">
+            <button
+              className="secondary-link button-tone--utility"
+              onClick={onOpenManager}
+              type="button"
+            >
+              Open editor
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      {isPopout ? (
+        <>
+          <div className="tracker-editor-grid">
+            <section className="tracker-panel tracker-panel--editor">
+              <div className="tracker-panel__header">
+                <div>
+                  <span className="field-label">
+                    {editingAssessmentId ? 'Edit assessment' : 'New assessment'}
+                  </span>
+                  <p className="helper-text">Add due dates, notes, and a status for each class.</p>
+                </div>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-assessment-class">
+                  Class
+                </label>
+                <select
+                  className="text-field"
+                  id="tracker-assessment-class"
+                  onChange={(event) =>
+                    setAssessmentDraft((current) => ({
+                      ...current,
+                      classListId: event.target.value
+                    }))
+                  }
+                  value={assessmentDraft.classListId}
+                >
+                  {controller.classLists.map((list) => (
+                    <option key={list.id} value={list.id}>
+                      {list.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-assessment-title">
+                  Assessment title
+                </label>
+                <input
+                  className="text-field"
+                  id="tracker-assessment-title"
+                  onChange={(event) =>
+                    setAssessmentDraft((current) => ({
+                      ...current,
+                      title: event.target.value
+                    }))
+                  }
+                  placeholder="Semester test, oral presentation, essay..."
+                  type="text"
+                  value={assessmentDraft.title}
+                />
+              </div>
+
+              <div className="tracker-form-row">
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-assessment-date">
+                    Due date
+                  </label>
+                  <input
+                    className="text-field text-field--date"
+                    id="tracker-assessment-date"
+                    onChange={(event) =>
+                      setAssessmentDraft((current) => ({
+                        ...current,
+                        dueDate: event.target.value
+                      }))
+                    }
+                    type="date"
+                    value={assessmentDraft.dueDate}
+                  />
+                </div>
+
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-assessment-reminder">
+                    Reminder
+                  </label>
+                  <select
+                    className="text-field"
+                    id="tracker-assessment-reminder"
+                    onChange={(event) =>
+                      setAssessmentDraft((current) => ({
+                        ...current,
+                        reminderDaysBefore: Number(event.target.value)
+                      }))
+                    }
+                    value={assessmentDraft.reminderDaysBefore}
+                  >
+                    {TRACKER_REMINDER_OPTIONS.map((option) => (
+                      <option key={`assessment-reminder-${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-assessment-status">
+                    Status
+                  </label>
+                  <select
+                    className="text-field"
+                    id="tracker-assessment-status"
+                    onChange={(event) =>
+                      setAssessmentDraft((current) => ({
+                        ...current,
+                        status: event.target.value as AssessmentTrackerStatus
+                      }))
+                    }
+                    value={assessmentDraft.status}
+                  >
+                    {ASSESSMENT_TRACKER_STATUS_OPTIONS.map((option) => (
+                      <option key={`assessment-status-${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-assessment-description">
+                  Description
+                </label>
+                <textarea
+                  className="text-area text-area--tracker"
+                  id="tracker-assessment-description"
+                  onChange={(event) =>
+                    setAssessmentDraft((current) => ({
+                      ...current,
+                      description: event.target.value
+                    }))
+                  }
+                  placeholder="Add instructions, outcomes, marking notes, or preparation details."
+                  value={assessmentDraft.description}
+                />
+              </div>
+
+              <div className="action-row">
+                <button className="primary-link" onClick={saveAssessment} type="button">
+                  {editingAssessmentId ? 'Save assessment' : 'Add assessment'}
+                </button>
+                <button
+                  className="secondary-link button-tone--utility"
+                  onClick={() => resetAssessmentDraft()}
+                  type="button"
+                >
+                  {editingAssessmentId ? 'Cancel edit' : 'Clear'}
+                </button>
+              </div>
+            </section>
+
+            <section className="tracker-panel tracker-panel--editor">
+              <div className="tracker-panel__header">
+                <div>
+                  <span className="field-label">
+                    {editingHomeworkId ? 'Edit homework' : 'New homework'}
+                  </span>
+                  <p className="helper-text">Track what has been set and what is due today.</p>
+                </div>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-homework-class">
+                  Class
+                </label>
+                <select
+                  className="text-field"
+                  id="tracker-homework-class"
+                  onChange={(event) =>
+                    setHomeworkDraft((current) => ({
+                      ...current,
+                      classListId: event.target.value
+                    }))
+                  }
+                  value={homeworkDraft.classListId}
+                >
+                  {controller.classLists.map((list) => (
+                    <option key={list.id} value={list.id}>
+                      {list.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-homework-title">
+                  Homework title
+                </label>
+                <input
+                  className="text-field"
+                  id="tracker-homework-title"
+                  onChange={(event) =>
+                    setHomeworkDraft((current) => ({
+                      ...current,
+                      title: event.target.value
+                    }))
+                  }
+                  placeholder="Worksheet 4, reading response, revision task..."
+                  type="text"
+                  value={homeworkDraft.title}
+                />
+              </div>
+
+              <div className="tracker-form-row">
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-homework-date">
+                    Due date
+                  </label>
+                  <input
+                    className="text-field text-field--date"
+                    id="tracker-homework-date"
+                    onChange={(event) =>
+                      setHomeworkDraft((current) => ({
+                        ...current,
+                        dueDate: event.target.value
+                      }))
+                    }
+                    type="date"
+                    value={homeworkDraft.dueDate}
+                  />
+                </div>
+
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-homework-reminder">
+                    Reminder
+                  </label>
+                  <select
+                    className="text-field"
+                    id="tracker-homework-reminder"
+                    onChange={(event) =>
+                      setHomeworkDraft((current) => ({
+                        ...current,
+                        reminderDaysBefore: Number(event.target.value)
+                      }))
+                    }
+                    value={homeworkDraft.reminderDaysBefore}
+                  >
+                    {TRACKER_REMINDER_OPTIONS.map((option) => (
+                      <option key={`homework-reminder-${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="tracker-homework-status">
+                    Status
+                  </label>
+                  <select
+                    className="text-field"
+                    id="tracker-homework-status"
+                    onChange={(event) =>
+                      setHomeworkDraft((current) => ({
+                        ...current,
+                        status: event.target.value as HomeworkTrackerStatus
+                      }))
+                    }
+                    value={homeworkDraft.status}
+                  >
+                    {HOMEWORK_TRACKER_STATUS_OPTIONS.map((option) => (
+                      <option key={`homework-status-${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="field-stack">
+                <label className="field-label" htmlFor="tracker-homework-description">
+                  Description
+                </label>
+                <textarea
+                  className="text-area text-area--tracker"
+                  id="tracker-homework-description"
+                  onChange={(event) =>
+                    setHomeworkDraft((current) => ({
+                      ...current,
+                      description: event.target.value
+                    }))
+                  }
+                  placeholder="Add task notes, expected completion, or collection reminders."
+                  value={homeworkDraft.description}
+                />
+              </div>
+
+              <div className="action-row">
+                <button className="primary-link" onClick={saveHomework} type="button">
+                  {editingHomeworkId ? 'Save homework' : 'Add homework'}
+                </button>
+                <button
+                  className="secondary-link button-tone--utility"
+                  onClick={() => resetHomeworkDraft()}
+                  type="button"
+                >
+                  {editingHomeworkId ? 'Cancel edit' : 'Clear'}
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div className="tracker-editor-grid">
+            <section className="tracker-panel">
+              <div className="tracker-panel__header">
+                <div>
+                  <span className="field-label">Assessment log</span>
+                  <p className="helper-text">Update status, due dates, and details as plans change.</p>
+                </div>
+                <span className="badge">{controller.assessments.length}</span>
+              </div>
+
+              {controller.assessments.length > 0 ? (
+                <div className="tracker-record-list tracker-record-list--full">
+                  {controller.assessments.map((item) => (
+                    <TrackerItemCard
+                      classLists={controller.classLists}
+                      item={item}
+                      key={item.id}
+                      kind="assessment"
+                      onDelete={() => {
+                        controller.removeAssessment(item.id);
+                        if (editingAssessmentId === item.id) {
+                          resetAssessmentDraft();
+                        }
+                      }}
+                      onEdit={() => {
+                        setEditingAssessmentId(item.id);
+                        setAssessmentDraft({
+                          classListId: resolveTrackerDraftClassListId(
+                            item.classListId ?? '',
+                            controller.defaultClassListId,
+                            controller.classLists
+                          ),
+                          description: item.description,
+                          dueDate: item.dueDate,
+                          reminderDaysBefore: item.reminderDaysBefore,
+                          status: item.status,
+                          title: item.title
+                        });
+                      }}
+                      onStatusChange={(status) =>
+                        controller.updateAssessmentStatus(item.id, status as AssessmentTrackerStatus)
+                      }
+                      todayKey={controller.todayKey}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="group-maker__empty">
+                  <p className="empty-copy">No assessments tracked yet.</p>
+                </div>
+              )}
+            </section>
+
+            <section className="tracker-panel">
+              <div className="tracker-panel__header">
+                <div>
+                  <span className="field-label">Homework log</span>
+                  <p className="helper-text">Keep due dates visible and move items through collection.</p>
+                </div>
+                <span className="badge">{controller.homework.length}</span>
+              </div>
+
+              {controller.homework.length > 0 ? (
+                <div className="tracker-record-list tracker-record-list--full">
+                  {controller.homework.map((item) => (
+                    <TrackerItemCard
+                      classLists={controller.classLists}
+                      item={item}
+                      key={item.id}
+                      kind="homework"
+                      onDelete={() => {
+                        controller.removeHomework(item.id);
+                        if (editingHomeworkId === item.id) {
+                          resetHomeworkDraft();
+                        }
+                      }}
+                      onEdit={() => {
+                        setEditingHomeworkId(item.id);
+                        setHomeworkDraft({
+                          classListId: resolveTrackerDraftClassListId(
+                            item.classListId ?? '',
+                            controller.defaultClassListId,
+                            controller.classLists
+                          ),
+                          description: item.description,
+                          dueDate: item.dueDate,
+                          reminderDaysBefore: item.reminderDaysBefore,
+                          status: item.status,
+                          title: item.title
+                        });
+                      }}
+                      onStatusChange={(status) =>
+                        controller.updateHomeworkStatus(item.id, status as HomeworkTrackerStatus)
+                      }
+                      todayKey={controller.todayKey}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="group-maker__empty">
+                  <p className="empty-copy">No homework tracked yet.</p>
+                </div>
+              )}
+            </section>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function TrackerItemCard({
+  classLists,
+  compact = false,
+  item,
+  kind,
+  onDelete,
+  onEdit,
+  onStatusChange,
+  todayKey
+}: {
+  classLists: ClassList[];
+  compact?: boolean;
+  item: AssessmentTrackerEntry | HomeworkTrackerEntry;
+  kind: 'assessment' | 'homework';
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onStatusChange?: (status: AssessmentTrackerStatus | HomeworkTrackerStatus) => void;
+  todayKey: string;
+}) {
+  const isAssessment = kind === 'assessment';
+  const statusLabel = isAssessment
+    ? getAssessmentTrackerStatusLabel(item.status as AssessmentTrackerStatus)
+    : getHomeworkTrackerStatusLabel(item.status as HomeworkTrackerStatus);
+  const reminderLabel = formatTrackerReminderBadgeLabel(
+    item.dueDate,
+    item.reminderDaysBefore,
+    todayKey
+  );
+  const classLabel = getTrackerItemClassLabel(item, classLists);
+  const dueContext = formatTrackerDueContextLabel(item.dueDate, todayKey);
+  const isAlert = isTrackerItemOverdue(item.dueDate, todayKey) && item.status !== 'complete';
+  const statusTone = getTrackerStatusTone(kind, item.status);
+
+  return (
+    <article
+      className={`tracker-record ${compact ? 'tracker-record--compact' : ''} ${
+        isAlert ? 'tracker-record--alert' : ''
+      }`}
+    >
+      <div className="tracker-record__copy">
+        <div className="tracker-record__title-row">
+          <strong className="tracker-record__title">{item.title}</strong>
+          <span className="tracker-record__date">{formatLongDate(item.dueDate)}</span>
+        </div>
+
+        <span className="tracker-record__meta">
+          {classLabel} · {dueContext}
+        </span>
+
+        {!compact && item.description ? (
+          <p className="tracker-record__description">{item.description}</p>
+        ) : null}
+
+        {!compact ? (
+          <div className="pill-list">
+            <span className={`pill tracker-status-pill tracker-status-pill--${statusTone}`}>
+              {statusLabel}
+            </span>
+            {reminderLabel ? (
+              <span className="pill tracker-status-pill tracker-status-pill--reminder">
+                {reminderLabel}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {!compact ? (
+        <div className="tracker-record__actions">
+          <select
+            className="text-field tracker-record__status-select"
+            onChange={(event) =>
+              onStatusChange?.(event.target.value as AssessmentTrackerStatus | HomeworkTrackerStatus)
+            }
+            value={item.status}
+          >
+            {(isAssessment ? ASSESSMENT_TRACKER_STATUS_OPTIONS : HOMEWORK_TRACKER_STATUS_OPTIONS).map(
+              (option) => (
+                <option key={`${kind}-row-status-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              )
+            )}
+          </select>
+          <div className="action-row tracker-record__button-row">
+            <button
+              className="secondary-link button-tone--utility"
+              onClick={onEdit}
+              type="button"
+            >
+              Edit
+            </button>
+            <button
+              aria-label={`Delete ${item.title}`}
+              className="note-row__delete tracker-record__delete"
+              onClick={onDelete}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -5437,6 +7017,77 @@ function PlannerWidgetPopoutCard({
   );
 }
 
+function HomeworkAssessmentTrackerWidgetPopoutCard({
+  interfaceScaleControls
+}: {
+  interfaceScaleControls: InterfaceScaleControlsState;
+}) {
+  const [picker] = usePickerState();
+  const tracker = useHomeworkAssessmentTrackerController(picker.selectedListId, picker.lists);
+
+  return (
+    <WidgetCard
+      badge={tracker.badgeLabel}
+      badgeTone={tracker.badgeTone}
+      collapsed={false}
+      description={tracker.summaryDescription}
+      headerActions={
+        <PopoutWidgetActions
+          interfaceScaleControls={interfaceScaleControls}
+          title={WIDGET_DETAILS['homework-assessment'].title}
+          widgetId="homework-assessment"
+        />
+      }
+      headerDragMode="window"
+      isDragOver={false}
+      isDragging={false}
+      showCollapse={false}
+      title={WIDGET_DETAILS['homework-assessment'].title}
+      widgetId="homework-assessment"
+      widthCategory="single"
+    >
+      <HomeworkAssessmentTrackerWidgetContent controller={tracker} mode="popout" />
+    </WidgetCard>
+  );
+}
+
+function QrGeneratorWidgetPopoutCard({
+  interfaceScaleControls
+}: {
+  interfaceScaleControls: InterfaceScaleControlsState;
+}) {
+  const qrGenerator = useQrWidgetState();
+
+  return (
+    <WidgetCard
+      badge={qrGenerator.preview.qrCode ? 'Ready' : null}
+      collapsed={false}
+      description="Paste a link and the QR code appears right here."
+      headerActions={
+        <PopoutWidgetActions
+          interfaceScaleControls={interfaceScaleControls}
+          title={WIDGET_DETAILS['qr-generator'].title}
+          widgetId="qr-generator"
+        />
+      }
+      headerDragMode="window"
+      isDragOver={false}
+      isDragging={false}
+      showCollapse={false}
+      title={WIDGET_DETAILS['qr-generator'].title}
+      widgetId="qr-generator"
+      widthCategory="single"
+    >
+      <QrGeneratorWidgetContent
+        linkDraft={qrGenerator.linkDraft}
+        onClear={qrGenerator.clearLink}
+        onDraftChange={qrGenerator.setLinkDraft}
+        preview={qrGenerator.preview}
+      />
+    </WidgetCard>
+  );
+}
+
 function NotesWidgetPopoutCard({
   interfaceScaleControls
 }: {
@@ -5485,6 +7136,16 @@ function useThemePreferenceState() {
   return usePersistentState<ThemePreference>('teacher-tools.theme', 'system');
 }
 
+function useColorModePreferencesState() {
+  return usePersistentState<ColorModePreferences>(
+    'teacher-tools.color-mode-preferences',
+    DEFAULT_COLOR_MODE_PREFERENCES,
+    {
+      normalize: normalizeColorModePreferences
+    }
+  );
+}
+
 function useInterfaceScaleState() {
   return usePersistentState<number>('teacher-tools.interface-scale', DEFAULT_INTERFACE_SCALE, {
     normalize: normalizeInterfaceScale
@@ -5527,6 +7188,16 @@ function usePlannerState() {
   return usePersistentState<PlannerSnapshot>('teacher-tools.planner', DEFAULT_PLANNER, {
     normalize: normalizePlannerSnapshot
   });
+}
+
+function useHomeworkAssessmentTrackerState() {
+  return usePersistentState<HomeworkAssessmentTrackerSnapshot>(
+    'teacher-tools.homework-assessment-tracker',
+    DEFAULT_HOMEWORK_ASSESSMENT_TRACKER,
+    {
+      normalize: normalizeHomeworkAssessmentTrackerSnapshot
+    }
+  );
 }
 
 function useSeatingChartState() {
@@ -5756,7 +7427,9 @@ function useWidgetPopoutIds() {
 }
 
 function useTimerWidgetState() {
-  const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER);
+  const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER, {
+    normalize: normalizeTimerSnapshot
+  });
   const [customTimerMinutes, setCustomTimerMinutes] = usePersistentState<number>(
     'teacher-tools.custom-timer-minutes',
     0
@@ -5776,12 +7449,16 @@ function useTimerWidgetState() {
 
   useEffect(() => {
     if (timer.endsAt && remainingMs === 0) {
-      setTimer((current) => ({
-        ...current,
-        endsAt: null,
-        pausedRemainingMs: 0,
-        lastCompletedAt: Date.now()
-      }));
+      setTimer((current) =>
+        current.endsAt === null
+          ? current
+          : {
+              ...current,
+              endsAt: null,
+              pausedRemainingMs: 0,
+              lastCompletedAt: Date.now()
+            }
+      );
     }
   }, [remainingMs, setTimer, timer.endsAt]);
 
@@ -5823,6 +7500,7 @@ function useTimerWidgetState() {
     setTimer({
       baseDurationMs: durationMs,
       endsAt: null,
+      lastCompletionAcknowledgedAt: timer.lastCompletionAcknowledgedAt,
       pausedRemainingMs: durationMs,
       lastCompletedAt: null
     });
@@ -6101,6 +7779,17 @@ function useGroupMakerWidgetState() {
   };
 }
 
+function useQrWidgetState() {
+  const [linkDraft, setLinkDraft] = usePersistentState<string>('teacher-tools.qr-link-draft', '');
+
+  return {
+    clearLink: () => setLinkDraft(''),
+    linkDraft,
+    preview: getQrWidgetPreviewState(linkDraft),
+    setLinkDraft
+  };
+}
+
 function useNotesWidgetState() {
   const [stickyNotes, setStickyNotes] = usePersistentState<StickyNote[]>('teacher-tools.note-items', []);
   const [noteDraft, setNoteDraft] = usePersistentState<string>('teacher-tools.note-draft', '');
@@ -6160,6 +7849,182 @@ function useNotesWidgetState() {
     removeStickyNote,
     setNoteDraft,
     stickyNotes
+  };
+}
+
+function useHomeworkAssessmentTrackerController(
+  selectedListId: string | null,
+  classLists: ClassList[]
+) {
+  const [tracker, setTracker] = useHomeworkAssessmentTrackerState();
+  const todayKey = getTodayDateKey();
+  const defaultClassListId = getTrackerDefaultClassListId(selectedListId, classLists);
+  const assessments = [...tracker.assessments].sort((left, right) =>
+    compareTrackerEntries(left, right, todayKey)
+  );
+  const homework = [...tracker.homework].sort((left, right) =>
+    compareTrackerEntries(left, right, todayKey)
+  );
+  const upcomingAssessments = assessments
+    .filter((entry) => !isTrackerItemComplete(entry.status) && getDaysUntilDateKey(todayKey, entry.dueDate) >= 0)
+    .slice(0, 3);
+  const homeworkDueToday = homework.filter(
+    (entry) => !isTrackerItemComplete(entry.status) && entry.dueDate === todayKey
+  );
+  const reminderItems = [...assessments, ...homework].filter(
+    (entry) =>
+      !isTrackerItemComplete(entry.status) &&
+      isTrackerReminderDueToday(entry.dueDate, entry.reminderDaysBefore, todayKey)
+  );
+  const overdueCount = [...assessments, ...homework].filter(
+    (entry) =>
+      !isTrackerItemComplete(entry.status) && isTrackerItemOverdue(entry.dueDate, todayKey)
+  ).length;
+  const dueTodayCount =
+    assessments.filter((entry) => !isTrackerItemComplete(entry.status) && entry.dueDate === todayKey)
+      .length + homeworkDueToday.length;
+  const reminderCount = reminderItems.length;
+  const totalTrackedCount = assessments.length + homework.length;
+  const badgeLabel =
+    overdueCount > 0
+      ? `${overdueCount} overdue`
+      : dueTodayCount > 0
+        ? `${dueTodayCount} today`
+        : reminderCount > 0
+          ? `${reminderCount} reminder${reminderCount === 1 ? '' : 's'}`
+          : totalTrackedCount > 0
+            ? `${totalTrackedCount} items`
+            : null;
+  const summaryDescription =
+    totalTrackedCount === 0
+      ? 'Track due dates, status, and reminders across classes.'
+      : `${upcomingAssessments.length} assessment${upcomingAssessments.length === 1 ? '' : 's'} coming up, ${
+          homeworkDueToday.length
+        } homework due today.`;
+
+  const addAssessment = (entry: Omit<AssessmentTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>) => {
+    const normalizedEntry = createAssessmentTrackerEntry(entry, classLists);
+    if (!normalizedEntry) {
+      return;
+    }
+
+    setTracker((current) => ({
+      ...current,
+      assessments: [normalizedEntry, ...current.assessments]
+    }));
+  };
+
+  const updateAssessment = (
+    assessmentId: string,
+    entry: Omit<AssessmentTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>
+  ) => {
+    setTracker((current) => ({
+      ...current,
+      assessments: current.assessments.map((assessment) =>
+        assessment.id === assessmentId
+          ? createAssessmentTrackerEntry(entry, classLists, assessmentId, assessment.updatedAt) ??
+            assessment
+          : assessment
+      )
+    }));
+  };
+
+  const updateAssessmentStatus = (assessmentId: string, status: AssessmentTrackerStatus) => {
+    setTracker((current) => ({
+      ...current,
+      assessments: current.assessments.map((assessment) =>
+        assessment.id === assessmentId
+          ? {
+              ...assessment,
+              status,
+              updatedAt: Date.now()
+            }
+          : assessment
+      )
+    }));
+  };
+
+  const removeAssessment = (assessmentId: string) => {
+    setTracker((current) => ({
+      ...current,
+      assessments: current.assessments.filter((assessment) => assessment.id !== assessmentId)
+    }));
+  };
+
+  const addHomework = (entry: Omit<HomeworkTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>) => {
+    const normalizedEntry = createHomeworkTrackerEntry(entry, classLists);
+    if (!normalizedEntry) {
+      return;
+    }
+
+    setTracker((current) => ({
+      ...current,
+      homework: [normalizedEntry, ...current.homework]
+    }));
+  };
+
+  const updateHomework = (
+    homeworkId: string,
+    entry: Omit<HomeworkTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>
+  ) => {
+    setTracker((current) => ({
+      ...current,
+      homework: current.homework.map((homeworkEntry) =>
+        homeworkEntry.id === homeworkId
+          ? createHomeworkTrackerEntry(entry, classLists, homeworkId, homeworkEntry.updatedAt) ??
+            homeworkEntry
+          : homeworkEntry
+      )
+    }));
+  };
+
+  const updateHomeworkStatus = (homeworkId: string, status: HomeworkTrackerStatus) => {
+    setTracker((current) => ({
+      ...current,
+      homework: current.homework.map((homeworkEntry) =>
+        homeworkEntry.id === homeworkId
+          ? {
+              ...homeworkEntry,
+              status,
+              updatedAt: Date.now()
+            }
+          : homeworkEntry
+      )
+    }));
+  };
+
+  const removeHomework = (homeworkId: string) => {
+    setTracker((current) => ({
+      ...current,
+      homework: current.homework.filter((homeworkEntry) => homeworkEntry.id !== homeworkId)
+    }));
+  };
+
+  return {
+    addAssessment,
+    addHomework,
+    assessments,
+    badgeLabel,
+    badgeTone:
+      overdueCount > 0 || dueTodayCount > 0 ? ('alert' as const) : ('default' as const),
+    classLists,
+    defaultClassListId,
+    dueTodayCount,
+    homework,
+    homeworkDueToday,
+    overdueCount,
+    reminderCount,
+    reminderItems,
+    removeAssessment,
+    removeHomework,
+    summaryDescription,
+    todayKey,
+    tracker,
+    upcomingAssessments,
+    updateAssessment,
+    updateAssessmentStatus,
+    updateHomework,
+    updateHomeworkStatus
   };
 }
 
@@ -7189,6 +9054,296 @@ function formatLongDate(dateKey: string) {
   }).format(new Date(parsed.year, parsed.monthIndex, parsed.day));
 }
 
+function createAssessmentTrackerDraft(defaultClassListId: string): AssessmentTrackerDraft {
+  return {
+    classListId: defaultClassListId,
+    description: '',
+    dueDate: shiftDateKey(getTodayDateKey(), 7),
+    reminderDaysBefore: 7,
+    status: 'planned',
+    title: ''
+  };
+}
+
+function createHomeworkTrackerDraft(defaultClassListId: string): HomeworkTrackerDraft {
+  return {
+    classListId: defaultClassListId,
+    description: '',
+    dueDate: getTodayDateKey(),
+    reminderDaysBefore: 0,
+    status: 'set',
+    title: ''
+  };
+}
+
+function getTrackerDefaultClassListId(selectedListId: string | null, classLists: ClassList[]) {
+  if (selectedListId && classLists.some((list) => list.id === selectedListId)) {
+    return selectedListId;
+  }
+
+  return classLists[0]?.id ?? '';
+}
+
+function resolveTrackerDraftClassListId(
+  classListId: string,
+  fallbackClassListId: string,
+  classLists: ClassList[]
+) {
+  if (classListId && classLists.some((list) => list.id === classListId)) {
+    return classListId;
+  }
+
+  if (fallbackClassListId && classLists.some((list) => list.id === fallbackClassListId)) {
+    return fallbackClassListId;
+  }
+
+  return classLists[0]?.id ?? '';
+}
+
+function shiftDateKey(dateKey: string, deltaDays: number) {
+  const parsed = parseDateKey(dateKey) ?? parseDateKey(getTodayDateKey());
+  if (!parsed) {
+    return getTodayDateKey();
+  }
+
+  const nextDate = new Date(parsed.year, parsed.monthIndex, parsed.day + deltaDays);
+  return formatDateKey(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
+}
+
+function getDaysUntilDateKey(fromDateKey: string, toDateKey: string) {
+  const fromParsed = parseDateKey(fromDateKey);
+  const toParsed = parseDateKey(toDateKey);
+
+  if (!fromParsed || !toParsed) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const fromDate = new Date(fromParsed.year, fromParsed.monthIndex, fromParsed.day);
+  const toDate = new Date(toParsed.year, toParsed.monthIndex, toParsed.day);
+  return Math.round((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function isTrackerItemComplete(status: string) {
+  return status === 'complete';
+}
+
+function isTrackerItemOverdue(dueDate: string, todayKey: string) {
+  return getDaysUntilDateKey(todayKey, dueDate) < 0;
+}
+
+function isTrackerReminderDueToday(
+  dueDate: string,
+  reminderDaysBefore: number,
+  todayKey: string
+) {
+  if (reminderDaysBefore <= 0) {
+    return false;
+  }
+
+  return getDaysUntilDateKey(todayKey, dueDate) === reminderDaysBefore;
+}
+
+function getTrackerItemClassLabel(
+  item: Pick<HomeworkAssessmentEntryBase, 'classLabel' | 'classListId'>,
+  classLists: ClassList[]
+) {
+  const activeList =
+    item.classListId !== null ? classLists.find((list) => list.id === item.classListId) ?? null : null;
+
+  return activeList?.name ?? (item.classLabel.trim() || 'Class not set');
+}
+
+function formatTrackerDueContextLabel(dueDate: string, todayKey: string) {
+  const dayDelta = getDaysUntilDateKey(todayKey, dueDate);
+
+  if (!Number.isFinite(dayDelta)) {
+    return formatLongDate(dueDate);
+  }
+
+  if (dayDelta < 0) {
+    const overdueDays = Math.abs(dayDelta);
+    return `Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}`;
+  }
+
+  if (dayDelta === 0) {
+    return 'Due today';
+  }
+
+  if (dayDelta === 1) {
+    return 'Due tomorrow';
+  }
+
+  return `Due in ${dayDelta} days`;
+}
+
+function formatTrackerReminderBadgeLabel(
+  dueDate: string,
+  reminderDaysBefore: number,
+  todayKey: string
+) {
+  if (reminderDaysBefore <= 0) {
+    return null;
+  }
+
+  const dayDelta = getDaysUntilDateKey(todayKey, dueDate);
+  if (!Number.isFinite(dayDelta) || dayDelta < 0) {
+    return null;
+  }
+
+  if (dayDelta === reminderDaysBefore) {
+    return 'Reminder today';
+  }
+
+  if (dayDelta < reminderDaysBefore) {
+    return 'Reminder active';
+  }
+
+  return null;
+}
+
+function getAssessmentTrackerStatusLabel(status: AssessmentTrackerStatus) {
+  switch (status) {
+    case 'planned':
+      return 'Planned';
+    case 'set':
+      return 'Set';
+    case 'marking':
+      return 'Marking';
+    case 'complete':
+      return 'Complete';
+    default:
+      return status;
+  }
+}
+
+function getHomeworkTrackerStatusLabel(status: HomeworkTrackerStatus) {
+  switch (status) {
+    case 'set':
+      return 'Set';
+    case 'collecting':
+      return 'Collecting';
+    case 'reviewed':
+      return 'Reviewed';
+    case 'complete':
+      return 'Complete';
+    default:
+      return status;
+  }
+}
+
+function getTrackerStatusTone(
+  kind: 'assessment' | 'homework',
+  status: AssessmentTrackerStatus | HomeworkTrackerStatus
+) {
+  if (status === 'complete') {
+    return 'complete';
+  }
+
+  if (kind === 'assessment') {
+    if (status === 'marking') {
+      return 'warning';
+    }
+
+    if (status === 'set') {
+      return 'active';
+    }
+
+    return 'default';
+  }
+
+  if (status === 'collecting') {
+    return 'warning';
+  }
+
+  if (status === 'set') {
+    return 'active';
+  }
+
+  return 'default';
+}
+
+function compareTrackerEntries(
+  left: Pick<HomeworkAssessmentEntryBase, 'dueDate' | 'updatedAt'> & { status: string },
+  right: Pick<HomeworkAssessmentEntryBase, 'dueDate' | 'updatedAt'> & { status: string },
+  todayKey: string
+) {
+  const leftComplete = isTrackerItemComplete(left.status);
+  const rightComplete = isTrackerItemComplete(right.status);
+
+  if (leftComplete !== rightComplete) {
+    return Number(leftComplete) - Number(rightComplete);
+  }
+
+  const leftDayDelta = getDaysUntilDateKey(todayKey, left.dueDate);
+  const rightDayDelta = getDaysUntilDateKey(todayKey, right.dueDate);
+
+  if (leftDayDelta !== rightDayDelta) {
+    return leftDayDelta - rightDayDelta;
+  }
+
+  return right.updatedAt - left.updatedAt;
+}
+
+function createAssessmentTrackerEntry(
+  entry: Omit<AssessmentTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>,
+  classLists: ClassList[],
+  entryId = createStickyNoteId(),
+  _previousUpdatedAt?: number
+) {
+  const dueDate = normalizeDateKey(entry.dueDate);
+  if (!dueDate || !entry.title.trim()) {
+    return null;
+  }
+
+  return {
+    classLabel: getTrackerItemClassLabel(
+      {
+        classLabel: '',
+        classListId: entry.classListId
+      },
+      classLists
+    ),
+    classListId: entry.classListId,
+    description: entry.description.trim(),
+    dueDate,
+    id: entryId,
+    reminderDaysBefore: Math.max(0, Math.round(entry.reminderDaysBefore)),
+    status: entry.status,
+    title: entry.title.trim(),
+    updatedAt: Date.now()
+  } satisfies AssessmentTrackerEntry;
+}
+
+function createHomeworkTrackerEntry(
+  entry: Omit<HomeworkTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>,
+  classLists: ClassList[],
+  entryId = createStickyNoteId(),
+  _previousUpdatedAt?: number
+) {
+  const dueDate = normalizeDateKey(entry.dueDate);
+  if (!dueDate || !entry.title.trim()) {
+    return null;
+  }
+
+  return {
+    classLabel: getTrackerItemClassLabel(
+      {
+        classLabel: '',
+        classListId: entry.classListId
+      },
+      classLists
+    ),
+    classListId: entry.classListId,
+    description: entry.description.trim(),
+    dueDate,
+    id: entryId,
+    reminderDaysBefore: Math.max(0, Math.round(entry.reminderDaysBefore)),
+    status: entry.status,
+    title: entry.title.trim(),
+    updatedAt: Date.now()
+  } satisfies HomeworkTrackerEntry;
+}
+
 function getMonthKeyFromDateKey(dateKey: string) {
   const parsed = parseDateKey(dateKey) ?? parseDateKey(getTodayDateKey());
   if (!parsed) {
@@ -7369,6 +9524,110 @@ function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnapshot) {
     activeDateByListId,
     entriesByListId
   };
+}
+
+function normalizeHomeworkAssessmentTrackerSnapshot(
+  raw: unknown,
+  initialValue: HomeworkAssessmentTrackerSnapshot
+) {
+  if (!raw || typeof raw !== 'object') {
+    return initialValue;
+  }
+
+  const nextRaw = raw as {
+    assessments?: unknown[];
+    homework?: unknown[];
+  };
+
+  return {
+    assessments: Array.isArray(nextRaw.assessments)
+      ? nextRaw.assessments
+          .map((entry) => normalizeAssessmentTrackerEntry(entry))
+          .filter((entry): entry is AssessmentTrackerEntry => entry !== null)
+      : initialValue.assessments,
+    homework: Array.isArray(nextRaw.homework)
+      ? nextRaw.homework
+          .map((entry) => normalizeHomeworkTrackerEntry(entry))
+          .filter((entry): entry is HomeworkTrackerEntry => entry !== null)
+      : initialValue.homework
+  };
+}
+
+function normalizeAssessmentTrackerEntry(raw: unknown): AssessmentTrackerEntry | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const nextRaw = raw as Partial<AssessmentTrackerEntry>;
+  const dueDate = typeof nextRaw.dueDate === 'string' ? normalizeDateKey(nextRaw.dueDate) : null;
+  const title = typeof nextRaw.title === 'string' ? nextRaw.title.trim() : '';
+
+  if (!dueDate || !title || typeof nextRaw.id !== 'string' || !nextRaw.id.trim()) {
+    return null;
+  }
+
+  return {
+    classLabel: typeof nextRaw.classLabel === 'string' ? nextRaw.classLabel : '',
+    classListId: typeof nextRaw.classListId === 'string' ? nextRaw.classListId : null,
+    description: typeof nextRaw.description === 'string' ? nextRaw.description : '',
+    dueDate,
+    id: nextRaw.id,
+    reminderDaysBefore:
+      typeof nextRaw.reminderDaysBefore === 'number' && Number.isFinite(nextRaw.reminderDaysBefore)
+        ? Math.max(0, Math.round(nextRaw.reminderDaysBefore))
+        : 0,
+    status: isAssessmentTrackerStatus(nextRaw.status) ? nextRaw.status : 'planned',
+    title,
+    updatedAt:
+      typeof nextRaw.updatedAt === 'number' && Number.isFinite(nextRaw.updatedAt)
+        ? nextRaw.updatedAt
+        : Date.now()
+  };
+}
+
+function normalizeHomeworkTrackerEntry(raw: unknown): HomeworkTrackerEntry | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const nextRaw = raw as Partial<HomeworkTrackerEntry>;
+  const dueDate = typeof nextRaw.dueDate === 'string' ? normalizeDateKey(nextRaw.dueDate) : null;
+  const title = typeof nextRaw.title === 'string' ? nextRaw.title.trim() : '';
+
+  if (!dueDate || !title || typeof nextRaw.id !== 'string' || !nextRaw.id.trim()) {
+    return null;
+  }
+
+  return {
+    classLabel: typeof nextRaw.classLabel === 'string' ? nextRaw.classLabel : '',
+    classListId: typeof nextRaw.classListId === 'string' ? nextRaw.classListId : null,
+    description: typeof nextRaw.description === 'string' ? nextRaw.description : '',
+    dueDate,
+    id: nextRaw.id,
+    reminderDaysBefore:
+      typeof nextRaw.reminderDaysBefore === 'number' && Number.isFinite(nextRaw.reminderDaysBefore)
+        ? Math.max(0, Math.round(nextRaw.reminderDaysBefore))
+        : 0,
+    status: isHomeworkTrackerStatus(nextRaw.status) ? nextRaw.status : 'set',
+    title,
+    updatedAt:
+      typeof nextRaw.updatedAt === 'number' && Number.isFinite(nextRaw.updatedAt)
+        ? nextRaw.updatedAt
+        : Date.now()
+  };
+}
+
+function isAssessmentTrackerStatus(value: unknown): value is AssessmentTrackerStatus {
+  return value === 'planned' || value === 'set' || value === 'marking' || value === 'complete';
+}
+
+function isHomeworkTrackerStatus(value: unknown): value is HomeworkTrackerStatus {
+  return (
+    value === 'set' ||
+    value === 'collecting' ||
+    value === 'reviewed' ||
+    value === 'complete'
+  );
 }
 
 function normalizeLessonPlanEntry(raw: unknown): LessonPlanEntry | null {
@@ -8597,6 +10856,38 @@ function normalizeGroupMakerSnapshot(raw: unknown, initialValue: GroupMakerSnaps
   };
 }
 
+function normalizeColorModePreferences(raw: unknown, initialValue: ColorModePreferences) {
+  if (!raw || typeof raw !== 'object') {
+    return initialValue;
+  }
+
+  const nextRaw = raw as {
+    backgroundColorId?: unknown;
+    widgetColorsByWidgetId?: Record<string, unknown>;
+  };
+  const rawWidgetColors =
+    nextRaw.widgetColorsByWidgetId && typeof nextRaw.widgetColorsByWidgetId === 'object'
+      ? nextRaw.widgetColorsByWidgetId
+      : null;
+  const widgetColorsByWidgetId = {} as Record<WidgetId, ColorModeSwatchId>;
+
+  for (const widgetId of WIDGET_IDS) {
+    const rawSwatchId = rawWidgetColors?.[widgetId];
+    widgetColorsByWidgetId[widgetId] =
+      typeof rawSwatchId === 'string' && isColorModeSwatchId(rawSwatchId)
+        ? rawSwatchId
+        : initialValue.widgetColorsByWidgetId[widgetId];
+  }
+
+  return {
+    backgroundColorId:
+      typeof nextRaw.backgroundColorId === 'string' && isColorModeSwatchId(nextRaw.backgroundColorId)
+        ? nextRaw.backgroundColorId
+        : initialValue.backgroundColorId,
+    widgetColorsByWidgetId
+  };
+}
+
 function normalizeDashboardLayoutsSnapshot(
   raw: unknown,
   initialValue: DashboardLayoutsSnapshot
@@ -9118,8 +11409,78 @@ function getPickerRemainingPool(
   return removePickedStudents ? currentPool.filter((entry) => entry !== pickedName) : [...roster];
 }
 
+function getQrWidgetPreviewState(linkDraft: string): QrWidgetPreviewState {
+  const trimmedLink = linkDraft.trim();
+  if (!trimmedLink) {
+    return {
+      error: null,
+      hostLabel: null,
+      normalizedUrl: null,
+      qrCode: null
+    };
+  }
+
+  const normalizedUrl = normalizeQrWidgetUrl(trimmedLink);
+  if (!normalizedUrl) {
+    return {
+      error: 'Enter a valid web link such as https://school.example.com.',
+      hostLabel: null,
+      normalizedUrl: null,
+      qrCode: null
+    };
+  }
+
+  try {
+    return {
+      error: null,
+      hostLabel: getQrWidgetHostLabel(normalizedUrl),
+      normalizedUrl,
+      qrCode: QrCode.encodeText(normalizedUrl)
+    };
+  } catch {
+    return {
+      error: 'That link is too long to encode into a QR code.',
+      hostLabel: null,
+      normalizedUrl,
+      qrCode: null
+    };
+  }
+}
+
+function normalizeQrWidgetUrl(value: string) {
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value.replace(/^\/+/, '')}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+
+    if (!url.hostname) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function getQrWidgetHostLabel(url: string) {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./i, '');
+    return hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 function isWidgetId(value: string): value is WidgetId {
   return WIDGET_IDS.includes(value as WidgetId);
+}
+
+function isColorModeSwatchId(value: string): value is ColorModeSwatchId {
+  return COLOR_MODE_SWATCHES.some((swatch) => swatch.id === value);
 }
 
 function isString(value: unknown): value is string {

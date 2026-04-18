@@ -4,6 +4,8 @@ export type WidgetPopoutId =
   | 'group-maker'
   | 'seating-chart'
   | 'bell-schedule'
+  | 'homework-assessment'
+  | 'qr-generator'
   | 'notes'
   | 'planner';
 

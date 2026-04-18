@@ -35,6 +35,8 @@ const WIDGET_POPOUT_DEFAULTS: Record<
   'group-maker': { width: 600, height: 456, minWidth: 320, minHeight: 280 },
   'seating-chart': { width: 980, height: 760, minWidth: 760, minHeight: 560 },
   'bell-schedule': { width: 380, height: 340, minWidth: 340, minHeight: 300 },
+  'homework-assessment': { width: 820, height: 860, minWidth: 520, minHeight: 520 },
+  'qr-generator': { width: 420, height: 460, minWidth: 320, minHeight: 320 },
   notes: { width: 420, height: 420, minWidth: 300, minHeight: 244 },
   planner: { width: 600, height: 720, minWidth: 360, minHeight: 420 }
 };
@@ -45,6 +47,8 @@ type WidgetPopoutId =
   | 'group-maker'
   | 'seating-chart'
   | 'bell-schedule'
+  | 'homework-assessment'
+  | 'qr-generator'
   | 'notes'
   | 'planner';
 type WindowRole = 'overlay' | 'popover' | 'builder' | 'widget-picker' | 'widget-popout';
@@ -124,6 +128,8 @@ function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
     value === 'group-maker' ||
     value === 'seating-chart' ||
     value === 'bell-schedule' ||
+    value === 'homework-assessment' ||
+    value === 'qr-generator' ||
     value === 'notes' ||
     value === 'planner'
   );
