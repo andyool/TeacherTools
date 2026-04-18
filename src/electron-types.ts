@@ -59,11 +59,33 @@ export type PersistentStateChange = {
   value: unknown;
 };
 
+export type AppUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'up-to-date'
+  | 'unsupported'
+  | 'error';
+
+export type AppUpdateState = {
+  availableVersion: string | null;
+  currentVersion: string;
+  message: string;
+  progressPercent: number | null;
+  status: AppUpdateStatus;
+};
+
 export type ElectronBridge = {
   getWindowContext: () => Promise<DesktopWindowContext>;
   getOverlayBounds: () => Promise<WindowBounds>;
   getCurrentWindowBounds: () => Promise<WindowBounds>;
   getOpenWidgetPopouts: () => Promise<WidgetPopoutId[]>;
+  getAppUpdateState: () => Promise<AppUpdateState>;
+  checkForAppUpdates: () => Promise<AppUpdateState>;
+  installAppUpdate: () => Promise<boolean>;
+  onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
   getPersistentState: (key: string) => PersistentStateSnapshot;
   setPersistentState: (key: string, value: unknown) => Promise<boolean>;
   onPersistentStateChanged: (listener: (change: PersistentStateChange) => void) => () => void;

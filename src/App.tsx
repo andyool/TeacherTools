@@ -10,6 +10,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, RefObject } from 're
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
+  AppUpdateState,
   DesktopWindowContext,
   LessonDocumentSelection,
   WidgetPopoutId,
@@ -861,6 +862,13 @@ const fallbackContext: DesktopWindowContext = {
       ? (window.location.hash.match(/widget-popout\/([^/?]+)/)?.[1] as WidgetId)
       : null
 };
+const fallbackAppUpdateState: AppUpdateState = {
+  availableVersion: null,
+  currentVersion: 'dev',
+  message: 'Updates are available in installed desktop builds.',
+  progressPercent: null,
+  status: 'unsupported'
+};
 
 function App() {
   const [context, setContext] = useState<DesktopWindowContext | null>(null);
@@ -1673,6 +1681,7 @@ function TeacherPopover() {
     computeDashboardMetrics(MIN_POPOVER_WIDTH)
   );
   const [widgetHeights, setWidgetHeights] = useState<Partial<Record<WidgetId, number>>>({});
+  const appUpdate = useAppUpdateState();
   const openWidgetPopouts = useWidgetPopoutIds();
   const liveNowUntil = timer.endsAt ?? (timer.lastCompletedAt ? timer.lastCompletedAt + 5000 : null);
   const now = useNow(liveNowUntil);
@@ -1704,6 +1713,14 @@ function TeacherPopover() {
     month: 'short',
     day: 'numeric'
   }).format(new Date());
+  const appUpdateButtonLabel = getAppUpdateButtonLabel(appUpdate);
+  const appUpdateStatusLabel = getAppUpdateStatusLabel(appUpdate);
+  const appUpdateStatusTone = getAppUpdateStatusTone(appUpdate);
+  const appUpdateActionDisabled =
+    appUpdate.status === 'checking' ||
+    appUpdate.status === 'available' ||
+    appUpdate.status === 'downloading' ||
+    appUpdate.status === 'unsupported';
   const recentPicks = picker.recentPicks.slice(0, 4);
   const customTimerMs = customTimerMinutes * 60 * 1000;
   const customTimerActive = customTimerMinutes > 0 && timer.baseDurationMs === customTimerMs;
@@ -1753,6 +1770,15 @@ function TeacherPopover() {
     minWidth: MIN_POPOVER_WIDTH,
     minHeight: MIN_POPOVER_HEIGHT
   });
+
+  const handleAppUpdateAction = () => {
+    if (appUpdate.status === 'downloaded') {
+      void window.electronAPI?.installAppUpdate();
+      return;
+    }
+
+    void window.electronAPI?.checkForAppUpdates();
+  };
 
   const clearColorModePaletteCloseTimeout = () => {
     if (colorModePaletteCloseTimeoutRef.current === null) {
@@ -2807,6 +2833,28 @@ function TeacherPopover() {
                 </div>
 
                 <div className="panel-actions">
+                  <div className="update-toolbar">
+                    <span className={`update-status-pill update-status-pill--${appUpdateStatusTone}`}>
+                      {appUpdateStatusLabel}
+                    </span>
+                    <button
+                      className={`toolbar-link ${
+                        appUpdate.status === 'downloaded'
+                          ? 'toolbar-link--accent'
+                          : appUpdate.status === 'error' || appUpdate.status === 'unsupported'
+                            ? 'button-tone--warning'
+                            : appUpdate.status === 'up-to-date'
+                              ? 'button-tone--selection'
+                              : ''
+                      }`}
+                      data-tooltip-content={getAppUpdateTooltip(appUpdate)}
+                      disabled={appUpdateActionDisabled}
+                      onClick={handleAppUpdateAction}
+                      type="button"
+                    >
+                      {appUpdateButtonLabel}
+                    </button>
+                  </div>
                   <button
                     className="toolbar-link"
                     onClick={() => window.electronAPI?.toggleWidgetPicker()}
@@ -7424,6 +7472,100 @@ function useWidgetPopoutIds() {
   }, []);
 
   return openWidgetIds;
+}
+
+function useAppUpdateState() {
+  const [appUpdate, setAppUpdate] = useState<AppUpdateState>(fallbackAppUpdateState);
+
+  useEffect(() => {
+    if (!window.electronAPI?.getAppUpdateState || !window.electronAPI.onAppUpdateStateChanged) {
+      return;
+    }
+
+    let cancelled = false;
+    window.electronAPI.getAppUpdateState().then((state) => {
+      if (!cancelled) {
+        setAppUpdate(state);
+      }
+    });
+
+    const unsubscribe = window.electronAPI.onAppUpdateStateChanged((state) => {
+      setAppUpdate(state);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  return appUpdate;
+}
+
+function getAppUpdateButtonLabel(appUpdate: AppUpdateState) {
+  switch (appUpdate.status) {
+    case 'checking':
+      return 'Checking…';
+    case 'available':
+      return 'Downloading…';
+    case 'downloading':
+      return appUpdate.progressPercent !== null
+        ? `Downloading ${Math.round(appUpdate.progressPercent)}%`
+        : 'Downloading…';
+    case 'downloaded':
+      return 'Restart to install';
+    case 'up-to-date':
+      return 'Check again';
+    case 'error':
+      return 'Retry update';
+    default:
+      return 'Update app';
+  }
+}
+
+function getAppUpdateStatusLabel(appUpdate: AppUpdateState) {
+  switch (appUpdate.status) {
+    case 'checking':
+      return 'Looking';
+    case 'available':
+      return appUpdate.availableVersion ? `v${appUpdate.availableVersion}` : 'Found';
+    case 'downloading':
+      return appUpdate.progressPercent !== null ? `${Math.round(appUpdate.progressPercent)}%` : 'Fetch';
+    case 'downloaded':
+      return appUpdate.availableVersion ? `v${appUpdate.availableVersion}` : 'Ready';
+    case 'up-to-date':
+      return 'Current';
+    case 'error':
+      return 'Retry';
+    case 'unsupported':
+      return 'Installed only';
+    default:
+      return `v${appUpdate.currentVersion}`;
+  }
+}
+
+function getAppUpdateStatusTone(appUpdate: AppUpdateState) {
+  switch (appUpdate.status) {
+    case 'checking':
+    case 'available':
+    case 'downloading':
+      return 'info';
+    case 'downloaded':
+      return 'success';
+    case 'error':
+    case 'unsupported':
+      return 'warning';
+    default:
+      return 'default';
+  }
+}
+
+function getAppUpdateTooltip(appUpdate: AppUpdateState) {
+  const versionSummary = appUpdate.availableVersion
+    ? ` Current v${appUpdate.currentVersion}. Update v${appUpdate.availableVersion}.`
+    : ` Current v${appUpdate.currentVersion}.`;
+
+  return `${appUpdate.message}${versionSummary}`;
 }
 
 function useTimerWidgetState() {

@@ -37,9 +37,7 @@ jobs:
         with:
           name: release-assets-mac
           if-no-files-found: error
-          path: |
-            release/TeacherTools-mac-universal.dmg
-            release/TeacherTools-mac-universal.zip
+          path: release/*
 
   build-windows:
     name: Build Windows
@@ -68,9 +66,7 @@ jobs:
         with:
           name: release-assets-win
           if-no-files-found: error
-          path: |
-            release/TeacherTools-windows-setup.exe
-            release/TeacherTools-windows-portable.exe
+          path: release/*
 
   publish-release:
     name: Publish GitHub release
@@ -93,12 +89,12 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          assets=(
-            "release-artifacts/release-assets-mac/TeacherTools-mac-universal.dmg"
-            "release-artifacts/release-assets-mac/TeacherTools-mac-universal.zip"
-            "release-artifacts/release-assets-win/TeacherTools-windows-setup.exe"
-            "release-artifacts/release-assets-win/TeacherTools-windows-portable.exe"
-          )
+          mapfile -d '' assets < <(find release-artifacts -type f -print0)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets were downloaded."
+            exit 1
+          fi
 
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --repo "$REPO" --clobber

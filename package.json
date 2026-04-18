@@ -18,6 +18,9 @@
     "build:renderer": "tsc -p tsconfig.json && vite build",
     "build:main": "tsc -p tsconfig.node.json",
     "preview": "vite preview",
+    "release:auto:patch": "node ./scripts/release-auto.mjs patch",
+    "release:auto:minor": "node ./scripts/release-auto.mjs minor",
+    "release:auto:major": "node ./scripts/release-auto.mjs major",
     "release:patch": "npm version patch && git push origin HEAD --follow-tags",
     "release:minor": "npm version minor && git push origin HEAD --follow-tags",
     "release:major": "npm version major && git push origin HEAD --follow-tags",
@@ -30,6 +33,7 @@
     "dist:win:installer": "npm run build && electron-builder --win nsis --x64"
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -58,6 +62,14 @@
       "buildResources": "assets",
       "output": "release"
     },
+    "electronUpdaterCompatibility": ">=2.16",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "andyool",
+        "repo": "TeacherTools"
+      }
+    ],
     "mac": {
       "artifactName": "TeacherTools-mac-${arch}.${ext}",
       "category": "public.app-category.education",

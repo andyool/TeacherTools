@@ -1,4 +1,9 @@
 import * as electron from 'electron/main';
+import electronUpdater, {
+  type AppUpdater,
+  type ProgressInfo,
+  type UpdateInfo
+} from 'electron-updater';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -83,6 +88,24 @@ type PersistentStateChange = {
   value: unknown;
 };
 
+type AppUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'up-to-date'
+  | 'unsupported'
+  | 'error';
+
+type AppUpdateState = {
+  availableVersion: string | null;
+  currentVersion: string;
+  message: string;
+  progressPercent: number | null;
+  status: AppUpdateStatus;
+};
+
 type PersistentStateFile = {
   version: 1;
   profileId: string;
@@ -117,6 +140,15 @@ let preferredBuilderSize: Pick<Bounds, 'width' | 'height'> | null = null;
 let preferredWidgetPickerSize: Pick<Bounds, 'width' | 'height'> | null = null;
 const windowContexts = new Map<number, WindowContext>();
 let persistentStateCache: PersistentStateFile | null = null;
+let appUpdater: AppUpdater | null = null;
+let appUpdateCheckPromise: Promise<unknown> | null = null;
+let appUpdateState: AppUpdateState = {
+  availableVersion: null,
+  currentVersion: app.getVersion(),
+  message: 'Updates work in installed release builds.',
+  progressPercent: null,
+  status: 'unsupported'
+};
 
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
@@ -442,6 +474,186 @@ function getAllApplicationWindows() {
     widgetPickerWindow,
     ...widgetPopoutWindows.values()
   ].filter((win): win is Electron.BrowserWindow => Boolean(win && !win.isDestroyed()));
+}
+
+function broadcastAppUpdateState() {
+  getAllApplicationWindows().forEach((targetWindow) => {
+    targetWindow.webContents.send('app-update:state', appUpdateState);
+  });
+}
+
+function setAppUpdateState(nextState: AppUpdateState) {
+  appUpdateState = {
+    ...nextState,
+    currentVersion: app.getVersion()
+  };
+  broadcastAppUpdateState();
+}
+
+function updateAppUpdateState(patch: Partial<AppUpdateState>) {
+  setAppUpdateState({
+    ...appUpdateState,
+    ...patch,
+    currentVersion: app.getVersion()
+  });
+}
+
+function getInitialAppUpdateState(): AppUpdateState {
+  if (!app.isPackaged) {
+    return {
+      availableVersion: null,
+      currentVersion: app.getVersion(),
+      message: 'Updates work in installed release builds.',
+      progressPercent: null,
+      status: 'unsupported'
+    };
+  }
+
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    return {
+      availableVersion: null,
+      currentVersion: app.getVersion(),
+      message: 'Updates are configured for the macOS and Windows builds.',
+      progressPercent: null,
+      status: 'unsupported'
+    };
+  }
+
+  return {
+    availableVersion: null,
+    currentVersion: app.getVersion(),
+    message: 'Ready to check GitHub Releases for an update.',
+    progressPercent: null,
+    status: 'idle'
+  };
+}
+
+function getAppUpdateErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return 'The update check failed. Please try again.';
+}
+
+function handleAppUpdateError(error: unknown) {
+  updateAppUpdateState({
+    message: getAppUpdateErrorMessage(error),
+    progressPercent: null,
+    status: 'error'
+  });
+}
+
+function initializeAppUpdater() {
+  setAppUpdateState(getInitialAppUpdateState());
+
+  if (appUpdateState.status === 'unsupported') {
+    return;
+  }
+
+  const { autoUpdater } = electronUpdater;
+  appUpdater = autoUpdater;
+  appUpdater.autoDownload = false;
+  appUpdater.autoInstallOnAppQuit = false;
+
+  appUpdater.on('checking-for-update', () => {
+    updateAppUpdateState({
+      availableVersion: null,
+      message: 'Checking GitHub Releases for a newer version.',
+      progressPercent: null,
+      status: 'checking'
+    });
+  });
+
+  appUpdater.on('update-available', (info: UpdateInfo) => {
+    updateAppUpdateState({
+      availableVersion: info.version ?? null,
+      message: `Update ${info.version} found. Downloading now.`,
+      progressPercent: 0,
+      status: 'available'
+    });
+
+    void appUpdater?.downloadUpdate().catch((error) => {
+      handleAppUpdateError(error);
+    });
+  });
+
+  appUpdater.on('update-not-available', () => {
+    updateAppUpdateState({
+      availableVersion: null,
+      message: 'This install is already on the latest version.',
+      progressPercent: null,
+      status: 'up-to-date'
+    });
+  });
+
+  appUpdater.on('download-progress', (progress: ProgressInfo) => {
+    updateAppUpdateState({
+      message: `Downloading update${appUpdateState.availableVersion ? ` ${appUpdateState.availableVersion}` : ''}.`,
+      progressPercent: progress.percent,
+      status: 'downloading'
+    });
+  });
+
+  appUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    updateAppUpdateState({
+      availableVersion: info.version ?? appUpdateState.availableVersion,
+      message: `Update ${info.version} is ready. Restart TeacherTools to install it.`,
+      progressPercent: 100,
+      status: 'downloaded'
+    });
+  });
+
+  appUpdater.on('error', (error) => {
+    handleAppUpdateError(error);
+  });
+}
+
+async function checkForAppUpdates() {
+  if (!appUpdater) {
+    return appUpdateState;
+  }
+
+  if (
+    appUpdateState.status === 'checking' ||
+    appUpdateState.status === 'available' ||
+    appUpdateState.status === 'downloading'
+  ) {
+    return appUpdateState;
+  }
+
+  if (appUpdateCheckPromise) {
+    return appUpdateState;
+  }
+
+  try {
+    appUpdateCheckPromise = appUpdater.checkForUpdates();
+    await appUpdateCheckPromise;
+  } catch (error) {
+    handleAppUpdateError(error);
+  } finally {
+    appUpdateCheckPromise = null;
+  }
+
+  return appUpdateState;
+}
+
+function installDownloadedAppUpdate() {
+  if (!appUpdater || appUpdateState.status !== 'downloaded') {
+    return false;
+  }
+
+  updateAppUpdateState({
+    message: 'Closing TeacherTools to install the downloaded update.',
+    progressPercent: 100,
+    status: 'downloaded'
+  });
+
+  setImmediate(() => {
+    appUpdater?.quitAndInstall();
+  });
+
+  return true;
 }
 
 function broadcastPersistentStateChange(change: PersistentStateChange) {
@@ -1302,6 +1514,7 @@ app.whenReady().then(() => {
   ensurePersistentStateCache();
   createOverlayWindow();
   createTray();
+  initializeAppUpdater();
 
   app.on('activate', () => {
     if (!overlayWindow) {
@@ -1349,6 +1562,18 @@ ipcMain.handle('window:get-current-bounds', (event) => {
 
 ipcMain.handle('widget-popout:get-open-ids', () => {
   return Array.from(widgetPopoutWindows.keys());
+});
+
+ipcMain.handle('app-update:get-state', () => {
+  return appUpdateState;
+});
+
+ipcMain.handle('app-update:check', async () => {
+  return checkForAppUpdates();
+});
+
+ipcMain.handle('app-update:install', () => {
+  return installDownloadedAppUpdate();
 });
 
 ipcMain.on('storage:get', (event, key: unknown) => {

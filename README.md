@@ -11,7 +11,17 @@ Typical one-command release flow after you have committed your changes:
 npm run release:patch
 ```
 
-You can also use `npm run release:minor` or `npm run release:major`.
+If you want the repo to auto-stage and auto-commit everything first, use:
+
+```bash
+npm run release:auto:patch
+```
+
+You can also use `npm run release:auto:minor` or `npm run release:auto:major`.
+The auto-release commands create a prep commit with the message `Prepare release` before the version bump.
+
+If you prefer to commit manually first, you can still use `npm run release:patch`,
+`npm run release:minor`, or `npm run release:major`.
 
 That command will:
 
@@ -21,3 +31,11 @@ That command will:
 4. trigger the release workflow that builds macOS and Windows packages and publishes a GitHub release
 
 The GitHub Pages download links in `docs/index.html` point to `releases/latest/download/...`, so they stay stable across releases.
+
+Installed app builds now include an `Update app` action in the top dashboard bar. It checks the
+latest GitHub release, downloads the update metadata and installer assets, then changes to
+`Restart to install` once the update is ready.
+
+Windows auto-update is designed around the NSIS installer build. On macOS, electron-builder
+requires signed releases for full auto-update support, so unsigned builds can still report update
+errors until signing is configured.

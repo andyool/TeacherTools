@@ -7,6 +7,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getOverlayBounds: () => ipcRenderer.invoke('window:get-overlay-bounds'),
   getCurrentWindowBounds: () => ipcRenderer.invoke('window:get-current-bounds'),
   getOpenWidgetPopouts: () => ipcRenderer.invoke('widget-popout:get-open-ids'),
+  getAppUpdateState: () => ipcRenderer.invoke('app-update:get-state'),
+  checkForAppUpdates: () => ipcRenderer.invoke('app-update:check'),
+  installAppUpdate: () => ipcRenderer.invoke('app-update:install'),
+  onAppUpdateStateChanged: (listener: (state: unknown) => void) => {
+    const handler = (_event: unknown, state: unknown) => {
+      listener(state);
+    };
+
+    ipcRenderer.on('app-update:state', handler);
+    return () => {
+      ipcRenderer.removeListener('app-update:state', handler);
+    };
+  },
   getPersistentState: (key: string) => ipcRenderer.sendSync('storage:get', key),
   setPersistentState: (key: string, value: unknown) => ipcRenderer.invoke('storage:set', key, value),
   onPersistentStateChanged: (listener: (change: { key: string; value: unknown }) => void) => {
