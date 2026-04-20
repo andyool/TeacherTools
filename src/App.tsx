@@ -3833,10 +3833,10 @@ function ColorModeTriggerButton({
   const className =
     variant === 'toolbar'
       ? `toolbar-link button-tone--utility color-mode-trigger color-mode-trigger--toolbar ${
-          active ? 'button-tone--selection color-mode-trigger--active' : ''
+          active ? 'color-mode-trigger--active' : ''
         }`
       : `widget-icon-button button-tone--utility color-mode-trigger color-mode-trigger--widget ${
-          active ? 'button-tone--selection color-mode-trigger--active' : ''
+          active ? 'color-mode-trigger--active' : ''
         }`;
 
   return (
@@ -6210,7 +6210,7 @@ function SeatingChartEditorContent({
                       <div className="segmented-row">
                         {(['desk', 'round'] as const).map((seatStyle) => (
                           <button
-                            className={`text-toggle button-tone--selection ${
+                            className={`text-toggle button-tone--utility ${
                               activeItem.seatStyle === seatStyle ? 'text-toggle--active' : ''
                             }`}
                             key={seatStyle}
@@ -10792,7 +10792,7 @@ function getSeatingChartToolToneClass(tool: 'select' | SeatingChartItemKind | 'e
   }
 
   if (tool === 'select') {
-    return 'button-tone--selection';
+    return 'button-tone--utility';
   }
 
   if (tool === 'door') {
