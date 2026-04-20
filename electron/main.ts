@@ -94,6 +94,7 @@ type AppUpdateStatus =
   | 'available'
   | 'downloading'
   | 'downloaded'
+  | 'manual-download'
   | 'up-to-date'
   | 'unsupported'
   | 'error';
@@ -142,6 +143,8 @@ const windowContexts = new Map<number, WindowContext>();
 let persistentStateCache: PersistentStateFile | null = null;
 let appUpdater: AppUpdater | null = null;
 let appUpdateCheckPromise: Promise<unknown> | null = null;
+const MACOS_RELEASE_DOWNLOAD_URL =
+  'https://github.com/andyool/TeacherTools/releases/latest/download/TeacherTools-mac-universal.dmg';
 let appUpdateState: AppUpdateState = {
   availableVersion: null,
   currentVersion: app.getVersion(),
@@ -566,6 +569,16 @@ function initializeAppUpdater() {
   });
 
   appUpdater.on('update-available', (info: UpdateInfo) => {
+    if (process.platform === 'darwin') {
+      updateAppUpdateState({
+        availableVersion: info.version ?? null,
+        message: `Update ${info.version} is ready to download. Open the latest macOS installer to finish updating.`,
+        progressPercent: null,
+        status: 'manual-download'
+      });
+      return;
+    }
+
     updateAppUpdateState({
       availableVersion: info.version ?? null,
       message: `Update ${info.version} found. Downloading now.`,
@@ -654,6 +667,16 @@ function installDownloadedAppUpdate() {
   });
 
   return true;
+}
+
+async function openAppUpdateDownload() {
+  try {
+    await shell.openExternal(MACOS_RELEASE_DOWNLOAD_URL);
+    return true;
+  } catch (error) {
+    handleAppUpdateError(error);
+    return false;
+  }
 }
 
 function broadcastPersistentStateChange(change: PersistentStateChange) {
@@ -1574,6 +1597,10 @@ ipcMain.handle('app-update:check', async () => {
 
 ipcMain.handle('app-update:install', () => {
   return installDownloadedAppUpdate();
+});
+
+ipcMain.handle('app-update:open-download', () => {
+  return openAppUpdateDownload();
 });
 
 ipcMain.on('storage:get', (event, key: unknown) => {

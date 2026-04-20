@@ -1783,6 +1783,11 @@ function TeacherPopover() {
       return;
     }
 
+    if (appUpdate.status === 'manual-download') {
+      void window.electronAPI?.openAppUpdateDownload();
+      return;
+    }
+
     void window.electronAPI?.checkForAppUpdates();
   };
 
@@ -2876,6 +2881,8 @@ function TeacherPopover() {
                     <button
                       className={`toolbar-link ${
                         appUpdate.status === 'downloaded'
+                          ? 'toolbar-link--accent'
+                          : appUpdate.status === 'manual-download'
                           ? 'toolbar-link--accent'
                           : appUpdate.status === 'error' || appUpdate.status === 'unsupported'
                             ? 'button-tone--warning'
@@ -7625,6 +7632,8 @@ function getAppUpdateButtonLabel(appUpdate: AppUpdateState) {
         : 'Downloading…';
     case 'downloaded':
       return 'Restart to install';
+    case 'manual-download':
+      return 'Download update';
     case 'up-to-date':
       return 'Check again';
     case 'error':
@@ -7644,6 +7653,8 @@ function getAppUpdateStatusLabel(appUpdate: AppUpdateState) {
       return appUpdate.progressPercent !== null ? `${Math.round(appUpdate.progressPercent)}%` : 'Fetch';
     case 'downloaded':
       return appUpdate.availableVersion ? `v${appUpdate.availableVersion}` : 'Ready';
+    case 'manual-download':
+      return appUpdate.availableVersion ? `v${appUpdate.availableVersion}` : 'Download';
     case 'up-to-date':
       return 'Current';
     case 'error':
@@ -7663,6 +7674,7 @@ function getAppUpdateStatusTone(appUpdate: AppUpdateState) {
       return 'info';
     case 'downloaded':
       return 'success';
+    case 'manual-download':
     case 'error':
     case 'unsupported':
       return 'warning';

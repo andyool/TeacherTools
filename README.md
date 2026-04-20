@@ -32,10 +32,9 @@ That command will:
 
 The GitHub Pages download links in `docs/index.html` point to `releases/latest/download/...`, so they stay stable across releases.
 
-Installed app builds now include an `Update app` action in the top dashboard bar. It checks the
-latest GitHub release, downloads the update metadata and installer assets, then changes to
+Installed app builds now include an `Update app` action in the top dashboard bar. On Windows it
+checks the latest GitHub release, downloads the installer assets, then changes to
 `Restart to install` once the update is ready.
 
-Windows auto-update is designed around the NSIS installer build. On macOS, electron-builder
-requires signed releases for full auto-update support, so unsigned builds can still report update
-errors until signing is configured.
+On macOS, the app checks GitHub Releases and then opens the latest DMG download instead of trying
+to auto-install in place. Full in-app auto-update on macOS requires signed releases.
