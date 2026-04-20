@@ -37,7 +37,12 @@ jobs:
         with:
           name: release-assets-mac
           if-no-files-found: error
-          path: release/*
+          path: |
+            release/*.dmg
+            release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
 
   build-windows:
     name: Build Windows
@@ -66,7 +71,10 @@ jobs:
         with:
           name: release-assets-win
           if-no-files-found: error
-          path: release/*
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
 
   publish-release:
     name: Publish GitHub release
@@ -89,7 +97,11 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          mapfile -d '' assets < <(find release-artifacts -type f -print0)
+          mapfile -d '' assets < <(
+            find release-artifacts -type f \
+              \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.blockmap' -o -name 'latest*.yml' \) \
+              -print0
+          )
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets were downloaded."
