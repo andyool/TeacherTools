@@ -53,6 +53,7 @@
   "build": {
     "appId": "com.teachertools.overlay",
     "productName": "TeacherTools Overlay",
+    "afterPack": "./scripts/sign-mac-adhoc.mjs",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -86,8 +87,7 @@
             "universal"
           ]
         }
-      ],
-      "identity": null
+      ]
     },
     "win": {
       "target": [

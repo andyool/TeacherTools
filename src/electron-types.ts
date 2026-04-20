@@ -65,7 +65,6 @@ export type AppUpdateStatus =
   | 'available'
   | 'downloading'
   | 'downloaded'
-  | 'manual-download'
   | 'up-to-date'
   | 'unsupported'
   | 'error';
@@ -86,7 +85,6 @@ export type ElectronBridge = {
   getAppUpdateState: () => Promise<AppUpdateState>;
   checkForAppUpdates: () => Promise<AppUpdateState>;
   installAppUpdate: () => Promise<boolean>;
-  openAppUpdateDownload: () => Promise<boolean>;
   onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
   getPersistentState: (key: string) => PersistentStateSnapshot;
   setPersistentState: (key: string, value: unknown) => Promise<boolean>;
