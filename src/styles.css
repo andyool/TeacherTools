@@ -1890,6 +1890,72 @@ textarea {
   pointer-events: none;
 }
 
+.color-mode-trigger {
+  gap: 8px;
+}
+
+.color-mode-trigger--widget {
+  padding: 0;
+}
+
+.color-mode-trigger--toolbar {
+  padding: 0 12px 0 10px;
+}
+
+.color-mode-trigger__preview {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.52),
+    0 1px 1px rgba(8, 12, 18, 0.12);
+}
+
+.color-mode-trigger__text {
+  line-height: 1;
+}
+
+.color-mode-trigger--active {
+  color: color-mix(in srgb, var(--button-ink) 90%, var(--text-primary));
+  border-color: var(--button-outline-strong);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--button-ink) 18%, rgba(255, 255, 255, 0.34)),
+      color-mix(in srgb, var(--button-ink) 28%, rgba(255, 255, 255, 0.08))
+    ),
+    linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -8px 14px color-mix(in srgb, var(--button-ink) 12%, rgba(0, 0, 0, 0.12)),
+    0 0 0 1px color-mix(in srgb, var(--button-ink) 26%, transparent),
+    0 10px 18px rgba(8, 12, 18, 0.12);
+  transform: translateY(-1px);
+}
+
+.color-mode-trigger--active::after {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--button-ink) 18%, rgba(255, 255, 255, 0.28)),
+      rgba(255, 255, 255, 0) 42%,
+      color-mix(in srgb, var(--button-ink) 18%, rgba(255, 255, 255, 0.08))
+    );
+}
+
+.color-mode-trigger--active:hover {
+  transform: translateY(-1px);
+  color: color-mix(in srgb, var(--button-ink) 90%, var(--text-primary));
+  border-color: var(--button-outline-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -8px 14px color-mix(in srgb, var(--button-ink) 12%, rgba(0, 0, 0, 0.12)),
+    0 0 0 1px color-mix(in srgb, var(--button-ink) 26%, transparent),
+    0 10px 18px rgba(8, 12, 18, 0.12);
+}
+
 .color-mode-popover {
   position: fixed;
   z-index: 1800;

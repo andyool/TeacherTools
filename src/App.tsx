@@ -6,7 +6,7 @@ import {
   useRef,
   useState
 } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, RefObject } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
@@ -250,10 +250,16 @@ type ColorModePreferences = {
   backgroundColorId: ColorModeSwatchId;
   widgetColorsByWidgetId: Record<WidgetId, ColorModeSwatchId>;
 };
-type ColorModeHoverPaletteTarget = {
-  anchorRect: DOMRect;
-  widgetId: WidgetId;
-};
+type ColorModePaletteTarget =
+  | {
+      anchorRect: DOMRect;
+      kind: 'background';
+    }
+  | {
+      anchorRect: DOMRect;
+      kind: 'widget';
+      widgetId: WidgetId;
+    };
 type ColorModeAppearanceContextValue = {
   preferences: ColorModePreferences;
   theme: ThemeMode;
@@ -1620,7 +1626,7 @@ function useAutoFitWindowToContent({
 
 function TeacherPopover() {
   const classMenuRef = useRef<HTMLDivElement | null>(null);
-  const colorModePaletteCloseTimeoutRef = useRef<number | null>(null);
+  const colorModePopoverRef = useRef<HTMLElement | null>(null);
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
   const pickerSpinIntervalRef = useRef<number | null>(null);
@@ -1674,7 +1680,7 @@ function TeacherPopover() {
   const [spinnerIndex, setSpinnerIndex] = useState(0);
   const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
-  const [colorModeHoverTarget, setColorModeHoverTarget] = useState<ColorModeHoverPaletteTarget | null>(
+  const [colorModePaletteTarget, setColorModePaletteTarget] = useState<ColorModePaletteTarget | null>(
     null
   );
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>(() =>
@@ -1780,34 +1786,26 @@ function TeacherPopover() {
     void window.electronAPI?.checkForAppUpdates();
   };
 
-  const clearColorModePaletteCloseTimeout = () => {
-    if (colorModePaletteCloseTimeoutRef.current === null) {
-      return;
-    }
-
-    window.clearTimeout(colorModePaletteCloseTimeoutRef.current);
-    colorModePaletteCloseTimeoutRef.current = null;
-  };
-
-  const openColorModePalette = (widgetId: WidgetId, anchorRect: DOMRect) => {
-    clearColorModePaletteCloseTimeout();
-    setColorModeHoverTarget({
-      widgetId,
-      anchorRect
-    });
-  };
-
   const closeColorModePalette = () => {
-    clearColorModePaletteCloseTimeout();
-    setColorModeHoverTarget(null);
+    setColorModePaletteTarget(null);
   };
 
-  const scheduleColorModePaletteClose = () => {
-    clearColorModePaletteCloseTimeout();
-    colorModePaletteCloseTimeoutRef.current = window.setTimeout(() => {
-      setColorModeHoverTarget(null);
-      colorModePaletteCloseTimeoutRef.current = null;
-    }, 110);
+  const toggleColorModePalette = (target: ColorModePaletteTarget) => {
+    setColorModePaletteTarget((current) => {
+      if (current?.kind !== target.kind) {
+        return target;
+      }
+
+      if (target.kind === 'background') {
+        return null;
+      }
+
+      if (current.kind !== 'widget') {
+        return target;
+      }
+
+      return current.widgetId === target.widgetId ? null : target;
+    });
   };
 
   const setWidgetColorModeSwatch = (widgetId: WidgetId, swatchId: ColorModeSwatchId) => {
@@ -2008,12 +2006,6 @@ function TeacherPopover() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      clearColorModePaletteCloseTimeout();
-    };
-  }, []);
-
-  useEffect(() => {
     if (resolvedTheme === 'color' && draggedWidgetId === null) {
       return;
     }
@@ -2022,12 +2014,16 @@ function TeacherPopover() {
   }, [draggedWidgetId, resolvedTheme]);
 
   useEffect(() => {
-    if (!colorModeHoverTarget || visibleWidgetIds.includes(colorModeHoverTarget.widgetId)) {
+    if (
+      !colorModePaletteTarget ||
+      colorModePaletteTarget.kind !== 'widget' ||
+      visibleWidgetIds.includes(colorModePaletteTarget.widgetId)
+    ) {
       return;
     }
 
     closeColorModePalette();
-  }, [colorModeHoverTarget, visibleWidgetKey]);
+  }, [colorModePaletteTarget, visibleWidgetKey]);
 
   useEffect(() => {
     const handleViewportChange = () => {
@@ -2042,6 +2038,43 @@ function TeacherPopover() {
       window.removeEventListener('scroll', handleViewportChange, true);
     };
   }, []);
+
+  useEffect(() => {
+    if (!colorModePaletteTarget) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (colorModePopoverRef.current?.contains(target)) {
+        return;
+      }
+
+      if (target instanceof Element && target.closest('[data-color-mode-trigger]')) {
+        return;
+      }
+
+      closeColorModePalette();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeColorModePalette();
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [colorModePaletteTarget]);
 
   const updateSelectedLayout = (updater: (layout: WidgetLayout) => WidgetLayout) => {
     setDashboardLayouts((current) => updateWidgetLayoutForList(current, picker.selectedListId, updater));
@@ -2416,6 +2449,8 @@ function TeacherPopover() {
     const isDragging = draggedWidgetId === widgetId;
     const isDragOver = dragOverWidgetId === widgetId && draggedWidgetId !== widgetId;
     const isPopoutOpen = openWidgetPopouts.includes(widgetId);
+    const isColorModePaletteOpen =
+      colorModePaletteTarget?.kind === 'widget' && colorModePaletteTarget.widgetId === widgetId;
     const widthCategory = getWidgetWidthCategory(widgetId);
 
     const dragProps = {
@@ -2424,32 +2459,42 @@ function TeacherPopover() {
       onPointerMove: continueWidgetDrag,
       onPointerUp: finishWidgetDrag
     };
-    const colorModeHoverProps =
-      resolvedTheme === 'color'
-        ? {
-            onColorModeHoverEnter: (nextWidgetId: WidgetId, anchorRect: DOMRect) =>
-              openColorModePalette(nextWidgetId, anchorRect),
-            onColorModeHoverLeave: scheduleColorModePaletteClose
-          }
-        : {};
 
     const headerActions =
-      widgetId === 'bell-schedule' ? (
-        <WidgetPopoutButton
-          isActive={isPopoutOpen}
-          onClick={() => {
-            bellSchedule.setPopoutMode('summary');
-            toggleWidgetPopout(widgetId);
-          }}
-          title={WIDGET_DETAILS[widgetId].title}
-        />
-      ) : (
-        <WidgetPopoutButton
-          isActive={isPopoutOpen}
-          onClick={() => toggleWidgetPopout(widgetId)}
-          title={WIDGET_DETAILS[widgetId].title}
-        />
-      );
+      <>
+        {resolvedTheme === 'color' ? (
+          <ColorModeTriggerButton
+            active={isColorModePaletteOpen}
+            appearance="widget"
+            label={`Change colour for ${WIDGET_DETAILS[widgetId].title}`}
+            onClick={(event) =>
+              toggleColorModePalette({
+                anchorRect: event.currentTarget.getBoundingClientRect(),
+                kind: 'widget',
+                widgetId
+              })
+            }
+            swatchId={colorModePreferences.widgetColorsByWidgetId[widgetId]}
+            variant="widget"
+          />
+        ) : null}
+        {widgetId === 'bell-schedule' ? (
+          <WidgetPopoutButton
+            isActive={isPopoutOpen}
+            onClick={() => {
+              bellSchedule.setPopoutMode('summary');
+              toggleWidgetPopout(widgetId);
+            }}
+            title={WIDGET_DETAILS[widgetId].title}
+          />
+        ) : (
+          <WidgetPopoutButton
+            isActive={isPopoutOpen}
+            onClick={() => toggleWidgetPopout(widgetId)}
+            title={WIDGET_DETAILS[widgetId].title}
+          />
+        )}
+      </>;
 
     if (widgetId === 'timer') {
       return (
@@ -2469,7 +2514,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <TimerWidgetContent
@@ -2509,7 +2553,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <PickerWidgetContent
@@ -2543,7 +2586,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <GroupMakerWidgetContent
@@ -2584,7 +2626,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <SeatingChartWidgetContent
@@ -2617,7 +2658,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <PlannerWidgetContent
@@ -2655,7 +2695,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <HomeworkAssessmentTrackerWidgetContent
@@ -2688,7 +2727,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <QrGeneratorWidgetContent
@@ -2722,7 +2760,6 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           widthCategory={widthCategory}
-          {...colorModeHoverProps}
           {...dragProps}
         >
           <BellScheduleWidgetContent
@@ -2755,7 +2792,6 @@ function TeacherPopover() {
         title={WIDGET_DETAILS[widgetId].title}
         widgetId={widgetId}
         widthCategory={widthCategory}
-        {...colorModeHoverProps}
         {...dragProps}
       >
         <NotesWidgetContent
@@ -2876,6 +2912,21 @@ function TeacherPopover() {
                     onIncrease={increaseInterfaceScale}
                     scale={interfaceScale}
                   />
+                  {resolvedTheme === 'color' ? (
+                    <ColorModeTriggerButton
+                      active={colorModePaletteTarget?.kind === 'background'}
+                      appearance="background"
+                      label="Change dashboard background colour"
+                      onClick={(event) =>
+                        toggleColorModePalette({
+                          anchorRect: event.currentTarget.getBoundingClientRect(),
+                          kind: 'background'
+                        })
+                      }
+                      swatchId={colorModePreferences.backgroundColorId}
+                      variant="toolbar"
+                    />
+                  ) : null}
                   <button
                     aria-label={`Theme ${getThemePreferenceLabel(themePreference)}. Switch to ${getThemePreferenceLabel(nextThemePreference)}.`}
                     className="icon-button button-tone--theme"
@@ -2942,17 +2993,24 @@ function TeacherPopover() {
             </div>
           </div>
 
-          {resolvedTheme === 'color' && colorModeHoverTarget ? (
-            <ColorModeHoverPalette
+          {resolvedTheme === 'color' && colorModePaletteTarget ? (
+            <ColorModePalette
               backgroundColorId={colorModePreferences.backgroundColorId}
               onBackgroundColorChange={setBackgroundColorModeSwatch}
-              onPointerEnter={clearColorModePaletteCloseTimeout}
-              onPointerLeave={scheduleColorModePaletteClose}
               onWidgetColorChange={(swatchId) =>
-                setWidgetColorModeSwatch(colorModeHoverTarget.widgetId, swatchId)
+                colorModePaletteTarget.kind === 'widget'
+                  ? setWidgetColorModeSwatch(colorModePaletteTarget.widgetId, swatchId)
+                  : undefined
               }
-              target={colorModeHoverTarget}
-              widgetColorId={colorModePreferences.widgetColorsByWidgetId[colorModeHoverTarget.widgetId]}
+              popoverRef={(element) => {
+                colorModePopoverRef.current = element;
+              }}
+              target={colorModePaletteTarget}
+              widgetColorId={
+                colorModePaletteTarget.kind === 'widget'
+                  ? colorModePreferences.widgetColorsByWidgetId[colorModePaletteTarget.widgetId]
+                  : null
+              }
             />
           ) : null}
         </section>
@@ -3626,32 +3684,30 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
   );
 }
 
-function ColorModeHoverPalette({
+function ColorModePalette({
   backgroundColorId,
   onBackgroundColorChange,
-  onPointerEnter,
-  onPointerLeave,
   onWidgetColorChange,
+  popoverRef,
   target,
   widgetColorId
 }: {
   backgroundColorId: ColorModeSwatchId;
   onBackgroundColorChange: (swatchId: ColorModeSwatchId) => void;
-  onPointerEnter: () => void;
-  onPointerLeave: () => void;
   onWidgetColorChange: (swatchId: ColorModeSwatchId) => void;
-  target: ColorModeHoverPaletteTarget;
-  widgetColorId: ColorModeSwatchId;
+  popoverRef: (element: HTMLElement | null) => void;
+  target: ColorModePaletteTarget;
+  widgetColorId: ColorModeSwatchId | null;
 }) {
-  const widgetTitle = WIDGET_DETAILS[target.widgetId].title;
   const position = getColorModePopoverPosition(target.anchorRect);
+  const isWidgetTarget = target.kind === 'widget';
+  const title = isWidgetTarget ? WIDGET_DETAILS[target.widgetId].title : 'Dashboard background';
 
   return (
     <aside
-      aria-label={`Colour options for ${widgetTitle}`}
+      aria-label={`Colour options for ${title}`}
       className={`color-mode-popover color-mode-popover--${position.side}`}
-      onMouseEnter={onPointerEnter}
-      onMouseLeave={onPointerLeave}
+      ref={popoverRef}
       style={
         {
           left: `${position.left}px`,
@@ -3661,40 +3717,44 @@ function ColorModeHoverPalette({
     >
       <div className="color-mode-popover__header">
         <span className="color-mode-popover__kicker">Colour mode</span>
-        <strong className="color-mode-popover__title">{widgetTitle}</strong>
+        <strong className="color-mode-popover__title">{title}</strong>
       </div>
 
-      <div className="color-mode-popover__section">
-        <span className="color-mode-popover__label">Widget</span>
-        <div className="color-mode-popover__swatches">
-          {COLOR_MODE_SWATCHES.map((swatch) => (
-            <ColorModeSwatchButton
-              appearance="widget"
-              isSelected={widgetColorId === swatch.id}
-              key={`widget-${swatch.id}`}
-              label={`Set ${widgetTitle} to ${swatch.label}`}
-              onClick={() => onWidgetColorChange(swatch.id)}
-              swatch={swatch}
-            />
-          ))}
+      {isWidgetTarget && widgetColorId ? (
+        <div className="color-mode-popover__section">
+          <span className="color-mode-popover__label">Widget</span>
+          <div className="color-mode-popover__swatches">
+            {COLOR_MODE_SWATCHES.map((swatch) => (
+              <ColorModeSwatchButton
+                appearance="widget"
+                isSelected={widgetColorId === swatch.id}
+                key={`widget-${swatch.id}`}
+                label={`Set ${title} to ${swatch.label}`}
+                onClick={() => onWidgetColorChange(swatch.id)}
+                swatch={swatch}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="color-mode-popover__section">
-        <span className="color-mode-popover__label">Background</span>
-        <div className="color-mode-popover__swatches">
-          {COLOR_MODE_SWATCHES.map((swatch) => (
-            <ColorModeSwatchButton
-              appearance="background"
-              isSelected={backgroundColorId === swatch.id}
-              key={`background-${swatch.id}`}
-              label={`Set background to ${swatch.label}`}
-              onClick={() => onBackgroundColorChange(swatch.id)}
-              swatch={swatch}
-            />
-          ))}
+      {!isWidgetTarget ? (
+        <div className="color-mode-popover__section">
+          <span className="color-mode-popover__label">Background</span>
+          <div className="color-mode-popover__swatches">
+            {COLOR_MODE_SWATCHES.map((swatch) => (
+              <ColorModeSwatchButton
+                appearance="background"
+                isSelected={backgroundColorId === swatch.id}
+                key={`background-${swatch.id}`}
+                label={`Set background to ${swatch.label}`}
+                onClick={() => onBackgroundColorChange(swatch.id)}
+                swatch={swatch}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </aside>
   );
 }
@@ -3737,6 +3797,67 @@ function ColorModeSwatchButton({
   );
 }
 
+function ColorModeTriggerButton({
+  active,
+  appearance,
+  label,
+  onClick,
+  swatchId,
+  variant
+}: {
+  active: boolean;
+  appearance: 'background' | 'widget';
+  label: string;
+  onClick: (event: ReactPointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>) => void;
+  swatchId: ColorModeSwatchId;
+  variant: 'toolbar' | 'widget';
+}) {
+  const swatch = getColorModeSwatch(swatchId);
+  const previewStyle =
+    appearance === 'background'
+      ? {
+          background: `linear-gradient(180deg, ${swatch.panelTop}, ${swatch.panelBottom})`,
+          boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.panelBorder, 0.24)}`
+        }
+      : {
+          background: swatch.widgetFill,
+          boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.widgetBorder, 0.22)}`
+        };
+  const className =
+    variant === 'toolbar'
+      ? `toolbar-link button-tone--utility color-mode-trigger color-mode-trigger--toolbar ${
+          active ? 'button-tone--selection color-mode-trigger--active' : ''
+        }`
+      : `widget-icon-button button-tone--utility color-mode-trigger color-mode-trigger--widget ${
+          active ? 'button-tone--selection color-mode-trigger--active' : ''
+        }`;
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active}
+      className={className}
+      data-color-mode-trigger={variant}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick(event);
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      title={label}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className="color-mode-trigger__preview"
+        style={previewStyle}
+      />
+      {variant === 'toolbar' ? <span className="color-mode-trigger__text">Background</span> : null}
+    </button>
+  );
+}
+
 function WidgetCard({
   widgetId,
   badge,
@@ -3754,8 +3875,6 @@ function WidgetCard({
   onPointerDown,
   onPointerMove,
   onPointerUp,
-  onColorModeHoverEnter,
-  onColorModeHoverLeave,
   onToggleCollapsed,
   showCollapse = true,
   title,
@@ -3777,8 +3896,6 @@ function WidgetCard({
   onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onColorModeHoverEnter?: (widgetId: WidgetId, anchorRect: DOMRect) => void;
-  onColorModeHoverLeave?: () => void;
   onToggleCollapsed?: () => void;
   showCollapse?: boolean;
   title: string;
@@ -3794,12 +3911,6 @@ function WidgetCard({
       className={`widget-card ${collapsed ? 'widget-card--collapsed' : ''} ${
         isDragging ? 'widget-card--dragging' : ''
       } ${isDragOver ? 'widget-card--drag-over' : ''} widget-card--${widthCategory}`}
-      onMouseEnter={(event: ReactMouseEvent<HTMLElement>) => {
-        onColorModeHoverEnter?.(widgetId, event.currentTarget.getBoundingClientRect());
-      }}
-      onMouseLeave={() => {
-        onColorModeHoverLeave?.();
-      }}
       style={colorModeStyle}
     >
       <div
