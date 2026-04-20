@@ -24,13 +24,13 @@
     "release:patch": "npm version patch && git push origin HEAD --follow-tags",
     "release:minor": "npm version minor && git push origin HEAD --follow-tags",
     "release:major": "npm version major && git push origin HEAD --follow-tags",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:release": "npm run build && electron-builder --mac --win",
-    "dist:win": "npm run build && electron-builder --win --x64",
-    "dist:win:dir": "npm run build && electron-builder --win dir --x64",
-    "dist:win:portable": "npm run build && electron-builder --win portable --x64",
-    "dist:win:installer": "npm run build && electron-builder --win nsis --x64"
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:release": "npm run build && electron-builder --mac --win --publish never",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:win:dir": "npm run build && electron-builder --win dir --x64 --publish never",
+    "dist:win:portable": "npm run build && electron-builder --win portable --x64 --publish never",
+    "dist:win:installer": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.8.3",
