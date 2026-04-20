@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { Arch } from 'builder-util';
 
 const execFileAsync = promisify(execFile);
 
@@ -27,6 +28,10 @@ export async function signMacAppAdHoc(appPath) {
 
 export default async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') {
+    return;
+  }
+
+  if (context.arch !== Arch.universal) {
     return;
   }
 
