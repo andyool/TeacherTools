@@ -94,6 +94,12 @@ try {
     certName,
     '-out',
     p12Path,
+    '-keypbe',
+    'PBE-SHA1-3DES',
+    '-certpbe',
+    'PBE-SHA1-3DES',
+    '-macalg',
+    'sha1',
     '-passout',
     `pass:${password}`
   ]);

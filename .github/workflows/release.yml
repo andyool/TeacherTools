@@ -46,6 +46,7 @@ jobs:
           KEYCHAIN_PASSWORD="$(uuidgen)"
 
           printf '%s' "$TEACHERTOOLS_MAC_SELF_SIGN_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          openssl pkcs12 -in "$CERT_PATH" -nokeys -passin "pass:$TEACHERTOOLS_MAC_SELF_SIGN_CERT_PASSWORD" -info >/dev/null
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
