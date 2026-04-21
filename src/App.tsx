@@ -337,6 +337,8 @@ const GROUP_GRID_MIN_COLUMNS = 2;
 const GROUP_GRID_MAX_COLUMNS = 4;
 const GROUP_GRID_MIN_COLUMN_WIDTH = 136;
 const PICKER_SPINNER_WINDOW_SIZE = 5;
+const PICKER_SPIN_INTERVAL_MS = 120;
+const PICKER_SPIN_MIN_STEPS = 6;
 const MIN_POPOVER_WIDTH = 320;
 const MIN_POPOVER_HEIGHT = 320;
 const QR_WIDGET_SVG_BORDER_MODULES = 2;
@@ -2271,9 +2273,11 @@ function TeacherPopover() {
     const normalizedSpinnerIndex = selectedStudents.length
       ? ((spinnerIndex % selectedStudents.length) + selectedStudents.length) % selectedStudents.length
       : 0;
-    const totalSteps =
-      Math.max(selectedStudents.length * 2, 10) +
-      ((finalIndex - normalizedSpinnerIndex + selectedStudents.length) % selectedStudents.length);
+    const totalSteps = getPickerSpinStepCount(
+      selectedStudents.length,
+      normalizedSpinnerIndex,
+      finalIndex
+    );
     let currentStep = 0;
     let currentIndex = normalizedSpinnerIndex;
     const selectedListId = selectedList.id;
@@ -2316,7 +2320,7 @@ function TeacherPopover() {
           )
         };
       });
-    }, 90);
+    }, PICKER_SPIN_INTERVAL_MS);
   };
 
   const startTimer = () => {
@@ -7883,9 +7887,11 @@ function usePickerWidgetState() {
     const normalizedSpinnerIndex = selectedStudents.length
       ? ((spinnerIndex % selectedStudents.length) + selectedStudents.length) % selectedStudents.length
       : 0;
-    const totalSteps =
-      Math.max(selectedStudents.length * 2, 10) +
-      ((finalIndex - normalizedSpinnerIndex + selectedStudents.length) % selectedStudents.length);
+    const totalSteps = getPickerSpinStepCount(
+      selectedStudents.length,
+      normalizedSpinnerIndex,
+      finalIndex
+    );
     let currentStep = 0;
     let currentIndex = normalizedSpinnerIndex;
     const selectedListId = selectedList.id;
@@ -7927,7 +7933,7 @@ function usePickerWidgetState() {
           )
         };
       });
-    }, 90);
+    }, PICKER_SPIN_INTERVAL_MS);
   };
 
   return {
@@ -11578,6 +11584,19 @@ function buildPickerSpinnerNames({
       ((spinnerIndex + offset) % names.length + names.length) % names.length;
     return names[normalizedIndex];
   });
+}
+
+function getPickerSpinStepCount(studentCount: number, currentIndex: number, finalIndex: number) {
+  const normalizedStudentCount = Math.max(0, studentCount);
+
+  if (normalizedStudentCount === 0) {
+    return 0;
+  }
+
+  const landingOffset =
+    (finalIndex - currentIndex + normalizedStudentCount) % normalizedStudentCount;
+
+  return Math.max(normalizedStudentCount, PICKER_SPIN_MIN_STEPS) + landingOffset;
 }
 
 function dedupeNames(names: string[]) {

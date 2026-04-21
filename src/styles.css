@@ -2345,9 +2345,9 @@ textarea {
 
 .picker-spinner {
   position: relative;
-  min-height: 24px;
+  min-height: 34px;
   overflow: hidden;
-  padding: 1px 0;
+  padding: 3px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -2369,7 +2369,7 @@ textarea {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 0.95fr) minmax(0, 1.6fr) minmax(0, 0.95fr) minmax(0, 0.75fr);
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 0.9fr) minmax(0, 2.1fr) minmax(0, 0.9fr) minmax(0, 0.65fr);
   gap: 2px;
   align-items: center;
 }
@@ -2391,10 +2391,11 @@ textarea {
 
 .picker-spinner__name--active {
   color: var(--text-primary);
-  padding-inline: 6px;
-  font-size: 0.74rem;
+  padding-inline: 8px;
+  font-size: 0.96rem;
+  font-weight: 800;
   opacity: 1;
-  transform: scale(1.01);
+  transform: scale(1.02);
 }
 
 .picker-spinner--running .picker-spinner__name--active {
