@@ -27,8 +27,44 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Import self-signed macOS certificate
+        env:
+          TEACHERTOOLS_MAC_SELF_SIGN_CERT_BASE64: ${{ secrets.TEACHERTOOLS_MAC_SELF_SIGN_CERT_BASE64 }}
+          TEACHERTOOLS_MAC_SELF_SIGN_CERT_PASSWORD: ${{ secrets.TEACHERTOOLS_MAC_SELF_SIGN_CERT_PASSWORD }}
+          TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY: ${{ secrets.TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY }}
+        run: |
+          if [ -z "$TEACHERTOOLS_MAC_SELF_SIGN_CERT_BASE64" ] || [ -z "$TEACHERTOOLS_MAC_SELF_SIGN_CERT_PASSWORD" ] || [ -z "$TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY" ]; then
+            echo "Missing self-signed macOS signing secrets."
+            exit 1
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/teachertools-self-signed.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/teachertools-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "$TEACHERTOOLS_MAC_SELF_SIGN_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$TEACHERTOOLS_MAC_SELF_SIGN_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
       - name: Build release artifacts
-        run: npm run dist:mac
+        env:
+          TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY: ${{ secrets.TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY }}
+        run: npm run dist:mac:self-signed
+
+      - name: Verify macOS update signature
+        run: npm run verify:mac-signature
+
+      - name: Export public self-signed certificate
+        env:
+          TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY: ${{ secrets.TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY }}
+        run: |
+          security find-certificate -c "$TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY" -p > release/TeacherTools-self-signed-code-signing-cert.pem
+          openssl x509 -in release/TeacherTools-self-signed-code-signing-cert.pem -outform der -out release/TeacherTools-self-signed-code-signing-cert.cer
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -40,6 +76,7 @@ jobs:
             release/*.dmg.blockmap
             release/*.zip
             release/*.zip.blockmap
+            release/*.cer
             release/latest-mac.yml
 
   build-windows:
@@ -97,7 +134,7 @@ jobs:
         run: |
           mapfile -d '' assets < <(
             find release-artifacts -type f \
-              \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.blockmap' -o -name 'latest*.yml' \) \
+              \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.cer' -o -name 'latest*.yml' \) \
               -print0
           )
 

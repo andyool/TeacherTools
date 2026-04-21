@@ -6,9 +6,34 @@ import { Arch } from 'builder-util';
 
 const execFileAsync = promisify(execFile);
 
+function getSelfSignedIdentity() {
+  return (
+    process.env.TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY ||
+    process.env.MAC_SELF_SIGN_IDENTITY ||
+    ''
+  ).trim();
+}
+
+function isSelfSignedSigningRequired() {
+  return process.env.TEACHERTOOLS_MAC_SELF_SIGN_REQUIRED === 'true';
+}
+
+function hasExplicitMacSigningConfig() {
+  return Boolean(
+    process.env.CSC_LINK ||
+      process.env.CSC_NAME ||
+      process.env.MAC_CSC_LINK ||
+      process.env.MAC_CSC_NAME
+  );
+}
+
+export async function clearMacAppExtendedAttributes(appPath) {
+  await execFileAsync('xattr', ['-cr', appPath]);
+}
+
 export async function signMacAppAdHoc(appPath) {
   try {
-    await execFileAsync('xattr', ['-cr', appPath]);
+    await clearMacAppExtendedAttributes(appPath);
     await execFileAsync('codesign', ['--force', '--deep', '--sign', '-', appPath]);
     await execFileAsync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
   } catch (error) {
@@ -26,6 +51,19 @@ export async function signMacAppAdHoc(appPath) {
   }
 }
 
+export async function signMacAppWithIdentity(appPath, identity) {
+  await clearMacAppExtendedAttributes(appPath);
+  await execFileAsync('codesign', [
+    '--force',
+    '--deep',
+    '--timestamp=none',
+    '--sign',
+    identity,
+    appPath
+  ]);
+  await execFileAsync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
+}
+
 export default async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') {
     return;
@@ -36,6 +74,24 @@ export default async function afterPack(context) {
   }
 
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
+
+  const selfSignedIdentity = getSelfSignedIdentity();
+  if (selfSignedIdentity) {
+    await signMacAppWithIdentity(appPath, selfSignedIdentity);
+    return;
+  }
+
+  if (isSelfSignedSigningRequired()) {
+    throw new Error(
+      'TEACHERTOOLS_MAC_SELF_SIGN_IDENTITY must be set when TEACHERTOOLS_MAC_SELF_SIGN_REQUIRED=true.'
+    );
+  }
+
+  if (hasExplicitMacSigningConfig()) {
+    await clearMacAppExtendedAttributes(appPath);
+    return;
+  }
+
   await signMacAppAdHoc(appPath);
 }
 
@@ -48,5 +104,10 @@ if (process.argv[1] === entryPath) {
     throw new Error('Expected a macOS .app path as the first argument.');
   }
 
-  await signMacAppAdHoc(path.resolve(appPath));
+  const identity = getSelfSignedIdentity();
+  if (identity) {
+    await signMacAppWithIdentity(path.resolve(appPath), identity);
+  } else {
+    await signMacAppAdHoc(path.resolve(appPath));
+  }
 }
