@@ -150,6 +150,8 @@ let appUpdateState: AppUpdateState = {
   status: 'unsupported'
 };
 
+const APP_UPDATE_CACHE_DIR_NAME = 'teachertools-overlay-updater';
+const APP_UPDATE_LOG_FILENAME = 'app-update.log';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
 
@@ -476,6 +478,76 @@ function getAllApplicationWindows() {
   ].filter((win): win is Electron.BrowserWindow => Boolean(win && !win.isDestroyed()));
 }
 
+function getAppUpdateBaseCachePath() {
+  if (process.platform === 'win32') {
+    return process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  }
+
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Caches');
+  }
+
+  return process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+}
+
+function getAppUpdateCachePath() {
+  return path.join(getAppUpdateBaseCachePath(), APP_UPDATE_CACHE_DIR_NAME);
+}
+
+function getPendingAppUpdateInfoPath() {
+  return path.join(getAppUpdateCachePath(), 'pending', 'update-info.json');
+}
+
+function getPendingDownloadedAppUpdateFileName() {
+  try {
+    const rawInfo = JSON.parse(fs.readFileSync(getPendingAppUpdateInfoPath(), 'utf8')) as {
+      fileName?: unknown;
+    };
+    const fileName = typeof rawInfo.fileName === 'string' ? rawInfo.fileName : '';
+    const updatePath = path.join(getAppUpdateCachePath(), 'pending', fileName);
+
+    return fileName && fs.existsSync(updatePath) ? fileName : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringifyAppUpdateLogValue(value: unknown) {
+  if (value instanceof Error) {
+    return value.stack || value.message;
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function appendAppUpdateLog(level: 'debug' | 'error' | 'info' | 'warn', value: unknown) {
+  let logPath: string;
+
+  try {
+    logPath = path.join(app.getPath('userData'), APP_UPDATE_LOG_FILENAME);
+  } catch {
+    return;
+  }
+
+  const line = `[${new Date().toISOString()}] [${level}] ${stringifyAppUpdateLogValue(value)}\n`;
+  fs.appendFile(logPath, line, () => undefined);
+}
+
+const appUpdateLogger = {
+  debug: (message: unknown) => appendAppUpdateLog('debug', message),
+  error: (message: unknown) => appendAppUpdateLog('error', message),
+  info: (message: unknown) => appendAppUpdateLog('info', message),
+  warn: (message: unknown) => appendAppUpdateLog('warn', message)
+};
+
 function broadcastAppUpdateState() {
   getAllApplicationWindows().forEach((targetWindow) => {
     targetWindow.webContents.send('app-update:state', appUpdateState);
@@ -483,10 +555,24 @@ function broadcastAppUpdateState() {
 }
 
 function setAppUpdateState(nextState: AppUpdateState) {
+  const previousState = appUpdateState;
   appUpdateState = {
     ...nextState,
     currentVersion: app.getVersion()
   };
+
+  if (
+    previousState.status !== appUpdateState.status ||
+    previousState.message !== appUpdateState.message
+  ) {
+    appendAppUpdateLog(
+      'info',
+      `state=${appUpdateState.status} version=${appUpdateState.currentVersion} available=${
+        appUpdateState.availableVersion ?? 'none'
+      } message="${appUpdateState.message}"`
+    );
+  }
+
   broadcastAppUpdateState();
 }
 
@@ -537,10 +623,25 @@ function getAppUpdateErrorMessage(error: unknown) {
 }
 
 function handleAppUpdateError(error: unknown) {
+  appUpdateLogger.error(error);
   updateAppUpdateState({
     message: getAppUpdateErrorMessage(error),
     progressPercent: null,
     status: 'error'
+  });
+}
+
+function resumePendingDownloadedAppUpdate() {
+  const fileName = getPendingDownloadedAppUpdateFileName();
+
+  if (!fileName || !appUpdater || appUpdateState.status === 'unsupported') {
+    return;
+  }
+
+  appUpdateLogger.info(`Found pending downloaded app update ${fileName}; preparing install state.`);
+  void checkForAppUpdates({
+    force: true,
+    message: 'Preparing the downloaded update for install.'
   });
 }
 
@@ -553,8 +654,10 @@ function initializeAppUpdater() {
 
   const { autoUpdater } = electronUpdater;
   appUpdater = autoUpdater;
+  appUpdater.logger = appUpdateLogger;
   appUpdater.autoDownload = false;
   appUpdater.autoInstallOnAppQuit = false;
+  appUpdateLogger.info(`Initialized updater for TeacherTools ${app.getVersion()}.`);
 
   appUpdater.on('checking-for-update', () => {
     updateAppUpdateState({
@@ -566,6 +669,7 @@ function initializeAppUpdater() {
   });
 
   appUpdater.on('update-available', (info: UpdateInfo) => {
+    appUpdateLogger.info(`Update ${info.version} found; starting download.`);
     updateAppUpdateState({
       availableVersion: info.version ?? null,
       message: `Update ${info.version} found. Downloading now.`,
@@ -579,6 +683,7 @@ function initializeAppUpdater() {
   });
 
   appUpdater.on('update-not-available', () => {
+    appUpdateLogger.info('No app update is available.');
     updateAppUpdateState({
       availableVersion: null,
       message: 'This install is already on the latest version.',
@@ -596,6 +701,7 @@ function initializeAppUpdater() {
   });
 
   appUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    appUpdateLogger.info(`Update ${info.version} is downloaded and ready to install.`);
     updateAppUpdateState({
       availableVersion: info.version ?? appUpdateState.availableVersion,
       message: `Update ${info.version} is ready. Restart TeacherTools to install it.`,
@@ -607,18 +713,25 @@ function initializeAppUpdater() {
   appUpdater.on('error', (error) => {
     handleAppUpdateError(error);
   });
+
+  resumePendingDownloadedAppUpdate();
 }
 
-async function checkForAppUpdates() {
+type AppUpdateCheckOptions = {
+  force?: boolean;
+  message?: string;
+};
+
+async function checkForAppUpdates(options: AppUpdateCheckOptions = {}) {
   if (!appUpdater) {
     return appUpdateState;
   }
 
-  if (
+  if (!options.force && (
     appUpdateState.status === 'checking' ||
     appUpdateState.status === 'available' ||
     appUpdateState.status === 'downloading'
-  ) {
+  )) {
     return appUpdateState;
   }
 
@@ -627,6 +740,14 @@ async function checkForAppUpdates() {
   }
 
   try {
+    if (options.message) {
+      updateAppUpdateState({
+        message: options.message,
+        progressPercent: null,
+        status: 'checking'
+      });
+    }
+
     appUpdateCheckPromise = appUpdater.checkForUpdates();
     await appUpdateCheckPromise;
   } catch (error) {
@@ -640,9 +761,11 @@ async function checkForAppUpdates() {
 
 function installDownloadedAppUpdate() {
   if (!appUpdater || appUpdateState.status !== 'downloaded') {
+    appUpdateLogger.warn('Install requested before an update was ready.');
     return false;
   }
 
+  appUpdateLogger.info('Installing downloaded app update.');
   updateAppUpdateState({
     message: 'Closing TeacherTools to install the downloaded update.',
     progressPercent: 100,

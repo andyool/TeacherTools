@@ -1703,7 +1703,7 @@ function TeacherPopover() {
     computeDashboardMetrics(MIN_POPOVER_WIDTH)
   );
   const [widgetHeights, setWidgetHeights] = useState<Partial<Record<WidgetId, number>>>({});
-  const appUpdate = useAppUpdateState();
+  const [appUpdate, setAppUpdate] = useAppUpdateState();
   const openWidgetPopouts = useWidgetPopoutIds();
   const liveNowUntil = timer.endsAt ?? (timer.lastCompletedAt ? timer.lastCompletedAt + 5000 : null);
   const now = useNow(liveNowUntil);
@@ -1795,11 +1795,79 @@ function TeacherPopover() {
 
   const handleAppUpdateAction = () => {
     if (appUpdate.status === 'downloaded') {
-      void window.electronAPI?.installAppUpdate();
+      const installAppUpdate = window.electronAPI?.installAppUpdate;
+
+      if (!installAppUpdate) {
+        setAppUpdate((current) => ({
+          ...current,
+          message: 'The desktop update bridge is unavailable. Restart TeacherTools and try again.',
+          progressPercent: null,
+          status: 'error'
+        }));
+        return;
+      }
+
+      setAppUpdate((current) => ({
+        ...current,
+        message: 'Closing TeacherTools to install the downloaded update.',
+        progressPercent: 100,
+        status: 'downloaded'
+      }));
+
+      void installAppUpdate()
+        .then((didStartInstall) => {
+          if (!didStartInstall) {
+            setAppUpdate((current) => ({
+              ...current,
+              message: 'The downloaded update was not ready to install. Try checking again.',
+              progressPercent: null,
+              status: 'error'
+            }));
+          }
+        })
+        .catch((error) => {
+          setAppUpdate((current) => ({
+            ...current,
+            message: getAppUpdateActionErrorMessage(error),
+            progressPercent: null,
+            status: 'error'
+          }));
+        });
       return;
     }
 
-    void window.electronAPI?.checkForAppUpdates();
+    const checkForAppUpdates = window.electronAPI?.checkForAppUpdates;
+
+    if (!checkForAppUpdates) {
+      setAppUpdate((current) => ({
+        ...current,
+        message: 'The desktop update bridge is unavailable. Restart TeacherTools and try again.',
+        progressPercent: null,
+        status: 'error'
+      }));
+      return;
+    }
+
+    setAppUpdate((current) => ({
+      ...current,
+      availableVersion: null,
+      message: 'Checking GitHub Releases for a newer version.',
+      progressPercent: null,
+      status: 'checking'
+    }));
+
+    void checkForAppUpdates()
+      .then((nextState) => {
+        setAppUpdate(nextState);
+      })
+      .catch((error) => {
+        setAppUpdate((current) => ({
+          ...current,
+          message: getAppUpdateActionErrorMessage(error),
+          progressPercent: null,
+          status: 'error'
+        }));
+      });
   };
 
   const closeColorModePalette = () => {
@@ -7635,7 +7703,7 @@ function useAppUpdateState() {
     };
   }, []);
 
-  return appUpdate;
+  return [appUpdate, setAppUpdate] as const;
 }
 
 function getAppUpdateButtonLabel(appUpdate: AppUpdateState) {
@@ -7702,6 +7770,14 @@ function getAppUpdateTooltip(appUpdate: AppUpdateState) {
     : ` Current v${appUpdate.currentVersion}.`;
 
   return `${appUpdate.message}${versionSummary}`;
+}
+
+function getAppUpdateActionErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return 'The update action failed. Restart TeacherTools and try again.';
 }
 
 function useTimerWidgetState() {
