@@ -295,162 +295,162 @@ textarea {
 }
 
 .panel[data-theme='light'] {
-  --panel-fill-top: rgba(244, 249, 255, 0.78);
-  --panel-fill-bottom: rgba(232, 241, 252, 0.75);
-  --panel-border: rgba(255, 255, 255, 0.78);
-  --panel-highlight: rgba(255, 255, 255, 0.63);
-  --panel-bottom-edge: rgba(131, 160, 201, 0.21);
+  --panel-fill-top: rgba(246, 250, 255, 0.9);
+  --panel-fill-bottom: rgba(236, 244, 252, 0.88);
+  --panel-border: rgba(255, 255, 255, 0.72);
+  --panel-highlight: rgba(255, 255, 255, 0.48);
+  --panel-bottom-edge: rgba(131, 160, 201, 0.16);
   --panel-frost:
-    radial-gradient(circle at 14% 8%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 34%),
-    radial-gradient(circle at 82% 100%, rgba(126, 168, 220, 0.27), rgba(126, 168, 220, 0) 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.21), rgba(255, 255, 255, 0.075));
+    radial-gradient(circle at 14% 8%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 34%),
+    radial-gradient(circle at 82% 100%, rgba(126, 168, 220, 0.16), rgba(126, 168, 220, 0) 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
   --panel-gloss: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.93),
-      rgba(255, 255, 255, 0.36) 14%,
-      rgba(255, 255, 255, 0.06) 34%
+      rgba(255, 255, 255, 0.68),
+      rgba(255, 255, 255, 0.22) 14%,
+      rgba(255, 255, 255, 0.04) 34%
     );
-  --panel-rim: radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0) 36%),
-    linear-gradient(118deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.06) 24%, rgba(255, 255, 255, 0) 44%);
-  --card-fill-top: rgba(255, 255, 255, 0.18);
-  --card-fill-bottom: rgba(255, 255, 255, 0.05);
-  --card-border: rgba(255, 255, 255, 0.3);
-  --field-fill-top: rgba(255, 255, 255, 0.13);
-  --field-fill-bottom: rgba(255, 255, 255, 0.035);
-  --field-border: rgba(255, 255, 255, 0.24);
-  --card-overlay-top: rgba(255, 255, 255, 0.2);
-  --card-overlay-mid: rgba(255, 255, 255, 0.06);
-  --card-overlay-bottom: rgba(255, 255, 255, 0.03);
-  --surface-overlay-top: rgba(255, 255, 255, 0.08);
-  --surface-overlay-bottom: rgba(255, 255, 255, 0.018);
-  --well-overlay-top: rgba(0, 0, 0, 0.12);
-  --well-overlay-mid: rgba(0, 0, 0, 0.04);
-  --well-overlay-bottom: rgba(255, 255, 255, 0.06);
-  --control-top-shadow: rgba(111, 130, 160, 0.28);
-  --control-mid-shadow: rgba(147, 167, 198, 0.18);
-  --control-bottom-light: rgba(255, 255, 255, 0.34);
-  --control-outer-shadow: rgba(33, 58, 91, 0.14);
-  --control-glint: rgba(255, 255, 255, 0.96);
-  --surface-sheen-top: rgba(255, 255, 255, 0.26);
-  --surface-sheen-bottom: rgba(255, 255, 255, 0.06);
-  --surface-edge-light: rgba(255, 255, 255, 0.34);
-  --control-overlay-top: rgba(255, 255, 255, 0.14);
-  --control-overlay-bottom: rgba(255, 255, 255, 0.24);
+  --panel-rim: radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 36%),
+    linear-gradient(118deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04) 24%, rgba(255, 255, 255, 0) 44%);
+  --card-fill-top: rgba(255, 255, 255, 0.44);
+  --card-fill-bottom: rgba(255, 255, 255, 0.34);
+  --card-border: rgba(255, 255, 255, 0.34);
+  --field-fill-top: rgba(255, 255, 255, 0.38);
+  --field-fill-bottom: rgba(255, 255, 255, 0.28);
+  --field-border: rgba(255, 255, 255, 0.28);
+  --card-overlay-top: rgba(255, 255, 255, 0.1);
+  --card-overlay-mid: rgba(255, 255, 255, 0.04);
+  --card-overlay-bottom: rgba(255, 255, 255, 0.02);
+  --surface-overlay-top: rgba(255, 255, 255, 0.06);
+  --surface-overlay-bottom: rgba(255, 255, 255, 0.03);
+  --well-overlay-top: rgba(0, 0, 0, 0.08);
+  --well-overlay-mid: rgba(0, 0, 0, 0.03);
+  --well-overlay-bottom: rgba(255, 255, 255, 0.05);
+  --control-top-shadow: rgba(111, 130, 160, 0.12);
+  --control-mid-shadow: rgba(147, 167, 198, 0.08);
+  --control-bottom-light: rgba(255, 255, 255, 0.18);
+  --control-outer-shadow: rgba(33, 58, 91, 0.1);
+  --control-glint: rgba(255, 255, 255, 0.88);
+  --surface-sheen-top: rgba(255, 255, 255, 0.16);
+  --surface-sheen-bottom: rgba(255, 255, 255, 0.04);
+  --surface-edge-light: rgba(255, 255, 255, 0.24);
+  --control-overlay-top: rgba(255, 255, 255, 0.08);
+  --control-overlay-bottom: rgba(255, 255, 255, 0.12);
   --text-primary: #0b223b;
   --text-secondary: rgba(11, 34, 59, 0.8);
   --button-neutral-text: #4f6d88;
-  --button-neutral-soft: rgba(79, 109, 136, 0.14);
-  --button-neutral-border: rgba(79, 109, 136, 0.24);
-  --button-neutral-border-strong: rgba(79, 109, 136, 0.38);
+  --button-neutral-soft: rgba(79, 109, 136, 0.18);
+  --button-neutral-border: rgba(79, 109, 136, 0.28);
+  --button-neutral-border-strong: rgba(79, 109, 136, 0.42);
   --tone-action: #2a9a64;
-  --tone-action-soft: rgba(42, 154, 100, 0.14);
-  --tone-action-border: rgba(42, 154, 100, 0.24);
-  --tone-action-border-strong: rgba(42, 154, 100, 0.38);
+  --tone-action-soft: rgba(42, 154, 100, 0.18);
+  --tone-action-border: rgba(42, 154, 100, 0.28);
+  --tone-action-border-strong: rgba(42, 154, 100, 0.42);
   --tone-utility: #2f7ed8;
-  --tone-utility-soft: rgba(47, 126, 216, 0.14);
-  --tone-utility-border: rgba(47, 126, 216, 0.24);
-  --tone-utility-border-strong: rgba(47, 126, 216, 0.38);
+  --tone-utility-soft: rgba(47, 126, 216, 0.18);
+  --tone-utility-border: rgba(47, 126, 216, 0.28);
+  --tone-utility-border-strong: rgba(47, 126, 216, 0.42);
   --tone-selection: #8a61dd;
-  --tone-selection-soft: rgba(138, 97, 221, 0.14);
-  --tone-selection-border: rgba(138, 97, 221, 0.24);
-  --tone-selection-border-strong: rgba(138, 97, 221, 0.38);
+  --tone-selection-soft: rgba(138, 97, 221, 0.18);
+  --tone-selection-border: rgba(138, 97, 221, 0.28);
+  --tone-selection-border-strong: rgba(138, 97, 221, 0.42);
   --tone-warning: #d08a2c;
-  --tone-warning-soft: rgba(208, 138, 44, 0.14);
-  --tone-warning-border: rgba(208, 138, 44, 0.24);
-  --tone-warning-border-strong: rgba(208, 138, 44, 0.38);
+  --tone-warning-soft: rgba(208, 138, 44, 0.18);
+  --tone-warning-border: rgba(208, 138, 44, 0.28);
+  --tone-warning-border-strong: rgba(208, 138, 44, 0.42);
   --tone-theme: #d65f9f;
-  --tone-theme-soft: rgba(214, 95, 159, 0.14);
-  --tone-theme-border: rgba(214, 95, 159, 0.24);
-  --tone-theme-border-strong: rgba(214, 95, 159, 0.38);
+  --tone-theme-soft: rgba(214, 95, 159, 0.18);
+  --tone-theme-border: rgba(214, 95, 159, 0.28);
+  --tone-theme-border-strong: rgba(214, 95, 159, 0.42);
   --accent: #2a5c94;
-  --accent-soft: rgba(42, 92, 148, 0.14);
-  --accent-border: rgba(42, 92, 148, 0.22);
-  --accent-border-strong: rgba(42, 92, 148, 0.36);
+  --accent-soft: rgba(42, 92, 148, 0.18);
+  --accent-border: rgba(42, 92, 148, 0.26);
+  --accent-border-strong: rgba(42, 92, 148, 0.4);
   --menu-surface: rgba(244, 249, 255, 0.98);
   --danger: #b8485a;
-  --danger-soft: rgba(184, 72, 90, 0.14);
-  --danger-border: rgba(184, 72, 90, 0.24);
-  --danger-border-strong: rgba(184, 72, 90, 0.38);
+  --danger-soft: rgba(184, 72, 90, 0.18);
+  --danger-border: rgba(184, 72, 90, 0.28);
+  --danger-border-strong: rgba(184, 72, 90, 0.42);
   color-scheme: light;
 }
 
 .panel[data-theme='dark'] {
-  --panel-fill-top: rgba(6, 12, 22, 0.838);
-  --panel-fill-bottom: rgba(2, 5, 12, 0.92);
-  --panel-border: rgba(176, 205, 255, 0.18);
-  --panel-highlight: rgba(214, 229, 255, 0.153);
-  --panel-bottom-edge: rgba(0, 0, 0, 0.561);
+  --panel-fill-top: rgba(7, 13, 24, 0.94);
+  --panel-fill-bottom: rgba(2, 5, 12, 0.96);
+  --panel-border: rgba(176, 205, 255, 0.2);
+  --panel-highlight: rgba(214, 229, 255, 0.12);
+  --panel-bottom-edge: rgba(0, 0, 0, 0.46);
   --panel-frost:
-    radial-gradient(circle at 14% 8%, rgba(0, 0, 0, 0.714), rgba(0, 0, 0, 0) 34%),
-    radial-gradient(circle at 82% 100%, rgba(5, 10, 22, 0.816), rgba(5, 10, 22, 0) 42%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.561), rgba(0, 0, 0, 0.204));
+    radial-gradient(circle at 14% 8%, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0) 34%),
+    radial-gradient(circle at 82% 100%, rgba(5, 10, 22, 0.42), rgba(5, 10, 22, 0) 42%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.1));
   --panel-gloss: linear-gradient(
       180deg,
-      rgba(214, 229, 255, 0.116),
-      rgba(214, 229, 255, 0.036) 14%,
-      rgba(214, 229, 255, 0.0051) 34%
+      rgba(214, 229, 255, 0.13),
+      rgba(214, 229, 255, 0.042) 14%,
+      rgba(214, 229, 255, 0.008) 34%
     );
-  --panel-rim: radial-gradient(circle at 18% 0%, rgba(0, 0, 0, 0.408), rgba(0, 0, 0, 0) 36%),
-    linear-gradient(118deg, rgba(160, 187, 236, 0.077), rgba(214, 229, 255, 0.021) 24%, rgba(214, 229, 255, 0) 44%);
-  --card-fill-top: rgba(255, 255, 255, 0.028);
-  --card-fill-bottom: rgba(255, 255, 255, 0.006);
-  --card-border: rgba(201, 222, 255, 0.1);
-  --field-fill-top: rgba(255, 255, 255, 0.016);
-  --field-fill-bottom: rgba(255, 255, 255, 0.003);
-  --field-border: rgba(195, 218, 255, 0.09);
-  --card-overlay-top: rgba(255, 255, 255, 0.04);
-  --card-overlay-mid: rgba(255, 255, 255, 0.012);
-  --card-overlay-bottom: rgba(255, 255, 255, 0.004);
-  --surface-overlay-top: rgba(255, 255, 255, 0.024);
-  --surface-overlay-bottom: rgba(255, 255, 255, 0.005);
-  --well-overlay-top: rgba(0, 0, 0, 0.12);
-  --well-overlay-mid: rgba(0, 0, 0, 0.05);
-  --well-overlay-bottom: rgba(255, 255, 255, 0.018);
-  --control-top-shadow: rgba(0, 0, 0, 0.54);
-  --control-mid-shadow: rgba(0, 0, 0, 0.28);
-  --control-bottom-light: rgba(255, 255, 255, 0.085);
-  --control-outer-shadow: rgba(0, 0, 0, 0.28);
-  --control-glint: rgba(255, 255, 255, 0.94);
-  --surface-sheen-top: rgba(255, 255, 255, 0.1);
-  --surface-sheen-bottom: rgba(255, 255, 255, 0.016);
-  --surface-edge-light: rgba(184, 209, 255, 0.1);
-  --control-overlay-top: rgba(255, 255, 255, 0.05);
-  --control-overlay-bottom: rgba(255, 255, 255, 0.1);
+  --panel-rim: radial-gradient(circle at 18% 0%, rgba(214, 229, 255, 0.075), rgba(214, 229, 255, 0) 36%),
+    linear-gradient(118deg, rgba(160, 187, 236, 0.06), rgba(214, 229, 255, 0.018) 24%, rgba(214, 229, 255, 0) 44%);
+  --card-fill-top: rgba(255, 255, 255, 0.095);
+  --card-fill-bottom: rgba(255, 255, 255, 0.065);
+  --card-border: rgba(201, 222, 255, 0.14);
+  --field-fill-top: rgba(255, 255, 255, 0.085);
+  --field-fill-bottom: rgba(255, 255, 255, 0.055);
+  --field-border: rgba(195, 218, 255, 0.13);
+  --card-overlay-top: rgba(255, 255, 255, 0.065);
+  --card-overlay-mid: rgba(255, 255, 255, 0.028);
+  --card-overlay-bottom: rgba(255, 255, 255, 0.012);
+  --surface-overlay-top: rgba(255, 255, 255, 0.035);
+  --surface-overlay-bottom: rgba(255, 255, 255, 0.016);
+  --well-overlay-top: rgba(0, 0, 0, 0.09);
+  --well-overlay-mid: rgba(0, 0, 0, 0.035);
+  --well-overlay-bottom: rgba(255, 255, 255, 0.016);
+  --control-top-shadow: rgba(0, 0, 0, 0.24);
+  --control-mid-shadow: rgba(0, 0, 0, 0.15);
+  --control-bottom-light: rgba(255, 255, 255, 0.065);
+  --control-outer-shadow: rgba(0, 0, 0, 0.2);
+  --control-glint: rgba(255, 255, 255, 0.74);
+  --surface-sheen-top: rgba(255, 255, 255, 0.07);
+  --surface-sheen-bottom: rgba(255, 255, 255, 0.014);
+  --surface-edge-light: rgba(184, 209, 255, 0.08);
+  --control-overlay-top: rgba(255, 255, 255, 0.03);
+  --control-overlay-bottom: rgba(255, 255, 255, 0.055);
   --text-primary: #f6fbff;
   --text-secondary: rgba(236, 244, 255, 0.9);
   --button-neutral-text: #bbd5f1;
-  --button-neutral-soft: rgba(187, 213, 241, 0.14);
-  --button-neutral-border: rgba(187, 213, 241, 0.22);
-  --button-neutral-border-strong: rgba(187, 213, 241, 0.36);
+  --button-neutral-soft: rgba(187, 213, 241, 0.18);
+  --button-neutral-border: rgba(187, 213, 241, 0.26);
+  --button-neutral-border-strong: rgba(187, 213, 241, 0.4);
   --tone-action: #74e7ab;
-  --tone-action-soft: rgba(116, 231, 171, 0.14);
-  --tone-action-border: rgba(116, 231, 171, 0.24);
-  --tone-action-border-strong: rgba(116, 231, 171, 0.38);
+  --tone-action-soft: rgba(116, 231, 171, 0.18);
+  --tone-action-border: rgba(116, 231, 171, 0.28);
+  --tone-action-border-strong: rgba(116, 231, 171, 0.42);
   --tone-utility: #7ecbff;
-  --tone-utility-soft: rgba(126, 203, 255, 0.14);
-  --tone-utility-border: rgba(126, 203, 255, 0.24);
-  --tone-utility-border-strong: rgba(126, 203, 255, 0.38);
+  --tone-utility-soft: rgba(126, 203, 255, 0.18);
+  --tone-utility-border: rgba(126, 203, 255, 0.28);
+  --tone-utility-border-strong: rgba(126, 203, 255, 0.42);
   --tone-selection: #c5adff;
-  --tone-selection-soft: rgba(197, 173, 255, 0.14);
-  --tone-selection-border: rgba(197, 173, 255, 0.24);
-  --tone-selection-border-strong: rgba(197, 173, 255, 0.38);
+  --tone-selection-soft: rgba(197, 173, 255, 0.18);
+  --tone-selection-border: rgba(197, 173, 255, 0.28);
+  --tone-selection-border-strong: rgba(197, 173, 255, 0.42);
   --tone-warning: #ffd06d;
-  --tone-warning-soft: rgba(255, 208, 109, 0.14);
-  --tone-warning-border: rgba(255, 208, 109, 0.24);
-  --tone-warning-border-strong: rgba(255, 208, 109, 0.38);
+  --tone-warning-soft: rgba(255, 208, 109, 0.18);
+  --tone-warning-border: rgba(255, 208, 109, 0.28);
+  --tone-warning-border-strong: rgba(255, 208, 109, 0.42);
   --tone-theme: #ff9ecf;
-  --tone-theme-soft: rgba(255, 158, 207, 0.14);
-  --tone-theme-border: rgba(255, 158, 207, 0.24);
-  --tone-theme-border-strong: rgba(255, 158, 207, 0.38);
+  --tone-theme-soft: rgba(255, 158, 207, 0.18);
+  --tone-theme-border: rgba(255, 158, 207, 0.28);
+  --tone-theme-border-strong: rgba(255, 158, 207, 0.42);
   --accent: #d9e8ff;
-  --accent-soft: rgba(217, 232, 255, 0.14);
-  --accent-border: rgba(217, 232, 255, 0.24);
-  --accent-border-strong: rgba(217, 232, 255, 0.38);
+  --accent-soft: rgba(217, 232, 255, 0.18);
+  --accent-border: rgba(217, 232, 255, 0.28);
+  --accent-border-strong: rgba(217, 232, 255, 0.42);
   --menu-surface: rgba(9, 16, 27, 0.98);
   --danger: #ff9aaa;
-  --danger-soft: rgba(255, 154, 170, 0.14);
-  --danger-border: rgba(255, 154, 170, 0.24);
-  --danger-border-strong: rgba(255, 154, 170, 0.38);
+  --danger-soft: rgba(255, 154, 170, 0.18);
+  --danger-border: rgba(255, 154, 170, 0.28);
+  --danger-border-strong: rgba(255, 154, 170, 0.42);
   color-scheme: dark;
 }
 
@@ -1044,8 +1044,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 8px 18px rgba(8, 12, 18, 0.1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 10px rgba(8, 12, 18, 0.07);
   color: var(--text-secondary);
   font-size: 0.7rem;
   font-weight: 700;
@@ -1144,10 +1144,10 @@ textarea {
     ),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 10px 14px rgba(0, 0, 0, 0.14),
-    inset 0 -8px 12px rgba(255, 255, 255, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 1px 2px rgba(8, 12, 18, 0.08);
+    inset 0 2px 4px rgba(0, 0, 0, 0.08),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 1px 2px rgba(8, 12, 18, 0.06);
   color: var(--button-ink);
   transition:
     color 220ms ease,
@@ -1180,9 +1180,9 @@ textarea {
   background: linear-gradient(
     108deg,
     rgba(255, 255, 255, 0) 16%,
-    rgba(255, 255, 255, 0.18) 34%,
+    rgba(255, 255, 255, 0.12) 34%,
     var(--control-glint) 50%,
-    rgba(255, 255, 255, 0.18) 64%,
+    rgba(255, 255, 255, 0.12) 64%,
     rgba(255, 255, 255, 0) 82%
   );
   opacity: 0;
@@ -1210,7 +1210,7 @@ textarea {
   inset: 1px;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, var(--control-overlay-top), rgba(255, 255, 255, 0) 44%, var(--control-overlay-bottom) 100%);
+    linear-gradient(180deg, var(--control-overlay-top), rgba(255, 255, 255, 0) 52%, var(--control-overlay-bottom) 100%);
   pointer-events: none;
 }
 
@@ -1352,10 +1352,10 @@ textarea {
     ),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -6px 12px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.08)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 5px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.06)),
     0 0 0 1px color-mix(in srgb, var(--button-ink) 18%, transparent),
-    0 8px 16px rgba(8, 12, 18, 0.1);
+    0 3px 8px rgba(8, 12, 18, 0.08);
   transform: translateY(-1px);
 }
 
@@ -1368,9 +1368,9 @@ textarea {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.24)),
-      rgba(255, 255, 255, 0) 42%,
-      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.08))
+      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.16)),
+      rgba(255, 255, 255, 0) 50%,
+      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.06))
     );
 }
 
@@ -1388,14 +1388,14 @@ textarea {
 .stepper__button:hover:not(:disabled),
 .stepper__value:hover:not(:disabled),
 .note-row__delete:hover {
-  transform: translateY(-3px);
+  transform: translateY(-1px);
   color: var(--button-ink);
   border-color: var(--button-outline-strong);
   box-shadow:
-    inset 0 9px 13px rgba(0, 0, 0, 0.16),
-    inset 0 -7px 10px rgba(255, 255, 255, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 8px 18px rgba(8, 12, 18, 0.12);
+    inset 0 2px 4px rgba(0, 0, 0, 0.09),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 10px rgba(8, 12, 18, 0.09);
 }
 
 .icon-button:hover::before,
@@ -1465,14 +1465,14 @@ textarea {
 .stepper__button:active:not(:disabled),
 .stepper__value:active:not(:disabled),
 .note-row__delete:active {
-  transform: translateY(-1px);
+  transform: translateY(0);
   color: var(--button-ink);
   border-color: var(--button-outline-strong);
   box-shadow:
-    inset 0 11px 15px rgba(0, 0, 0, 0.2),
-    inset 0 -5px 8px rgba(255, 255, 255, 0.13),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 4px 10px rgba(8, 12, 18, 0.1);
+    inset 0 3px 6px rgba(0, 0, 0, 0.12),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 2px 5px rgba(8, 12, 18, 0.08);
 }
 
 .primary-link:active {
@@ -1646,9 +1646,9 @@ textarea {
     linear-gradient(180deg, var(--card-overlay-top), var(--card-overlay-mid) 38%, var(--card-overlay-bottom) 100%),
     linear-gradient(180deg, var(--card-fill-top), var(--card-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 24px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 6px 14px rgba(8, 12, 18, 0.06);
 }
 
 .card,
@@ -1689,8 +1689,8 @@ textarea {
   inset: 1px;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, var(--surface-edge-light), rgba(255, 255, 255, 0.08) 14%, rgba(255, 255, 255, 0) 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0) 56%, rgba(255, 255, 255, 0.09) 100%);
+    linear-gradient(180deg, var(--surface-edge-light), rgba(255, 255, 255, 0.05) 14%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.045) 100%);
   pointer-events: none;
 }
 
@@ -1719,9 +1719,9 @@ textarea {
     linear-gradient(180deg, var(--card-overlay-top), var(--card-overlay-mid) 38%, var(--card-overlay-bottom) 100%),
     linear-gradient(180deg, var(--card-fill-top), var(--card-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 24px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 6px 14px rgba(8, 12, 18, 0.06);
   transition:
     transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1756,10 +1756,10 @@ textarea {
 .widget-card--drag-over {
   border-color: var(--widget-highlight-border);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
     0 0 0 1px var(--widget-highlight-soft),
-    0 16px 28px rgba(8, 12, 18, 0.12);
+    0 8px 18px rgba(8, 12, 18, 0.09);
 }
 
 .widget-card__header {
@@ -1915,10 +1915,10 @@ textarea {
     ),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -6px 12px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.08)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 5px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.06)),
     0 0 0 1px color-mix(in srgb, var(--button-ink) 18%, transparent),
-    0 8px 16px rgba(8, 12, 18, 0.1);
+    0 3px 8px rgba(8, 12, 18, 0.08);
   transform: translateY(-1px);
 }
 
@@ -1926,9 +1926,9 @@ textarea {
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.24)),
-      rgba(255, 255, 255, 0) 42%,
-      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.08))
+      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.16)),
+      rgba(255, 255, 255, 0) 50%,
+      color-mix(in srgb, var(--button-ink) 10%, rgba(255, 255, 255, 0.06))
     );
 }
 
@@ -1937,10 +1937,10 @@ textarea {
   color: color-mix(in srgb, var(--button-ink) 78%, var(--text-primary));
   border-color: var(--button-outline-strong);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -6px 12px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.08)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 5px color-mix(in srgb, var(--button-ink) 8%, rgba(0, 0, 0, 0.06)),
     0 0 0 1px color-mix(in srgb, var(--button-ink) 18%, transparent),
-    0 8px 16px rgba(8, 12, 18, 0.1);
+    0 3px 8px rgba(8, 12, 18, 0.08);
 }
 
 .color-mode-popover {
@@ -2130,8 +2130,8 @@ textarea {
   font-weight: 700;
   white-space: nowrap;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 6px 12px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 3px 8px rgba(8, 12, 18, 0.06);
 }
 
 .badge--alert {
@@ -2217,8 +2217,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--card-fill-top), var(--card-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .stepper__button,
@@ -2410,8 +2410,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .group-card {
@@ -2525,9 +2525,9 @@ textarea {
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   color: var(--text-primary);
   box-shadow:
-    inset 0 12px 16px rgba(0, 0, 0, 0.12),
-    inset 0 -10px 12px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    inset 0 4px 8px rgba(0, 0, 0, 0.08),
+    inset 0 -2px 5px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -2573,9 +2573,9 @@ textarea {
 .text-area:focus {
   border-color: var(--accent-border);
   box-shadow:
-    inset 0 12px 16px rgba(0, 0, 0, 0.1),
-    inset 0 -10px 12px rgba(255, 255, 255, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 4px 8px rgba(0, 0, 0, 0.08),
+    inset 0 -2px 5px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
     0 0 0 4px var(--accent-soft);
 }
 
@@ -2746,8 +2746,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .tracker-panel {
@@ -2815,9 +2815,9 @@ textarea {
 .tracker-record--alert {
   border-color: rgba(208, 95, 59, 0.28);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 0 0 1px rgba(208, 95, 59, 0.12),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .tracker-record__copy {
@@ -2933,8 +2933,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .planner-calendar::before,
@@ -2944,8 +2944,8 @@ textarea {
   inset: 1px;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, var(--surface-edge-light), rgba(255, 255, 255, 0.08) 14%, rgba(255, 255, 255, 0) 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0) 56%, rgba(255, 255, 255, 0.09) 100%);
+    linear-gradient(180deg, var(--surface-edge-light), rgba(255, 255, 255, 0.05) 14%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.045) 100%);
   pointer-events: none;
 }
 
@@ -3064,8 +3064,8 @@ textarea {
   font-size: 0.74rem;
   font-weight: 700;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03);
   transition:
     transform 180ms ease,
     border-color 180ms ease,
@@ -3104,9 +3104,9 @@ textarea {
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
     rgba(255, 255, 255, 0.04);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 6px 12px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 3px 8px rgba(8, 12, 18, 0.06);
 }
 
 .planner-calendar__day--muted {
@@ -3121,8 +3121,8 @@ textarea {
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
     var(--widget-highlight-soft);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 8px 18px rgba(8, 12, 18, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 4px 10px rgba(8, 12, 18, 0.08);
 }
 
 .planner-calendar__day--today {
@@ -3205,9 +3205,9 @@ textarea {
     linear-gradient(180deg, var(--card-overlay-top), var(--card-overlay-mid) 38%, var(--card-overlay-bottom) 100%),
     linear-gradient(180deg, var(--card-fill-top), var(--card-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 24px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 6px 14px rgba(8, 12, 18, 0.06);
 }
 
 .note-row {
@@ -3223,8 +3223,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .note-row p {
@@ -3280,8 +3280,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--card-fill-top), var(--card-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 12px 24px rgba(8, 12, 18, 0.1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 6px 14px rgba(8, 12, 18, 0.07);
 }
 
 .builder-sidebar {
@@ -3355,8 +3355,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
   -webkit-app-region: no-drag;
 }
 
@@ -3538,8 +3538,8 @@ textarea {
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
     linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 8px 16px rgba(8, 12, 18, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
 }
 
 .bell-schedule__summary-card,
