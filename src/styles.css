@@ -1329,11 +1329,16 @@ textarea {
 .primary-link,
 .secondary-link,
 .danger-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 32px;
   padding: 0 13px;
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  line-height: 1;
+  text-align: center;
 }
 
 .widget-icon-button--active,
@@ -2157,11 +2162,16 @@ textarea {
 }
 
 .text-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 30px;
   padding: 0 12px;
   color: var(--button-ink);
   font-size: 0.76rem;
   font-weight: 700;
+  line-height: 1;
+  text-align: center;
 }
 
 .timer-preset-toggle--active,
@@ -3346,7 +3356,7 @@ textarea {
 
 .widget-toggle {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 10px;
   border-radius: var(--radius-control);
@@ -3361,7 +3371,8 @@ textarea {
 }
 
 .widget-toggle input {
-  margin: 2px 0 0;
+  flex: 0 0 16px;
+  margin: 0;
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
