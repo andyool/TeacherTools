@@ -41,6 +41,16 @@ type PickerSnapshot = {
   removePickedStudents: boolean;
 };
 
+type PickerSpinnerView = {
+  items: Array<{
+    isActive: boolean;
+    isAdjacent: boolean;
+    key: string;
+    name: string;
+  }>;
+  translatePercent: number;
+};
+
 type GroupMakerSnapshot = {
   groupSize: number;
   groups: string[][];
@@ -337,8 +347,12 @@ const GROUP_GRID_MIN_COLUMNS = 2;
 const GROUP_GRID_MAX_COLUMNS = 4;
 const GROUP_GRID_MIN_COLUMN_WIDTH = 136;
 const PICKER_SPINNER_WINDOW_SIZE = 5;
-const PICKER_SPIN_INTERVAL_MS = 120;
-const PICKER_SPIN_MIN_STEPS = 6;
+const PICKER_SPINNER_VISIBLE_SIZE = 3;
+const PICKER_SPINNER_CENTER_INDEX = Math.floor(PICKER_SPINNER_WINDOW_SIZE / 2);
+const PICKER_SPIN_MIN_STEPS = 8;
+const PICKER_SPIN_MIN_DURATION_MS = 850;
+const PICKER_SPIN_MAX_DURATION_MS = 1500;
+const PICKER_SPIN_STEP_DURATION_MS = 48;
 const MIN_POPOVER_WIDTH = 320;
 const MIN_POPOVER_HEIGHT = 320;
 const QR_WIDGET_SVG_BORDER_MODULES = 2;
@@ -1631,7 +1645,7 @@ function TeacherPopover() {
   const colorModePopoverRef = useRef<HTMLElement | null>(null);
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
-  const pickerSpinIntervalRef = useRef<number | null>(null);
+  const pickerSpinAnimationFrameRef = useRef<number | null>(null);
   const widgetElementRefs = useRef(new Map<WidgetId, HTMLElement>());
   const widgetDragStateRef = useRef<{
     draggedWidgetId: WidgetId;
@@ -1679,7 +1693,7 @@ function TeacherPopover() {
   } = useInterfaceScaleControls();
   const [isClassMenuOpen, setIsClassMenuOpen] = useState(false);
   const [isPickerSpinning, setIsPickerSpinning] = useState(false);
-  const [spinnerIndex, setSpinnerIndex] = useState(0);
+  const [spinnerPosition, setSpinnerPosition] = useState(0);
   const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
   const [colorModePaletteTarget, setColorModePaletteTarget] = useState<ColorModePaletteTarget | null>(
@@ -1739,11 +1753,11 @@ function TeacherPopover() {
       : isTimerPaused
         ? 'Paused'
         : 'Ready';
-  const pickerSpinnerNames = buildPickerSpinnerNames({
+  const pickerSpinnerView = buildPickerSpinnerView({
     currentPick: picker.currentPick,
     isSpinning: isPickerSpinning,
     names: selectedStudents,
-    spinnerIndex
+    spinnerPosition
   });
   const activeGroups =
     selectedList &&
@@ -1991,18 +2005,18 @@ function TeacherPopover() {
     if (picker.currentPick) {
       const nextIndex = selectedStudents.indexOf(picker.currentPick);
       if (nextIndex >= 0) {
-        setSpinnerIndex(nextIndex);
+        setSpinnerPosition(nextIndex);
         return;
       }
     }
 
-    setSpinnerIndex(0);
+    setSpinnerPosition(0);
   }, [isPickerSpinning, picker.currentPick, selectedStudents]);
 
   useEffect(() => {
     return () => {
-      if (pickerSpinIntervalRef.current !== null) {
-        window.clearInterval(pickerSpinIntervalRef.current);
+      if (pickerSpinAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
       }
     };
   }, []);
@@ -2271,39 +2285,43 @@ function TeacherPopover() {
     );
     const finalIndex = selectedStudents.indexOf(pickedName);
     const normalizedSpinnerIndex = selectedStudents.length
-      ? ((spinnerIndex % selectedStudents.length) + selectedStudents.length) % selectedStudents.length
+      ? getNormalizedPickerIndex(spinnerPosition, selectedStudents.length)
       : 0;
     const totalSteps = getPickerSpinStepCount(
       selectedStudents.length,
       normalizedSpinnerIndex,
       finalIndex
     );
-    let currentStep = 0;
-    let currentIndex = normalizedSpinnerIndex;
+    const spinDurationMs = getPickerSpinDuration(totalSteps);
+    const startPosition = normalizedSpinnerIndex;
+    const endPosition = normalizedSpinnerIndex + totalSteps;
     const selectedListId = selectedList.id;
 
-    if (pickerSpinIntervalRef.current !== null) {
-      window.clearInterval(pickerSpinIntervalRef.current);
+    if (pickerSpinAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
     }
 
     setIsClassMenuOpen(false);
     setIsPickerSpinning(true);
+    setSpinnerPosition(startPosition);
 
-    pickerSpinIntervalRef.current = window.setInterval(() => {
-      currentIndex = (currentIndex + 1) % selectedStudents.length;
-      currentStep += 1;
-      setSpinnerIndex(currentIndex);
+    const spinStartedAt = window.performance.now();
 
-      if (currentStep < totalSteps) {
+    const animatePickerSpin = (timestamp: number) => {
+      const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
+      const easedProgress = easeOutPickerSpin(progress);
+      const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
+
+      setSpinnerPosition(nextPosition);
+
+      if (progress < 1) {
+        pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
         return;
       }
 
-      if (pickerSpinIntervalRef.current !== null) {
-        window.clearInterval(pickerSpinIntervalRef.current);
-        pickerSpinIntervalRef.current = null;
-      }
+      pickerSpinAnimationFrameRef.current = null;
 
-      setSpinnerIndex(finalIndex);
+      setSpinnerPosition(finalIndex);
       setIsPickerSpinning(false);
       setPicker((current) => {
         if (current.selectedListId !== selectedListId) {
@@ -2320,7 +2338,9 @@ function TeacherPopover() {
           )
         };
       });
-    }, PICKER_SPIN_INTERVAL_MS);
+    };
+
+    pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
   };
 
   const startTimer = () => {
@@ -2564,7 +2584,7 @@ function TeacherPopover() {
             onPick={pickStudent}
             onResetCycle={resetCurrentListCycle}
             onToggleRemovePickedStudents={toggleRemovePickedStudents}
-            pickerSpinnerNames={pickerSpinnerNames}
+            pickerSpinnerView={pickerSpinnerView}
             recentPicks={recentPicks}
             removePickedStudents={picker.removePickedStudents}
             selectedStudentCount={selectedStudents.length}
@@ -4202,7 +4222,7 @@ function PickerWidgetContent({
   onPick,
   onResetCycle,
   onToggleRemovePickedStudents,
-  pickerSpinnerNames,
+  pickerSpinnerView,
   recentPicks,
   removePickedStudents,
   selectedStudentCount
@@ -4211,29 +4231,30 @@ function PickerWidgetContent({
   onPick: () => void;
   onResetCycle: () => void;
   onToggleRemovePickedStudents: (removePickedStudents: boolean) => void;
-  pickerSpinnerNames: string[];
+  pickerSpinnerView: PickerSpinnerView;
   recentPicks: string[];
   removePickedStudents: boolean;
   selectedStudentCount: number;
 }) {
   const pickerModeLabel = removePickedStudents ? 'Remove after pick' : 'Keep in list';
+  const pickerSpinnerStyle = {
+    '--picker-spinner-translate': `${pickerSpinnerView.translatePercent}%`
+  } as CSSProperties;
 
   return (
     <>
       <div className="picker-stack">
         <div className={`picker-spinner ${isPickerSpinning ? 'picker-spinner--running' : ''}`}>
           <div className="picker-spinner__fade" />
-          <div className="picker-spinner__track">
-            {pickerSpinnerNames.map((name, index) => (
+          <div className="picker-spinner__track" style={pickerSpinnerStyle}>
+            {pickerSpinnerView.items.map((item) => (
               <span
-                className={`picker-spinner__name ${
-                  index === Math.floor(PICKER_SPINNER_WINDOW_SIZE / 2)
-                    ? 'picker-spinner__name--active'
-                    : ''
+                className={`picker-spinner__name${item.isActive ? ' picker-spinner__name--active' : ''}${
+                  item.isAdjacent ? ' picker-spinner__name--adjacent' : ''
                 }`}
-                key={`${index}-${name || 'empty'}`}
+                key={item.key}
               >
-                {name}
+                {item.name}
               </span>
             ))}
           </div>
@@ -7037,7 +7058,7 @@ function PickerWidgetPopoutCard({
         onPick={picker.pickStudent}
         onResetCycle={picker.resetCurrentListCycle}
         onToggleRemovePickedStudents={picker.toggleRemovePickedStudents}
-        pickerSpinnerNames={picker.pickerSpinnerNames}
+        pickerSpinnerView={picker.pickerSpinnerView}
         recentPicks={picker.recentPicks}
         removePickedStudents={picker.picker.removePickedStudents}
         selectedStudentCount={picker.selectedStudents.length}
@@ -7806,10 +7827,10 @@ function useTimerWidgetState() {
 }
 
 function usePickerWidgetState() {
-  const pickerSpinIntervalRef = useRef<number | null>(null);
+  const pickerSpinAnimationFrameRef = useRef<number | null>(null);
   const [picker, setPicker] = usePickerState();
   const [isPickerSpinning, setIsPickerSpinning] = useState(false);
-  const [spinnerIndex, setSpinnerIndex] = useState(0);
+  const [spinnerPosition, setSpinnerPosition] = useState(0);
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const selectedStudents = selectedList?.students ?? [];
 
@@ -7821,18 +7842,18 @@ function usePickerWidgetState() {
     if (picker.currentPick) {
       const nextIndex = selectedStudents.indexOf(picker.currentPick);
       if (nextIndex >= 0) {
-        setSpinnerIndex(nextIndex);
+        setSpinnerPosition(nextIndex);
         return;
       }
     }
 
-    setSpinnerIndex(0);
+    setSpinnerPosition(0);
   }, [isPickerSpinning, picker.currentPick, selectedStudents]);
 
   useEffect(() => {
     return () => {
-      if (pickerSpinIntervalRef.current !== null) {
-        window.clearInterval(pickerSpinIntervalRef.current);
+      if (pickerSpinAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
       }
     };
   }, []);
@@ -7885,38 +7906,42 @@ function usePickerWidgetState() {
     );
     const finalIndex = selectedStudents.indexOf(pickedName);
     const normalizedSpinnerIndex = selectedStudents.length
-      ? ((spinnerIndex % selectedStudents.length) + selectedStudents.length) % selectedStudents.length
+      ? getNormalizedPickerIndex(spinnerPosition, selectedStudents.length)
       : 0;
     const totalSteps = getPickerSpinStepCount(
       selectedStudents.length,
       normalizedSpinnerIndex,
       finalIndex
     );
-    let currentStep = 0;
-    let currentIndex = normalizedSpinnerIndex;
+    const spinDurationMs = getPickerSpinDuration(totalSteps);
+    const startPosition = normalizedSpinnerIndex;
+    const endPosition = normalizedSpinnerIndex + totalSteps;
     const selectedListId = selectedList.id;
 
-    if (pickerSpinIntervalRef.current !== null) {
-      window.clearInterval(pickerSpinIntervalRef.current);
+    if (pickerSpinAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
     }
 
     setIsPickerSpinning(true);
+    setSpinnerPosition(startPosition);
 
-    pickerSpinIntervalRef.current = window.setInterval(() => {
-      currentIndex = (currentIndex + 1) % selectedStudents.length;
-      currentStep += 1;
-      setSpinnerIndex(currentIndex);
+    const spinStartedAt = window.performance.now();
 
-      if (currentStep < totalSteps) {
+    const animatePickerSpin = (timestamp: number) => {
+      const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
+      const easedProgress = easeOutPickerSpin(progress);
+      const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
+
+      setSpinnerPosition(nextPosition);
+
+      if (progress < 1) {
+        pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
         return;
       }
 
-      if (pickerSpinIntervalRef.current !== null) {
-        window.clearInterval(pickerSpinIntervalRef.current);
-        pickerSpinIntervalRef.current = null;
-      }
+      pickerSpinAnimationFrameRef.current = null;
 
-      setSpinnerIndex(finalIndex);
+      setSpinnerPosition(finalIndex);
       setIsPickerSpinning(false);
       setPicker((current) => {
         if (current.selectedListId !== selectedListId) {
@@ -7933,18 +7958,20 @@ function usePickerWidgetState() {
           )
         };
       });
-    }, PICKER_SPIN_INTERVAL_MS);
+    };
+
+    pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
   };
 
   return {
     isPickerSpinning,
     pickStudent,
     picker,
-    pickerSpinnerNames: buildPickerSpinnerNames({
+    pickerSpinnerView: buildPickerSpinnerView({
       currentPick: picker.currentPick,
       isSpinning: isPickerSpinning,
       names: selectedStudents,
-      spinnerIndex
+      spinnerPosition
     }),
     recentPicks: picker.recentPicks.slice(0, 4),
     resetCurrentListCycle,
@@ -11553,37 +11580,87 @@ function createPredictableListId(name: string, existingIds: string[]) {
   return candidate;
 }
 
-function buildPickerSpinnerNames({
+function buildPickerSpinnerView({
   currentPick,
   isSpinning,
   names,
-  spinnerIndex
+  spinnerPosition
 }: {
   currentPick: string | null;
   isSpinning: boolean;
   names: string[];
-  spinnerIndex: number;
-}) {
-  const centerIndex = Math.floor(PICKER_SPINNER_WINDOW_SIZE / 2);
+  spinnerPosition: number;
+}): PickerSpinnerView {
+  const restingItems = (centerName: string) =>
+    Array.from({ length: PICKER_SPINNER_WINDOW_SIZE }, (_value, index) => ({
+      isActive: index === PICKER_SPINNER_CENTER_INDEX,
+      isAdjacent: false,
+      key: `resting-${index}`,
+      name: index === PICKER_SPINNER_CENTER_INDEX ? centerName : ''
+    }));
 
   if (!names.length) {
-    return Array.from({ length: PICKER_SPINNER_WINDOW_SIZE }, (_value, index) =>
-      index === centerIndex ? 'No list selected' : ''
-    );
+    return {
+      items: restingItems('No list selected'),
+      translatePercent: getPickerSpinnerTranslatePercent(0)
+    };
   }
 
   if (!isSpinning) {
-    return Array.from({ length: PICKER_SPINNER_WINDOW_SIZE }, (_value, index) =>
-      index === centerIndex ? currentPick ?? 'Press Pick' : ''
-    );
+    return {
+      items: restingItems(currentPick ?? 'Press Pick'),
+      translatePercent: getPickerSpinnerTranslatePercent(0)
+    };
   }
 
-  return Array.from({ length: PICKER_SPINNER_WINDOW_SIZE }, (_value, index) => {
-    const offset = index - centerIndex;
-    const normalizedIndex =
-      ((spinnerIndex + offset) % names.length + names.length) % names.length;
-    return names[normalizedIndex];
-  });
+  const baseIndex = Math.floor(spinnerPosition);
+  const offset = spinnerPosition - baseIndex;
+  const activeIndex = PICKER_SPINNER_CENTER_INDEX + Math.round(offset);
+
+  return {
+    items: Array.from({ length: PICKER_SPINNER_WINDOW_SIZE }, (_value, index) => {
+      const itemOffset = index - PICKER_SPINNER_CENTER_INDEX;
+      const normalizedIndex = getNormalizedPickerIndex(baseIndex + itemOffset, names.length);
+      const activeDistance = Math.abs(index - activeIndex);
+
+      return {
+        isActive: activeDistance === 0,
+        isAdjacent: activeDistance === 1,
+        key: `spinning-${index}`,
+        name: names[normalizedIndex]
+      };
+    }),
+    translatePercent: getPickerSpinnerTranslatePercent(offset)
+  };
+}
+
+function getNormalizedPickerIndex(index: number, itemCount: number) {
+  const normalizedItemCount = Math.max(0, itemCount);
+
+  if (normalizedItemCount === 0) {
+    return 0;
+  }
+
+  const roundedIndex = Math.round(index);
+
+  return ((roundedIndex % normalizedItemCount) + normalizedItemCount) % normalizedItemCount;
+}
+
+function getPickerSpinnerTranslatePercent(offset: number) {
+  const leadingHiddenRows = (PICKER_SPINNER_WINDOW_SIZE - PICKER_SPINNER_VISIBLE_SIZE) / 2;
+
+  return ((leadingHiddenRows + offset) * -100) / PICKER_SPINNER_WINDOW_SIZE;
+}
+
+function getPickerSpinDuration(totalSteps: number) {
+  return Math.min(
+    PICKER_SPIN_MAX_DURATION_MS,
+    Math.max(PICKER_SPIN_MIN_DURATION_MS, totalSteps * PICKER_SPIN_STEP_DURATION_MS)
+  );
+}
+
+function easeOutPickerSpin(progress: number) {
+  return 1 - Math.pow(1 - progress, 4);
 }
 
 function getPickerSpinStepCount(studentCount: number, currentIndex: number, finalIndex: number) {
@@ -11595,8 +11672,13 @@ function getPickerSpinStepCount(studentCount: number, currentIndex: number, fina
 
   const landingOffset =
     (finalIndex - currentIndex + normalizedStudentCount) % normalizedStudentCount;
+  let totalSteps = landingOffset;
 
-  return Math.max(normalizedStudentCount, PICKER_SPIN_MIN_STEPS) + landingOffset;
+  while (totalSteps < PICKER_SPIN_MIN_STEPS) {
+    totalSteps += normalizedStudentCount;
+  }
+
+  return totalSteps;
 }
 
 function dedupeNames(names: string[]) {

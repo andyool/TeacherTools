@@ -2345,61 +2345,94 @@ textarea {
 
 .picker-spinner {
   position: relative;
-  min-height: 34px;
+  height: 88px;
+  min-height: 88px;
   overflow: hidden;
-  padding: 3px 0;
+  padding: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.picker-spinner::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  height: 34px;
+  transform: translateY(-50%);
+  border-radius: 8px;
+  border: 1px solid var(--widget-highlight-border);
+  background: var(--widget-highlight-soft);
+  pointer-events: none;
 }
 
 .picker-spinner__fade {
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0) 18%,
-    rgba(255, 255, 255, 0) 82%,
-    rgba(255, 255, 255, 0.08) 100%
+    180deg,
+    rgba(8, 12, 18, 0.42) 0%,
+    rgba(8, 12, 18, 0) 26%,
+    rgba(8, 12, 18, 0) 74%,
+    rgba(8, 12, 18, 0.42) 100%
   );
   pointer-events: none;
+  z-index: 2;
 }
 
 .picker-spinner__track {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 0.65fr) minmax(0, 0.9fr) minmax(0, 2.1fr) minmax(0, 0.9fr) minmax(0, 0.65fr);
-  gap: 2px;
-  align-items: center;
+  height: 166.666667%;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(var(--picker-spinner-translate, -20%));
+  will-change: transform;
 }
 
 .picker-spinner__name {
-  min-height: 16px;
+  min-height: 0;
+  flex: 0 0 20%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 3px;
+  width: 100%;
+  padding: 0 12px;
   color: var(--text-secondary);
-  font-size: 0.72rem;
-  opacity: 0.34;
+  font-size: 0.74rem;
+  font-weight: 700;
+  opacity: 0.28;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: color 120ms ease, opacity 120ms ease, transform 120ms ease;
+  transform: scale(0.9);
+  transition: color 120ms ease, opacity 120ms ease, transform 120ms ease, filter 120ms ease;
+}
+
+.picker-spinner__name--adjacent {
+  opacity: 0.48;
+  transform: scale(0.94);
 }
 
 .picker-spinner__name--active {
   color: var(--text-primary);
-  padding-inline: 8px;
-  font-size: 0.96rem;
+  font-size: 1.08rem;
   font-weight: 800;
   opacity: 1;
-  transform: scale(1.02);
+  transform: scale(1);
 }
 
 .picker-spinner--running .picker-spinner__name--active {
   color: var(--widget-highlight);
+}
+
+.picker-spinner--running .picker-spinner__name {
+  filter: blur(0.15px);
+}
+
+.picker-spinner--running .picker-spinner__name--active {
+  filter: none;
 }
 
 .pill-list {
