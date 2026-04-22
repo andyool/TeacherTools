@@ -2696,6 +2696,7 @@ textarea {
 .planner-widget__meta {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .planner-widget {
@@ -2997,7 +2998,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: visible;
+  max-width: 100%;
   padding: 8px;
 }
 
@@ -3203,18 +3204,23 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .planner-document {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   padding: 9px 10px;
 }
 
 .planner-document__open {
   flex: 1;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -3224,13 +3230,21 @@ textarea {
 }
 
 .planner-document__name {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-primary);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
 .planner-document__path {
+  display: block;
   width: 100%;
+  max-width: 100%;
   color: var(--text-secondary);
   font-size: 0.68rem;
   overflow: hidden;
