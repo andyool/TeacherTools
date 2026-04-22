@@ -268,6 +268,7 @@ textarea {
   --radius-control: 11px;
   --radius-pill: 999px;
   width: 100%;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -291,6 +292,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -1571,6 +1573,7 @@ textarea {
 
 .dashboard-shell {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   overflow: hidden;
@@ -1589,6 +1592,7 @@ textarea {
 
 .dashboard-columns {
   width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -1713,6 +1717,7 @@ textarea {
   flex: 0 0 auto;
   gap: 10px;
   width: 100%;
+  min-width: 0;
   min-height: 0;
   padding: 11px;
   border-radius: var(--radius-card);
@@ -1847,6 +1852,7 @@ textarea {
 }
 
 .widget-card__body-shell {
+  min-width: 0;
   display: grid;
   grid-template-rows: 1fr;
   overflow: visible;
@@ -1859,6 +1865,7 @@ textarea {
 }
 
 .widget-card__body {
+  min-width: 0;
   min-height: 0;
   overflow: visible;
   display: flex;
@@ -2701,6 +2708,8 @@ textarea {
 
 .planner-widget {
   gap: 10px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .planner-widget__toolbar {
@@ -2716,6 +2725,10 @@ textarea {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.planner-documents__header > div {
+  min-width: 0;
 }
 
 .planner-widget__meta {
@@ -2998,7 +3011,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
+  overflow: hidden;
   padding: 8px;
 }
 
@@ -3011,6 +3027,8 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .planner-calendar__header-copy {
@@ -3071,9 +3089,14 @@ textarea {
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .planner-calendar__toggle {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3198,26 +3221,32 @@ textarea {
 
 .planner-documents {
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .planner-documents__list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
 }
 
 .planner-document {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   padding: 9px 10px;
 }
 
 .planner-document__open {
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -3232,6 +3261,7 @@ textarea {
 .planner-document__name {
   display: block;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3244,6 +3274,7 @@ textarea {
 .planner-document__path {
   display: block;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
   color: var(--text-secondary);
   font-size: 0.68rem;
