@@ -3587,7 +3587,7 @@ textarea {
 .bell-schedule-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .bell-schedule__compact-toolbar,
@@ -3640,7 +3640,7 @@ textarea {
 .bell-schedule__summary-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .bell-schedule__summary-head {
@@ -3729,7 +3729,7 @@ textarea {
 .bell-schedule__upcoming {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .bell-schedule__upcoming-list,
@@ -3739,8 +3739,18 @@ textarea {
   gap: 8px;
 }
 
+.bell-schedule__upcoming-list {
+  gap: 4px;
+}
+
+.bell-schedule__upcoming-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .bell-schedule__upcoming-item {
-  padding: 8px 10px;
+  padding: 5px 8px;
 }
 
 .bell-schedule__upcoming-period,
@@ -3748,6 +3758,17 @@ textarea {
 .bell-schedule-editor__slot-title {
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.bell-schedule__upcoming-period,
+.bell-schedule__upcoming-time {
+  flex: 0 0 auto;
+}
+
+.bell-schedule__upcoming-class {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bell-schedule-editor__toolbar {

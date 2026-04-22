@@ -92,6 +92,7 @@ export type ElectronBridge = {
   setOverlayPosition: (position: { x: number; y: number }) => void;
   setCurrentWindowBounds: (bounds: WindowBounds) => void;
   togglePopover: () => void;
+  returnToTeacherTools: () => void;
   closePopover: () => void;
   toggleClassListBuilder: () => void;
   closeClassListBuilder: () => void;

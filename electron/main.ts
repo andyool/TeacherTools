@@ -1481,18 +1481,32 @@ function closePopover() {
   refreshTrayMenu();
 }
 
+function openPopover() {
+  if (popoverWindow) {
+    popoverOpenedAt = Date.now();
+    popoverWindow.show();
+    focusWindowSoon(popoverWindow);
+    refreshTrayMenu();
+    return;
+  }
+
+  createPopoverWindow();
+  refreshTrayMenu();
+}
+
 function togglePopover() {
   if (popoverWindow) {
     closePopover();
     return;
   }
 
-  createPopoverWindow();
+  openPopover();
 }
 
 function toggleBuilderWindow() {
   if (builderWindow) {
     closeBuilderWindow();
+    openPopover();
     return;
   }
 
@@ -1515,6 +1529,20 @@ function toggleWidgetPopoutWindow(widgetId: WidgetPopoutId) {
   }
 
   createWidgetPopoutWindow(widgetId);
+}
+
+function returnToTeacherTools(sourceWebContentsId: number) {
+  const sourceContext = windowContexts.get(sourceWebContentsId);
+
+  if (sourceContext?.role === 'builder') {
+    closeBuilderWindow();
+  } else if (sourceContext?.role === 'widget-picker') {
+    closeWidgetPickerWindow();
+  } else if (sourceContext?.role === 'widget-popout' && sourceContext.widgetId) {
+    closeWidgetPopoutWindow(sourceContext.widgetId);
+  }
+
+  openPopover();
 }
 
 function centerOverlayWindow() {
@@ -1719,6 +1747,10 @@ ipcMain.handle('storage:set', (event, key: unknown, value: unknown) => {
 ipcMain.on('popover:toggle', () => {
   togglePopover();
   refreshTrayMenu();
+});
+
+ipcMain.on('teacher-tools:return', (event) => {
+  returnToTeacherTools(event.sender.id);
 });
 
 ipcMain.on('popover:close', () => {

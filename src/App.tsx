@@ -892,6 +892,10 @@ const fallbackAppUpdateState: AppUpdateState = {
   status: 'unsupported'
 };
 
+function returnToTeacherTools() {
+  window.electronAPI?.returnToTeacherTools();
+}
+
 function App() {
   const [context, setContext] = useState<DesktopWindowContext | null>(null);
 
@@ -3162,7 +3166,7 @@ function WidgetPopoutWindow({
         return;
       }
 
-      window.electronAPI?.toggleWidgetPopout(widgetId);
+      returnToTeacherTools();
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -3269,7 +3273,7 @@ function WidgetPickerWindow() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        window.electronAPI?.closeWidgetPicker();
+        returnToTeacherTools();
       }
     };
 
@@ -3338,7 +3342,7 @@ function WidgetPickerWindow() {
       className="window-stage window-stage--builder window-stage--widget-picker"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          window.electronAPI?.closeWidgetPicker();
+          returnToTeacherTools();
         }
       }}
       ref={stageRef}
@@ -3367,7 +3371,7 @@ function WidgetPickerWindow() {
               <button
                 aria-label="Close widget picker"
                 className="icon-button icon-button--close"
-                onClick={() => window.electronAPI?.closeWidgetPicker()}
+                onClick={returnToTeacherTools}
                 type="button"
               >
                 ×
@@ -3467,7 +3471,7 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        window.electronAPI?.closeClassListBuilder();
+        returnToTeacherTools();
       }
     };
 
@@ -3653,7 +3657,7 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
       className="window-stage window-stage--builder window-stage--class-list-builder"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          window.electronAPI?.closeClassListBuilder();
+          returnToTeacherTools();
         }
       }}
       ref={stageRef}
@@ -3685,7 +3689,7 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
               <button
                 aria-label="Close class list builder"
                 className="icon-button icon-button--close"
-                onClick={() => window.electronAPI?.closeClassListBuilder()}
+                onClick={returnToTeacherTools}
                 type="button"
               >
                 ×
@@ -4105,7 +4109,7 @@ function PopoutWidgetActions({
       />
       <WidgetPopoutButton
         isActive
-        onClick={() => window.electronAPI?.toggleWidgetPopout(widgetId)}
+        onClick={returnToTeacherTools}
         title={title}
       />
       <button
@@ -4113,7 +4117,7 @@ function PopoutWidgetActions({
         className="widget-icon-button widget-icon-button--close"
         onClick={(event) => {
           event.stopPropagation();
-          window.electronAPI?.toggleWidgetPopout(widgetId);
+          returnToTeacherTools();
         }}
         onPointerDown={(event) => {
           event.stopPropagation();
@@ -6712,7 +6716,7 @@ function BellScheduleWidgetContent({
 }) {
   const activeProfileId = controller.activeProfile?.id ?? '';
   const todayHeading = controller.todayDayKey ? BELL_SCHEDULE_DAY_LABELS[controller.todayDayKey] : 'Weekend';
-  const visibleUpcomingEntries = controller.upcomingEntries.slice(0, 2);
+  const visibleUpcomingEntries = controller.upcomingEntries;
   const focusEntry = controller.currentEntry ?? controller.nextEntry;
   const heroTitle = controller.currentEntry
     ? controller.currentEntry.definition.label
@@ -7085,9 +7089,15 @@ function BellScheduleWidgetPopoutCard({
     >
       <BellScheduleWidgetContent
         controller={bellSchedule}
-        onToggleEditor={() =>
-          bellSchedule.setPopoutMode(showEditor ? 'summary' : 'editor')
-        }
+        onToggleEditor={() => {
+          if (showEditor) {
+            bellSchedule.setPopoutMode('summary');
+            returnToTeacherTools();
+            return;
+          }
+
+          bellSchedule.setPopoutMode('editor');
+        }}
         showEditor={showEditor}
       />
     </WidgetCard>
@@ -7505,19 +7515,20 @@ function useBellScheduleController(classLists: ClassList[]) {
       ) as Record<BellScheduleDayKey, BellTimelineEntry[]>
     : createEmptyBellTimelineByDay();
   const todayTimeline = todayDayKey ? weekTimelineByDay[todayDayKey] : [];
+  const todayTeachingTimeline = todayTimeline.filter((entry) => entry.status === 'teaching');
   const currentEntry =
-    todayTimeline.find(
+    todayTeachingTimeline.find(
       (entry) =>
         currentMinutes >= entry.definition.startMinutes &&
         currentMinutes < entry.definition.endMinutes
     ) ?? null;
   const nextEntry =
-    todayTimeline.find((entry) => entry.definition.startMinutes > currentMinutes) ?? null;
+    todayTeachingTimeline.find((entry) => entry.definition.startMinutes > currentMinutes) ?? null;
   const upcomingEntries = currentEntry
-    ? todayTimeline.filter(
+    ? todayTeachingTimeline.filter(
         (entry) => entry.definition.startMinutes >= currentEntry.definition.endMinutes
       )
-    : todayTimeline.filter((entry) => entry.definition.startMinutes > currentMinutes);
+    : todayTeachingTimeline.filter((entry) => entry.definition.startMinutes > currentMinutes);
   const currentStartMs = currentEntry
     ? getTimestampForMinutes(todayDate, currentEntry.definition.startMinutes)
     : null;

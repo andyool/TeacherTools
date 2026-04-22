@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCurrentWindowBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.send('window:set-current-bounds', bounds),
   togglePopover: () => ipcRenderer.send('popover:toggle'),
+  returnToTeacherTools: () => ipcRenderer.send('teacher-tools:return'),
   closePopover: () => ipcRenderer.send('popover:close'),
   toggleClassListBuilder: () => ipcRenderer.send('builder:toggle'),
   closeClassListBuilder: () => ipcRenderer.send('builder:close'),
