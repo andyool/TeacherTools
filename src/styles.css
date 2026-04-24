@@ -939,6 +939,10 @@ textarea {
   min-height: 0;
 }
 
+.panel--main {
+  container-type: inline-size;
+}
+
 .panel--widget-popout {
   height: 100%;
   min-height: 0;
@@ -1101,6 +1105,10 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.toolbar-button__label--compact {
+  display: none;
 }
 
 .theme-icon {
@@ -1576,29 +1584,44 @@ textarea {
   min-width: 0;
   min-height: 0;
   display: flex;
-  overflow: hidden;
-  padding-bottom: 26px;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  padding-bottom: 0;
 }
 
 .dashboard-shell--dragging {
   cursor: default;
 }
 
+.dashboard-shell--scrolling {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  padding-bottom: 12px;
+}
+
 .dashboard-shell--stacked {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 2px;
+  padding-bottom: 12px;
 }
 
 .dashboard-columns {
-  width: 100%;
+  width: calc(100% / var(--dashboard-fit-scale, 1));
   min-width: 0;
-  height: 100%;
+  height: auto;
   min-height: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--dashboard-column-gap, 12px);
+  zoom: var(--dashboard-fit-scale, 1);
+}
+
+.dashboard-shell--scrolling .dashboard-columns {
+  height: auto;
+  min-height: 0;
 }
 
 .dashboard-columns--stacked {
@@ -1610,17 +1633,21 @@ textarea {
 .dashboard-column {
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: var(--dashboard-column-gap, 12px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding-right: 2px;
-  padding-bottom: 26px;
+  padding-bottom: 0;
+}
+
+.dashboard-shell--scrolling .dashboard-column {
+  height: auto;
+  overflow: visible;
 }
 
 .dashboard-column--stacked {
@@ -1708,10 +1735,12 @@ textarea {
   --widget-splash-a: rgba(255, 255, 255, 0);
   --widget-splash-b: rgba(255, 255, 255, 0);
   --widget-splash-c: rgba(255, 255, 255, 0);
+  --widget-body-gap: 10px;
   --widget-highlight: var(--accent);
   --widget-highlight-soft: var(--accent-soft);
   --widget-highlight-border: var(--accent-border);
   --widget-highlight-border-strong: var(--accent-border-strong);
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
@@ -1746,16 +1775,6 @@ textarea {
     box-shadow 120ms ease,
     border-color 120ms ease,
     opacity 120ms ease;
-}
-
-.widget-card--double {
-  width: 100%;
-}
-
-.dashboard-column--span-2 .widget-card--single {
-  width: min(100%, var(--dashboard-lane-width, 100%));
-  max-width: var(--dashboard-lane-width, 100%);
-  align-self: flex-start;
 }
 
 .widget-card--dragging {
@@ -1870,7 +1889,7 @@ textarea {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--widget-body-gap, 10px);
 }
 
 .widget-card--collapsed {
@@ -1889,6 +1908,1602 @@ textarea {
   pointer-events: none;
 }
 
+.dashboard-shell .widget-card {
+  height: var(--widget-target-height, auto);
+  overflow: hidden;
+  transition:
+    height 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease,
+    opacity 180ms ease;
+  will-change: height;
+}
+
+.dashboard-shell .widget-card__body-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card__body {
+  min-height: 0;
+  overflow: hidden;
+  padding-right: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] {
+  --widget-body-gap: 5px;
+  gap: 6px;
+  padding: 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] {
+  --widget-body-gap: 6px;
+  gap: 8px;
+  padding: 9px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] {
+  --widget-body-gap: 7px;
+  gap: 8px;
+  padding: 10px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] {
+  --widget-body-gap: 9px;
+  gap: 9px;
+  padding: 10px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__header,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__header {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__title-group,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__title-group,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__title-group {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__title {
+  font-size: 0.78rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__title {
+  font-size: 0.84rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__title {
+  font-size: 0.88rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .badge,
+.dashboard-shell .widget-card[data-size-tier='3'] .badge {
+  padding: 2px 7px;
+  font-size: 0.66rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-icon-button,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row),
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row),
+.dashboard-shell .widget-card[data-size-tier='3'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row) {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-top-controls,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-top-controls,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-top-controls {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row) {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .helper-text,
+.dashboard-shell .widget-card[data-size-tier='1'] .recent-picks,
+.dashboard-shell .widget-card[data-size-tier='2'] .recent-picks {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .text-toggle {
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 0.68rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon],
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+  color: transparent;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after,
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  content: attr(data-compact-icon);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background: none;
+  color: var(--button-ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-toggle {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .text-toggle {
+  min-height: 29px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .text-toggle {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 0.74rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+  color: transparent;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-readout {
+  font-size: 1.28rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .timer-readout {
+  font-size: 1.46rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .timer-readout {
+  font-size: 1.54rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .timer-readout {
+  font-size: 1.62rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner {
+  height: 56px;
+  min-height: 56px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .picker-spinner {
+  height: 68px;
+  min-height: 68px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .picker-spinner {
+  height: 76px;
+  min-height: 76px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .picker-spinner {
+  height: 82px;
+  min-height: 82px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner::before {
+  height: 28px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
+  font-size: 0.92rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-grid {
+  gap: 5px;
+  max-height: 62px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .group-grid {
+  max-height: 118px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .group-grid {
+  gap: 6px;
+  max-height: 178px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .group-grid {
+  gap: 7px;
+  max-height: 246px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-card {
+  padding: 7px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-member-list__item {
+  padding: 3px 0;
+  font-size: 0.58rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__preview-card {
+  width: min(100%, 92px);
+  padding: 7px;
+  border-radius: 12px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__preview-card {
+  width: min(100%, 142px);
+  padding: 10px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .qr-widget__preview-card {
+  width: min(100%, 168px);
+  padding: 11px;
+  border-radius: 15px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .qr-widget__preview-card {
+  width: min(100%, 190px);
+  padding: 12px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__empty {
+  min-height: 56px;
+  padding: 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__empty {
+  min-height: 104px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .qr-widget__empty {
+  min-height: 142px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .qr-widget__empty {
+  min-height: 176px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .notes-list {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-row {
+  padding: 7px 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-row p {
+  font-size: 0.66rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .text-area--planner {
+  min-height: 72px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .text-area--planner {
+  min-height: 96px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .text-area--planner {
+  min-height: 126px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__eyebrow,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__eyebrow,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__summary,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__summary {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar::before,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar::before {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__header {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents {
+  gap: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__header {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__header > div,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__header > div,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__copy,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__toolbar {
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__action-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-field,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-field {
+  height: 30px;
+  font-size: 0.72rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-area,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-area {
+  min-height: 64px;
+  font-size: 0.72rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-field--date,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-field--date {
+  min-width: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-input-row .text-field,
+.dashboard-shell .widget-card[data-size-tier='2'] .note-input-row .text-field {
+  flex: 1 1 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='2'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='1'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .notes-list {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__meta,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__meta {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__top-controls {
+  align-items: flex-end;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__hint,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__hint {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='homework-assessment'] .tracker-record__description {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-record-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-record-list {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section + .tracker-summary__section {
+  padding-top: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__compact-toolbar {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__profile-select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-card {
+  padding: 9px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-detail {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-title {
+  font-size: 0.92rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-time {
+  font-size: 0.72rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-card {
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-footer,
+.dashboard-shell .widget-card[data-size-tier='2'] .seating-chart__preview-footer {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-grid {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-cell,
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-item {
+  border-radius: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] {
+  --widget-body-gap: 4px;
+  gap: 4px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__header {
+  min-height: 24px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__collapse,
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-icon-button {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__meta {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .badge {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__body {
+  gap: 4px;
+  padding-right: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  font-size: 0.72rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-primary-actions,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.text-field, .text-area) {
+  min-height: 0;
+  height: 26px;
+  padding: 0 7px;
+  font-size: 0.68rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .field-label,
+.dashboard-shell .widget-card[data-size-tier='1'] .card-label {
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-preset-toggle,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-readout {
+  font-size: 1.08rem;
+  line-height: 0.95;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .progress {
+  height: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-widget__top-controls {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-controls-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner {
+  height: 42px;
+  min-height: 42px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner::before {
+  height: 22px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name:not(.picker-spinner__name--active) {
+  opacity: 0.18;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
+  font-size: 0.8rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-maker__top-controls {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='group-maker'] .group-maker__empty {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .group-maker__controls {
+  gap: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .custom-row {
+  flex-wrap: nowrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .stepper__button,
+.dashboard-shell .widget-card[data-size-tier='1'] .stepper__value {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 0.68rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-card,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-footer {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-footer {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-card {
+  padding: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-grid {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar {
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__meta {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .text-area--planner {
+  height: 40px;
+  min-height: 40px;
+  padding: 6px 7px;
+  line-height: 1.2;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary {
+  gap: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-summary__empty {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section + .tracker-summary__section {
+  padding-top: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls {
+  gap: 4px;
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls .field-stack {
+  flex-basis: 100px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__preview-card {
+  width: 52px;
+  padding: 4px;
+  border-radius: 9px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__empty {
+  min-height: 30px;
+  padding: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__empty {
+  min-height: 68px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-input-row {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__compact-toolbar {
+  gap: 4px;
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-card {
+  gap: 4px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-head,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-time,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__status-pill {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-title {
+  font-size: 0.78rem;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__summary-detail,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
+  display: none;
+}
+
+@container (max-width: 244px) {
+  .dashboard-shell .widget-card :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 999px;
+    color: transparent;
+    font-size: 0;
+    letter-spacing: 0;
+    flex: 0 0 auto;
+  }
+
+  .dashboard-shell .widget-card :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+    content: attr(data-compact-icon);
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 0;
+    background: none;
+    color: var(--button-ink);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .dashboard-shell .widget-card .widget-card__meta .badge {
+    display: none;
+  }
+
+  .dashboard-shell .widget-card .widget-card__body {
+    gap: 5px;
+  }
+
+  .dashboard-shell .widget-card .widget-top-controls,
+  .dashboard-shell .widget-card :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row) {
+    gap: 5px;
+  }
+
+  .dashboard-shell .widget-card .planner-widget__toolbar,
+  .dashboard-shell .widget-card .qr-widget__top-controls {
+    align-items: stretch;
+  }
+
+  .dashboard-shell .widget-card .planner-widget__action-row {
+    justify-content: flex-start;
+  }
+}
+
+@container (max-width: 320px) {
+  .widget-card[data-widget-id='planner'] .planner-widget__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__meta,
+  .widget-card[data-widget-id='planner'] .planner-widget__action-row {
+    width: 100%;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__action-row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.06fr) minmax(0, 1.16fr);
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__action-button {
+    width: 100%;
+    min-height: 32px;
+    padding: 6px 6px;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__action-label {
+    font-size: 0.62rem;
+    line-height: 1.08;
+    white-space: normal;
+    text-wrap: balance;
+  }
+}
+
+@container (max-width: 250px) {
+  .widget-card[data-widget-id='planner'] .planner-widget__action-row {
+    gap: 3px;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__action-label {
+    font-size: 0.56rem;
+    line-height: 1.04;
+  }
+
+  .widget-card[data-widget-id='planner'] .planner-widget__action-button {
+    min-height: 30px;
+    padding: 5px 4px;
+  }
+}
+
+.dashboard-shell .widget-card:not(.widget-card--collapsed) {
+  height: auto;
+  min-height: var(--widget-target-height, auto);
+  overflow: visible;
+}
+
+.dashboard-shell .widget-card:not(.widget-card--collapsed) .widget-card__body-shell,
+.dashboard-shell .widget-card:not(.widget-card--collapsed) .widget-card__body {
+  overflow: visible;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__body {
+  zoom: 0.54;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__body {
+  zoom: 0.66;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__body {
+  zoom: 0.8;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .widget-card__body {
+  zoom: 0.92;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .helper-text,
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__hint,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__hint,
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-summary__empty,
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-detail,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='homework-assessment'] .tracker-record__description,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__header > div,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__header > div {
+  display: block;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .badge,
+.dashboard-shell .widget-card[data-size-tier='2'] .badge,
+.dashboard-shell .widget-card[data-size-tier='3'] .badge {
+  display: inline-flex;
+}
+
+@container (max-width: 244px) {
+  .dashboard-shell .widget-card .widget-card__meta .badge {
+    display: inline-flex;
+  }
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .recent-picks,
+.dashboard-shell .widget-card[data-size-tier='2'] .recent-picks,
+.dashboard-shell .widget-card[data-size-tier='1'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__meta,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__meta,
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-record-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-record-list,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__copy,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__copy,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__header-copy,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__header-copy,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-footer,
+.dashboard-shell .widget-card[data-size-tier='2'] .seating-chart__preview-footer {
+  display: flex;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='2'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='3'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='4'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__weekdays,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__grid,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__weekdays,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__grid,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
+  display: grid;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-preset-toggle,
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__status-pill,
+.dashboard-shell .widget-card[data-size-tier='2'] .bell-schedule__status-pill {
+  display: inline-flex;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row,
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-head,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='group-maker'] .group-maker__empty {
+  display: flex;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-time {
+  display: inline;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-card,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-card {
+  display: block;
+}
+
+.dashboard-shell .widget-card[data-size-tier] .group-grid {
+  max-height: none;
+  overflow: visible;
+}
+
+.dashboard-shell .widget-card[data-size-tier] .note-row p {
+  display: block;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+  overflow: visible;
+}
+
+.dashboard-shell .widget-card[data-size-tier] :is(
+  .group-member-list__item,
+  .planner-document__name,
+  .planner-document__path,
+  .bell-schedule__upcoming-class,
+  .picker-spinner__name
+) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.dashboard-shell .widget-card[data-size-tier] .text-area {
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card {
+  will-change: auto;
+}
+
+.panel__content--popout {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'],
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'],
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] {
+  gap: 8px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] {
+  --widget-body-gap: 6px;
+  padding: 8px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] {
+  --widget-body-gap: 8px;
+  padding: 9px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] {
+  --widget-body-gap: 9px;
+  padding: 10px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__header,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__header,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__header,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__title-group,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__title-group,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__title-group {
+  gap: 6px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__title,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__title,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__title,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .widget-card__title {
+  font-size: 0.92rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .badge,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .badge,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .badge,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .badge {
+  font-size: 0.7rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__meta {
+  gap: 4px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__meta .badge {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__collapse,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-icon-button {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__body,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__body,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__body,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .widget-card__body {
+  zoom: 1;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  ),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  ),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  ),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  ) {
+  min-height: 30px;
+  font-size: 0.76rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon] {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+  color: transparent;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon]::after {
+  content: attr(data-compact-icon);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  color: var(--button-ink);
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon] {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--button-ink);
+  font-size: 0.76rem;
+  letter-spacing: normal;
+  flex: 0 0 auto;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon]::after {
+  content: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .timer-readout,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .timer-readout,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .timer-readout,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .timer-readout {
+  font-size: 1.68rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(.text-field, .text-area),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] :is(.text-field, .text-area),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] :is(.text-field, .text-area),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] :is(.text-field, .text-area) {
+  font-size: 0.8rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .field-label,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .card-label,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .field-label,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .card-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .stepper__button,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .stepper__value,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .stepper__button,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .stepper__value {
+  font-size: 0.76rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-top-controls,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-top-controls,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .action-row,
+    .segmented-row,
+    .custom-row,
+    .helper-row,
+    .note-input-row
+  ),
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] :is(
+    .action-row,
+    .segmented-row,
+    .custom-row,
+    .helper-row,
+    .note-input-row
+  ) {
+  gap: 6px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .action-row,
+    .segmented-row,
+    .custom-row,
+    .helper-row,
+    .note-input-row
+  ) {
+  justify-content: flex-start;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-primary-actions {
+  flex-wrap: nowrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .timer-preset-toggle,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .segmented-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .timer-preset-toggle {
+  display: inline-flex;
+  width: 100%;
+  min-height: 22px;
+  padding: 0 6px;
+  font-size: 0.6rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row {
+  display: flex;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row {
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row .helper-text {
+  display: block;
+  font-size: 0.6rem;
+  line-height: 1.1;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .stepper {
+  margin-left: auto;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .stepper__button,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .stepper__value {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  font-size: 0.62rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='timer'] .stepper__value {
+  min-width: 30px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .progress {
+  height: 4px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .picker-widget__top-controls,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .group-maker__top-controls {
+  flex-direction: row;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .picker-controls-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .group-maker__controls {
+  flex: 1 1 180px;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .custom-row {
+  flex-wrap: nowrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .recent-picks,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .recent-picks,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .notes-list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .qr-widget__meta,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .qr-widget__meta,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .qr-widget__hint,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .tracker-record-list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .tracker-record-list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-widget__copy,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .planner-widget__copy,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-documents,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .planner-documents,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .tracker-summary__empty,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .tracker-summary__empty,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-footer,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-footer {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-documents,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-documents {
+  display: flex;
+  gap: 4px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-documents__list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-documents__list {
+  display: flex;
+  gap: 4px;
+  max-height: 92px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-document,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-document {
+  padding: 6px 7px;
+  gap: 6px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-document__name,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-document__name {
+  font-size: 0.7rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-document__path,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-document__path {
+  font-size: 0.62rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='notes'] .notes-list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='notes'] .notes-list {
+  display: flex;
+  min-height: 0;
+  gap: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='notes'] .note-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='notes'] .note-row {
+  padding: 7px 8px;
+  gap: 6px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='notes'] .note-row__delete,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='notes'] .note-row__delete {
+  width: 18px;
+  height: 18px;
+  font-size: 0.82rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .picker-spinner {
+  height: 52px;
+  min-height: 52px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .picker-spinner {
+  height: 66px;
+  min-height: 66px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .picker-spinner {
+  height: 78px;
+  min-height: 78px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .qr-widget__top-controls,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-widget__toolbar,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-widget__action-row,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .bell-schedule__compact-toolbar {
+  align-items: stretch;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  justify-content: flex-start;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='planner'] .widget-card__body,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='timer'] .widget-card__body,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='notes'] .widget-card__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar--collapsed,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-calendar--collapsed {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-widget--calendar-open .planner-widget__plan,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-widget--calendar-open .planner-widget__plan {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar__header,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-calendar__header {
+  align-items: center;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar__title,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-calendar__title {
+  font-size: 0.78rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar__badge {
+  display: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar__weekdays span {
+  font-size: 0.48rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-calendar__weekdays span {
+  font-size: 0.52rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar__day {
+  height: 26px;
+  border-radius: 8px;
+  font-size: 0.66rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-calendar__day {
+  height: 30px;
+  border-radius: 9px;
+  font-size: 0.7rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .text-area--planner {
+  min-height: 72px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .text-area--planner {
+  min-height: 96px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .text-area--planner {
+  min-height: 120px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .qr-widget__preview-card {
+  width: min(100%, 84px);
+  padding: 8px;
+  border-radius: 12px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .qr-widget__preview-card {
+  width: min(100%, 136px);
+  padding: 10px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .qr-widget__empty {
+  min-height: 84px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .qr-widget__empty {
+  min-height: 124px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .note-input-row .text-field,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .note-input-row .text-field {
+  flex: 1 1 0;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .note-row p,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .note-row p {
+  font-size: 0.76rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .group-member-list__item,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .group-member-list__item {
+  font-size: 0.65rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-head,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-time,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__status-pill,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__summary-detail {
+  display: none;
+}
+
+@container (max-width: 244px) {
+  :is(.dashboard-shell, .window-stage--widget-popout) .widget-card:not([data-size-tier='1']) :is(
+      .toolbar-link,
+      .primary-link,
+      .secondary-link,
+      .danger-link,
+      .text-toggle
+    )[data-compact-icon] {
+    width: auto;
+    min-width: 0;
+    height: auto;
+    min-height: 30px;
+    padding: 0 10px;
+    color: var(--button-ink);
+    font-size: 0.76rem;
+    letter-spacing: normal;
+    flex: 0 0 auto;
+  }
+
+  :is(.dashboard-shell, .window-stage--widget-popout) .widget-card:not([data-size-tier='1']) :is(
+      .toolbar-link,
+      .primary-link,
+      .secondary-link,
+      .danger-link,
+      .text-toggle
+    )[data-compact-icon]::after {
+    content: none;
+  }
+}
+
+.window-stage--resizing .widget-card,
+.window-stage--resizing .widget-card__body-shell,
+.window-stage--resizing .widget-card__body,
+.window-stage--resizing .progress__fill,
+.window-stage--resizing .picker-spinner__name,
+.window-stage--resizing .planner-calendar__day {
+  transition: none !important;
+}
+
 .color-mode-trigger {
   gap: 8px;
 }
@@ -1898,7 +3513,12 @@ textarea {
 }
 
 .color-mode-trigger--toolbar {
+  min-width: 0;
+  max-width: 100%;
+  container-type: inline-size;
+  gap: clamp(4px, 1px + 1.1cqi, 8px);
   padding: 0 12px 0 10px;
+  font-size: clamp(0.6rem, 0.48rem + 1.1cqi, 0.76rem);
 }
 
 .color-mode-trigger__preview {
@@ -1913,7 +3533,28 @@ textarea {
 }
 
 .color-mode-trigger__text {
+  min-width: 0;
+  font-size: inherit;
   line-height: 1;
+  white-space: nowrap;
+}
+
+@container (max-width: 88px) {
+  .color-mode-trigger__text {
+    font-size: 0.68rem;
+  }
+}
+
+@container (max-width: 66px) {
+  .color-mode-trigger__text {
+    display: none;
+  }
+
+  .color-mode-trigger__preview {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+  }
 }
 
 .color-mode-trigger--active {
@@ -2168,6 +3809,19 @@ textarea {
   flex-wrap: wrap;
 }
 
+.widget-top-controls {
+  flex: 0 0 auto;
+}
+
+.widget-primary-actions {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+}
+
+.widget-top-controls :is(.action-row, .helper-row, .custom-row, .note-input-row) {
+  flex: 0 0 auto;
+}
+
 .text-toggle {
   display: inline-flex;
   align-items: center;
@@ -2214,6 +3868,17 @@ textarea {
 
 .picker-controls-row {
   justify-content: flex-end;
+}
+
+.picker-widget__top-controls,
+.group-maker__top-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-maker__top-controls {
+  gap: 8px;
 }
 
 .picker-mode-toggle {
@@ -2651,6 +4316,22 @@ textarea {
   gap: 10px;
 }
 
+.qr-widget__top-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qr-widget__top-controls .field-stack {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.qr-widget__top-controls .secondary-link {
+  min-height: 34px;
+}
+
 .qr-widget__preview-shell,
 .qr-widget__meta {
   gap: 8px;
@@ -2689,15 +4370,6 @@ textarea {
   padding: 18px;
 }
 
-.qr-widget__actions {
-  align-items: flex-start;
-}
-
-.qr-widget__actions .helper-text {
-  flex: 1;
-  min-width: 0;
-}
-
 .planner-widget,
 .planner-documents,
 .planner-widget__meta {
@@ -2717,6 +4389,16 @@ textarea {
   align-items: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.planner-widget__action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .planner-documents__header {
@@ -2745,6 +4427,30 @@ textarea {
 .planner-widget__today {
   min-height: 34px;
   padding: 0 12px;
+}
+
+.planner-widget__action-button {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 34px;
+  flex: 0 1 auto;
+  padding: 0 12px;
+}
+
+.planner-widget__action-label {
+  display: block;
+  min-width: 0;
+  font-size: 0.76rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.planner-calendar__toggle .planner-widget__action-label {
+  white-space: nowrap;
+}
+
+.planner-calendar__toggle {
+  max-width: 100%;
 }
 
 .planner-widget__copy {
@@ -2844,8 +4550,12 @@ textarea {
 
 .tracker-summary__footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding-top: 2px;
+}
+
+.tracker-summary__footer.widget-top-controls {
+  padding-top: 0;
 }
 
 .tracker-panel__header {
@@ -3038,6 +4748,19 @@ textarea {
   gap: 4px;
 }
 
+.planner-calendar__month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.planner-calendar__month-button {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+}
+
 .planner-calendar__eyebrow {
   color: var(--text-secondary);
   font-size: 0.58rem;
@@ -3082,22 +4805,10 @@ textarea {
   line-height: 1.25;
 }
 
-.planner-calendar__controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
-  max-width: 100%;
-}
-
 .planner-calendar__toggle {
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
 }
 
 .planner-calendar__weekdays,
@@ -3902,6 +5613,11 @@ textarea {
   gap: 10px;
 }
 
+.seating-chart__preview-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .seating-chart__preview-card {
   padding: 10px;
   border-radius: var(--radius-card);
@@ -4321,20 +6037,10 @@ textarea {
   align-items: center;
 }
 
-.window-stage--widget-popout .widget-card[data-widget-id='seating-chart'] .widget-card__body {
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
 @media (max-width: 980px) {
   .seating-chart__workspace {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.window-stage--widget-popout .widget-card[data-widget-id='bell-schedule'] .widget-card__body {
-  overflow-y: auto;
-  padding-right: 2px;
 }
 
 @media (max-width: 420px) {
@@ -4382,8 +6088,10 @@ textarea {
   }
 
   .planner-widget__toolbar,
+  .planner-widget__action-row,
   .planner-documents__header {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .planner-widget__meta {
@@ -4396,10 +6104,6 @@ textarea {
 
   .planner-calendar__header {
     flex-direction: column;
-  }
-
-  .planner-calendar__controls {
-    align-self: flex-end;
   }
 
   .bell-schedule__compact-toolbar,
@@ -4434,5 +6138,164 @@ textarea {
 
   .seating-chart__canvas {
     grid-template-columns: 18px minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 720px) {
+  .panel--main .panel-header--main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .panel--main .panel-header__title {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .panel--main .panel-toolbar {
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+}
+
+@container (max-width: 640px) {
+  .panel--main .panel-toolbar {
+    display: grid;
+    grid-template-columns: minmax(88px, 128px) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+  }
+
+  .panel--main .picker-select--toolbar {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    gap: 0;
+  }
+
+  .panel--main .toolbar-caption,
+  .panel--main .update-status-pill {
+    display: none;
+  }
+
+  .panel--main .picker-select__trigger {
+    min-height: 30px;
+    padding: 0 9px;
+  }
+
+  .panel--main .picker-select__trigger > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel--main .picker-select__menu--toolbar {
+    right: auto;
+    min-width: min(220px, calc(100cqw - 28px));
+  }
+
+  .panel--main .panel-actions,
+  .panel--main .update-toolbar {
+    min-width: 0;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .panel--main .panel-actions {
+    justify-content: flex-end;
+  }
+
+  .panel--main .toolbar-link {
+    min-width: 0;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .panel--main .color-mode-trigger__preview {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+  }
+
+  .panel--main .zoom-controls {
+    gap: 4px;
+  }
+
+  .panel--main .icon-button {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+  }
+
+  .panel--main .zoom-controls .icon-button {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@container (max-width: 520px) {
+  .panel--main .panel-toolbar {
+    grid-template-columns: minmax(76px, 96px) minmax(0, 1fr);
+    column-gap: 6px;
+  }
+
+  .panel--main .panel-actions,
+  .panel--main .update-toolbar,
+  .panel--main .zoom-controls {
+    gap: 3px;
+  }
+
+  .panel--main .picker-select__trigger {
+    min-height: 28px;
+    padding: 0 8px;
+  }
+
+  .panel--main .toolbar-link {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+  }
+
+  .panel--main .toolbar-button__label--full {
+    display: none;
+  }
+
+  .panel--main .toolbar-button__label--compact {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.08rem;
+    line-height: 1;
+  }
+
+  .panel--main .icon-button,
+  .panel--main .color-mode-trigger--toolbar {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 9px;
+  }
+
+  .panel--main .color-mode-trigger--toolbar {
+    width: 28px;
+    min-width: 28px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .panel--main .color-mode-trigger__text {
+    display: none;
+  }
+
+  .panel--main .zoom-controls .icon-button {
+    width: 26px;
+    height: 26px;
   }
 }

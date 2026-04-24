@@ -274,7 +274,7 @@ type ColorModeAppearanceContextValue = {
   preferences: ColorModePreferences;
   theme: ThemeMode;
 };
-type WidgetWidthCategory = 'double' | 'single';
+type WidgetSizeTier = 1 | 2 | 3 | 4 | 5;
 
 type WidgetLayout = {
   order: WidgetId[];
@@ -285,11 +285,10 @@ type WidgetLayout = {
 type DashboardMetrics = {
   columnCount: number;
   gap: number;
-  laneWidth: number;
+  height: number;
 };
 
 type DashboardColumn = {
-  span: 1 | 2;
   widgetIds: WidgetId[];
 };
 
@@ -353,15 +352,19 @@ const PICKER_SPIN_MIN_STEPS = 8;
 const PICKER_SPIN_MIN_DURATION_MS = 850;
 const PICKER_SPIN_MAX_DURATION_MS = 1500;
 const PICKER_SPIN_STEP_DURATION_MS = 48;
-const MIN_POPOVER_WIDTH = 320;
-const MIN_POPOVER_HEIGHT = 320;
+const MIN_POPOVER_WIDTH = 260;
+const MIN_POPOVER_HEIGHT = 300;
 const QR_WIDGET_SVG_BORDER_MODULES = 2;
 const CLASS_LIST_TEXTAREA_MIN_HEIGHT = 176;
 const WINDOW_EDGE_MARGIN = 14;
 const LAYOUT_FALLBACK_KEY = '__default__';
 const DASHBOARD_COLUMN_GAP = 12;
 const DASHBOARD_SINGLE_MAX_WIDTH = 360;
-const DASHBOARD_SINGLE_MIN_WIDTH = 232;
+const DASHBOARD_SINGLE_MIN_WIDTH = 184;
+const DASHBOARD_FIT_BOTTOM_PADDING = 8;
+const DASHBOARD_FIT_SCALE_MIN = 0.72;
+const WIDGET_SIZE_MIN: WidgetSizeTier = 1;
+const WIDGET_SIZE_MAX: WidgetSizeTier = 5;
 const DEFAULT_INTERFACE_SCALE = 1;
 const INTERFACE_SCALE_STEP = 0.1;
 const INTERFACE_SCALE_MIN = 0.5;
@@ -458,6 +461,17 @@ const WIDGET_POPOUT_MIN_SIZES: Record<WidgetId, { minHeight: number; minWidth: n
   'qr-generator': { minWidth: 320, minHeight: 320 },
   notes: { minWidth: 300, minHeight: 244 },
   planner: { minWidth: 360, minHeight: 420 }
+};
+const WIDGET_POPOUT_DEFAULT_SIZES: Record<WidgetId, { height: number; width: number }> = {
+  timer: { width: 352, height: 304 },
+  picker: { width: 392, height: 332 },
+  'group-maker': { width: 600, height: 456 },
+  'seating-chart': { width: 980, height: 760 },
+  'bell-schedule': { width: 380, height: 340 },
+  'homework-assessment': { width: 820, height: 860 },
+  'qr-generator': { width: 420, height: 460 },
+  notes: { width: 420, height: 420 },
+  planner: { width: 600, height: 720 }
 };
 const THEME_CYCLE_ORDER: ThemePreference[] = ['system', 'light', 'dark', 'color'];
 const COLOR_MODE_SWATCHES: ColorModeSwatch[] = [
@@ -577,53 +591,43 @@ const WIDGET_DETAILS: Record<
   {
     description: string;
     title: string;
-    width: WidgetWidthCategory;
   }
 > = {
   timer: {
     title: 'Timer',
-    description: 'Countdown presets and a custom class timer.',
-    width: 'single'
+    description: 'Countdown presets and a custom class timer.'
   },
   picker: {
     title: 'Student Picker',
-    description: 'Cycle through the current roster and choose a student at random.',
-    width: 'single'
+    description: 'Cycle through the current roster and choose a student at random.'
   },
   'group-maker': {
     title: 'Group Maker',
-    description: 'Shuffle the current class into balanced groups.',
-    width: 'double'
+    description: 'Shuffle the current class into balanced groups.'
   },
   'seating-chart': {
     title: 'Seating Chart',
-    description: 'Preview the current seating plan and open the editor to make changes.',
-    width: 'single'
+    description: 'Preview the current seating plan and open the editor to make changes.'
   },
   'bell-schedule': {
     title: 'Bell Schedule',
-    description: 'Track the current period, time remaining, and your saved weekly profiles.',
-    width: 'single'
+    description: 'Track the current period, time remaining, and your saved weekly profiles.'
   },
   planner: {
     title: 'Class Planner',
-    description: 'Plan each class by date and keep lesson documents attached.',
-    width: 'double'
+    description: 'Plan each class by date and keep lesson documents attached.'
   },
   'homework-assessment': {
     title: 'Homework / Assessment Tracker',
-    description: 'Track due dates, status, and reminders across classes.',
-    width: 'single'
+    description: 'Track due dates, status, and reminders across classes.'
   },
   'qr-generator': {
     title: 'QR Generator',
-    description: 'Paste a link and generate a scan-ready QR code on the dashboard.',
-    width: 'single'
+    description: 'Paste a link and generate a scan-ready QR code on the dashboard.'
   },
   notes: {
     title: 'Notes',
-    description: 'Quick sticky notes for reminders, tasks, and prompts.',
-    width: 'single'
+    description: 'Quick sticky notes for reminders, tasks, and prompts.'
   }
 };
 const WIDGET_ESTIMATED_HEIGHTS: Record<WidgetId, number> = {
@@ -636,6 +640,25 @@ const WIDGET_ESTIMATED_HEIGHTS: Record<WidgetId, number> = {
   'homework-assessment': 392,
   'qr-generator': 428,
   notes: 246
+};
+const WIDGET_DASHBOARD_HEIGHTS: Record<WidgetId, Record<WidgetSizeTier, number>> = {
+  timer: { 1: 108, 2: 150, 3: 186, 4: 230, 5: WIDGET_ESTIMATED_HEIGHTS.timer },
+  picker: { 1: 114, 2: 156, 3: 198, 4: 234, 5: WIDGET_ESTIMATED_HEIGHTS.picker },
+  'group-maker': { 1: 126, 2: 182, 3: 244, 4: 340, 5: WIDGET_ESTIMATED_HEIGHTS['group-maker'] },
+  'seating-chart': { 1: 96, 2: 148, 3: 226, 4: 306, 5: WIDGET_ESTIMATED_HEIGHTS['seating-chart'] },
+  'bell-schedule': { 1: 118, 2: 164, 3: 220, 4: 274, 5: WIDGET_ESTIMATED_HEIGHTS['bell-schedule'] },
+  planner: { 1: 146, 2: 228, 3: 338, 4: 474, 5: WIDGET_ESTIMATED_HEIGHTS.planner },
+  'homework-assessment': { 1: 106, 2: 162, 3: 238, 4: 332, 5: WIDGET_ESTIMATED_HEIGHTS['homework-assessment'] },
+  'qr-generator': { 1: 144, 2: 208, 3: 294, 4: 368, 5: WIDGET_ESTIMATED_HEIGHTS['qr-generator'] },
+  notes: { 1: 98, 2: 142, 3: 190, 4: 228, 5: WIDGET_ESTIMATED_HEIGHTS.notes }
+};
+const WIDGET_COLLAPSED_DASHBOARD_HEIGHT = 52;
+const WIDGET_SIZE_TIER_LABELS: Record<WidgetSizeTier, string> = {
+  1: 'compact',
+  2: 'small',
+  3: 'medium',
+  4: 'large',
+  5: 'full'
 };
 const DEFAULT_TIMER: TimerSnapshot = {
   baseDurationMs: 5 * 60 * 1000,
@@ -956,7 +979,32 @@ function GlobalTooltipLayer() {
         return null;
       }
 
-      return target.closest<HTMLElement>('[data-tooltip-content]');
+      return target.closest<HTMLElement>(
+        '[data-tooltip-content], .widget-card button, .widget-card [role="button"], .widget-picker-window button'
+      );
+    };
+
+    const getTooltipText = (element: HTMLElement) => {
+      const explicitText = element.dataset.tooltipContent?.trim();
+      if (explicitText) {
+        return explicitText;
+      }
+
+      if (!element.closest('.widget-card') && !element.closest('.widget-picker-window')) {
+        return '';
+      }
+
+      const labelText = element.getAttribute('aria-label')?.trim();
+      if (labelText) {
+        return labelText;
+      }
+
+      const titleText = element.getAttribute('title')?.trim();
+      if (titleText) {
+        return titleText;
+      }
+
+      return element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     };
 
     const hideTooltip = () => {
@@ -971,7 +1019,7 @@ function GlobalTooltipLayer() {
         return;
       }
 
-      const text = activeElement.dataset.tooltipContent?.trim() ?? '';
+      const text = getTooltipText(activeElement);
       if (!text) {
         hideTooltip();
         return;
@@ -993,7 +1041,7 @@ function GlobalTooltipLayer() {
         activeElementRef.current = null;
       }
 
-      const title = element.dataset.tooltipContent?.trim() ?? '';
+      const title = getTooltipText(element);
       if (!title) {
         hideTooltip();
         return;
@@ -1428,6 +1476,82 @@ function useWindowResizeHandles({
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const queuedBoundsRef = useRef<WindowBounds | null>(null);
+  const lastSentBoundsRef = useRef<WindowBounds | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const flushQueuedBounds = () => {
+    animationFrameRef.current = null;
+
+    const queuedBounds = queuedBoundsRef.current;
+    if (!queuedBounds) {
+      return;
+    }
+
+    if (
+      lastSentBoundsRef.current &&
+      queuedBounds.x === lastSentBoundsRef.current.x &&
+      queuedBounds.y === lastSentBoundsRef.current.y &&
+      queuedBounds.width === lastSentBoundsRef.current.width &&
+      queuedBounds.height === lastSentBoundsRef.current.height
+    ) {
+      return;
+    }
+
+    lastSentBoundsRef.current = queuedBounds;
+    window.electronAPI?.setCurrentWindowBounds(queuedBounds);
+  };
+
+  const scheduleResize = (nextBounds: WindowBounds) => {
+    queuedBoundsRef.current = nextBounds;
+
+    if (animationFrameRef.current !== null) {
+      return;
+    }
+
+    animationFrameRef.current = window.requestAnimationFrame(flushQueuedBounds);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!document.body) {
+      return;
+    }
+
+    if (isResizing) {
+      document.body.dataset.windowResizing = 'true';
+      return () => {
+        delete document.body.dataset.windowResizing;
+      };
+    }
+
+    delete document.body.dataset.windowResizing;
+    return undefined;
+  }, [isResizing]);
+
+  const getLiveWindowBounds = () => {
+    const width = Math.round(window.outerWidth);
+    const height = Math.round(window.outerHeight);
+
+    if (!(width > 0 && height > 0)) {
+      return null;
+    }
+
+    return {
+      x: Math.round(window.screenX),
+      y: Math.round(window.screenY),
+      width,
+      height
+    };
+  };
 
   const beginResize = (corner: ResizeCorner, event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1445,8 +1569,9 @@ function useWindowResizeHandles({
     const startPointerY = event.screenY;
 
     handle.setPointerCapture(pointerId);
+    setIsResizing(true);
 
-    window.electronAPI.getCurrentWindowBounds().then((startBounds) => {
+    const beginWithBounds = (startBounds: WindowBounds) => {
       if (!handle.hasPointerCapture(pointerId)) {
         return;
       }
@@ -1458,7 +1583,17 @@ function useWindowResizeHandles({
         startPointerY,
         startBounds
       };
-    });
+      queuedBoundsRef.current = startBounds;
+      lastSentBoundsRef.current = startBounds;
+    };
+
+    const liveBounds = getLiveWindowBounds();
+    if (liveBounds) {
+      beginWithBounds(liveBounds);
+      return;
+    }
+
+    window.electronAPI.getCurrentWindowBounds().then(beginWithBounds);
   };
 
   const continueResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1488,7 +1623,7 @@ function useWindowResizeHandles({
         ? Math.round(resizeState.startBounds.x + (resizeState.startBounds.width - nextWidth))
         : resizeState.startBounds.x;
 
-    window.electronAPI?.setCurrentWindowBounds({
+    scheduleResize({
       x: nextX,
       y: resizeState.startBounds.y,
       width: nextWidth,
@@ -1499,13 +1634,25 @@ function useWindowResizeHandles({
   const endResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const resizeState = resizeStateRef.current;
     if (!resizeState || resizeState.pointerId !== event.pointerId) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      queuedBoundsRef.current = null;
+      setIsResizing(false);
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
 
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      flushQueuedBounds();
+    }
+
     resizeStateRef.current = null;
+    queuedBoundsRef.current = null;
+    setIsResizing(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -1514,8 +1661,101 @@ function useWindowResizeHandles({
   return {
     beginResize,
     continueResize,
-    endResize
+    endResize,
+    isResizing
   };
+}
+
+function getWidgetPopoutSizeTier(widgetId: WidgetId, width: number, height: number): WidgetSizeTier {
+  const minSize = WIDGET_POPOUT_MIN_SIZES[widgetId];
+  const defaultSize = WIDGET_POPOUT_DEFAULT_SIZES[widgetId];
+  const minimumRatio = Math.min(
+    minSize.minWidth / defaultSize.width,
+    minSize.minHeight / defaultSize.height
+  );
+  const currentRatio = clampNumber(
+    Math.min(width / defaultSize.width, height / defaultSize.height),
+    minimumRatio,
+    1.25
+  );
+  const normalizedRatio = clampNumber(
+    (currentRatio - minimumRatio) / Math.max(1 - minimumRatio, 0.001),
+    0,
+    1
+  );
+
+  if (normalizedRatio <= 0.14) {
+    return 1;
+  }
+
+  if (normalizedRatio <= 0.34) {
+    return 2;
+  }
+
+  if (normalizedRatio <= 0.58) {
+    return 3;
+  }
+
+  if (normalizedRatio <= 0.82) {
+    return 4;
+  }
+
+  return 5;
+}
+
+function useResponsiveWidgetPopoutSizeTier({
+  scale,
+  stageRef,
+  widgetId
+}: {
+  scale: number;
+  stageRef: RefObject<HTMLElement>;
+  widgetId: WidgetId | null;
+}) {
+  const [sizeTier, setSizeTier] = useState<WidgetSizeTier>(WIDGET_SIZE_MAX);
+
+  useLayoutEffect(() => {
+    if (!widgetId || !stageRef.current) {
+      setSizeTier(WIDGET_SIZE_MAX);
+      return;
+    }
+
+    const stage = stageRef.current;
+    let frameId = 0;
+
+    const updateSizeTier = () => {
+      const bounds = stage.getBoundingClientRect();
+      const nextSizeTier = getWidgetPopoutSizeTier(widgetId, bounds.width, bounds.height);
+      setSizeTier((current) => (current === nextSizeTier ? current : nextSizeTier));
+    };
+
+    const scheduleSizeTierUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateSizeTier);
+    };
+
+    updateSizeTier();
+
+    if (typeof ResizeObserver !== 'function') {
+      window.addEventListener('resize', scheduleSizeTierUpdate);
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.removeEventListener('resize', scheduleSizeTierUpdate);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleSizeTierUpdate();
+    });
+
+    resizeObserver.observe(stage);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+    };
+  }, [scale, stageRef, widgetId]);
+
+  return sizeTier;
 }
 
 function useAutoFitWindowToContent({
@@ -1650,13 +1890,12 @@ function TeacherPopover() {
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
-  const widgetElementRefs = useRef(new Map<WidgetId, HTMLElement>());
   const widgetDragStateRef = useRef<{
     draggedWidgetId: WidgetId;
     hasMoved: boolean;
-      pointerId: number;
-      startPointerX: number;
-      startPointerY: number;
+    pointerId: number;
+    startPointerX: number;
+    startPointerY: number;
   } | null>(null);
   const [timer, setTimer] = usePersistentState<TimerSnapshot>('teacher-tools.timer', DEFAULT_TIMER, {
     normalize: normalizeTimerSnapshot
@@ -1704,9 +1943,11 @@ function TeacherPopover() {
     null
   );
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>(() =>
-    computeDashboardMetrics(MIN_POPOVER_WIDTH)
+    computeDashboardMetrics(MIN_POPOVER_WIDTH, 0)
   );
-  const [widgetHeights, setWidgetHeights] = useState<Partial<Record<WidgetId, number>>>({});
+  const [dashboardMeasuredFitBuffer, setDashboardMeasuredFitBuffer] = useState(0);
+  const [dashboardFitScale, setDashboardFitScale] = useState(1);
+  const [dashboardForceScroll, setDashboardForceScroll] = useState(false);
   const [appUpdate, setAppUpdate] = useAppUpdateState();
   const openWidgetPopouts = useWidgetPopoutIds();
   const liveNowUntil = timer.endsAt ?? (timer.lastCompletedAt ? timer.lastCompletedAt + 5000 : null);
@@ -1727,11 +1968,22 @@ function TeacherPopover() {
   const selectedLayout = getWidgetLayoutForList(dashboardLayouts, picker.selectedListId);
   const visibleWidgetIds = selectedLayout.order.filter((widgetId) => !selectedLayout.hidden.includes(widgetId));
   const visibleWidgetKey = visibleWidgetIds.join('|');
-  const dashboardColumns = buildDashboardColumns({
+  const collapsedWidgetKey = selectedLayout.collapsed.join('|');
+  const dashboardLayoutFit = buildResponsiveDashboardLayout({
+    availableHeight: Math.max(0, dashboardMetrics.height - dashboardMeasuredFitBuffer),
+    collapsedWidgetIds: selectedLayout.collapsed,
     columnCount: dashboardMetrics.columnCount,
-    widgetHeights,
     widgetIds: visibleWidgetIds
   });
+  const dashboardColumns = dashboardLayoutFit.columns;
+  const dashboardColumnKey = dashboardColumns.map((column) => column.widgetIds.join(',')).join('|');
+  const dashboardSizeTierKey = visibleWidgetIds
+    .map((widgetId) => `${widgetId}:${dashboardLayoutFit.widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX}`)
+    .join('|');
+  const shouldPreferDashboardScroll = dashboardMetrics.columnCount <= 1;
+  const shouldAllowDashboardScroll =
+    shouldPreferDashboardScroll || dashboardLayoutFit.isScrollable || dashboardForceScroll;
+  const effectiveDashboardFitScale = shouldAllowDashboardScroll ? 1 : dashboardFitScale;
   const rosterCount = selectedStudents.length;
   const timerLabel = formatDuration(remainingMs);
   const todayLabel = new Intl.DateTimeFormat(undefined, {
@@ -1786,13 +2038,13 @@ function TeacherPopover() {
         ? `${selectedStudents.length} students arranged into ${groupCount} balanced group${
             groupCount === 1 ? '' : 's'
           }.`
-        : `Shuffle ${selectedStudents.length} students into groups of about ${groupMaker.groupSize}.`;
+        : null;
   const plannerHint = !selectedList
     ? 'Choose a class list to plan lessons by date.'
     : planner.hasContent
       ? `Saved for ${formatLongDate(planner.selectedDate)}.`
       : `Plan ${selectedList.name} for ${formatLongDate(planner.selectedDate)}.`;
-  const { beginResize, continueResize, endResize } = useWindowResizeHandles({
+  const { beginResize, continueResize, endResize, isResizing } = useWindowResizeHandles({
     minWidth: MIN_POPOVER_WIDTH,
     minHeight: MIN_POPOVER_HEIGHT
   });
@@ -1933,27 +2185,17 @@ function TeacherPopover() {
     let frameId = 0;
 
     const syncDashboardLayout = () => {
-      const nextMetrics = computeDashboardMetrics(dashboardShell.clientWidth);
+      const nextMetrics = computeDashboardMetrics(
+        dashboardShell.clientWidth,
+        dashboardShell.clientHeight
+      );
       setDashboardMetrics((current) =>
         current.columnCount === nextMetrics.columnCount &&
         current.gap === nextMetrics.gap &&
-        current.laneWidth === nextMetrics.laneWidth
+        current.height === nextMetrics.height
           ? current
           : nextMetrics
       );
-
-      const nextHeights: Partial<Record<WidgetId, number>> = {};
-
-      for (const widgetId of visibleWidgetIds) {
-        const widgetElement = widgetElementRefs.current.get(widgetId);
-        if (!widgetElement) {
-          continue;
-        }
-
-        nextHeights[widgetId] = Math.ceil(widgetElement.getBoundingClientRect().height);
-      }
-
-      setWidgetHeights((current) => mergeMeasuredWidgetHeights(current, nextHeights, visibleWidgetIds));
     };
 
     const scheduleDashboardSync = () => {
@@ -1974,18 +2216,135 @@ function TeacherPopover() {
     });
 
     resizeObserver.observe(dashboardShell);
-    for (const widgetId of visibleWidgetIds) {
-      const widgetElement = widgetElementRefs.current.get(widgetId);
-      if (widgetElement) {
-        resizeObserver.observe(widgetElement);
-      }
-    }
 
     return () => {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
     };
   }, [interfaceScale, visibleWidgetKey]);
+
+  useEffect(() => {
+    setDashboardMeasuredFitBuffer(0);
+    setDashboardFitScale(1);
+    setDashboardForceScroll(false);
+  }, [collapsedWidgetKey, interfaceScale, visibleWidgetKey]);
+
+  useEffect(() => {
+    if (shouldPreferDashboardScroll || dashboardLayoutFit.isScrollable) {
+      setDashboardFitScale(1);
+      setDashboardForceScroll(false);
+    }
+  }, [dashboardLayoutFit.isScrollable, shouldPreferDashboardScroll]);
+
+  useLayoutEffect(() => {
+    const dashboardShell = dashboardShellRef.current;
+
+    if (!dashboardShell || visibleWidgetIds.length === 0 || isResizing) {
+      return;
+    }
+
+    let frameId = 0;
+
+    const measureRenderedOverflow = () => {
+      const shellBounds = dashboardShell.getBoundingClientRect();
+      const measuredElements = Array.from(
+        dashboardShell.querySelectorAll<HTMLElement>('.dashboard-column, .widget-card, .widget-card__body')
+      );
+      const maxMeasuredBottom = measuredElements.reduce(
+        (maxBottom, element) => Math.max(maxBottom, element.getBoundingClientRect().bottom),
+        shellBounds.top
+      );
+      const contentHeight = Math.max(1, Math.ceil(maxMeasuredBottom - shellBounds.top));
+      const rectOverflow = Math.max(0, Math.ceil(maxMeasuredBottom - shellBounds.bottom));
+      const scrollOverflow = Math.max(0, dashboardShell.scrollHeight - dashboardShell.clientHeight);
+      const overflow = Math.max(rectOverflow, scrollOverflow);
+
+      if (overflow <= 0) {
+        if (dashboardForceScroll) {
+          setDashboardForceScroll(false);
+        }
+        return;
+      }
+
+      if (overflow > 0 && !dashboardLayoutFit.isScrollable) {
+        setDashboardMeasuredFitBuffer((current) => current + overflow + 8);
+        return;
+      }
+
+      if (shouldPreferDashboardScroll) {
+        return;
+      }
+
+      if (dashboardLayoutFit.isScrollable) {
+        return;
+      }
+
+      if (!dashboardLayoutFit.isScrollable && dashboardFitScale >= 0.995) {
+        return;
+      }
+
+      const safeHeight = Math.max(shellBounds.height - 6, 1);
+      const nextScale = clampNumber(
+        (dashboardFitScale * safeHeight) / contentHeight,
+        DASHBOARD_FIT_SCALE_MIN,
+        1
+      );
+
+      if (Math.abs(nextScale - dashboardFitScale) > 0.01) {
+        if (dashboardForceScroll) {
+          setDashboardForceScroll(false);
+        }
+        setDashboardFitScale(nextScale);
+        return;
+      }
+
+      if (
+        overflow > 2 &&
+        dashboardLayoutFit.isScrollable &&
+        dashboardFitScale <= DASHBOARD_FIT_SCALE_MIN + 0.01 &&
+        !dashboardForceScroll
+      ) {
+        setDashboardForceScroll(true);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(measureRenderedOverflow);
+
+    if (typeof ResizeObserver !== 'function') {
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(measureRenderedOverflow);
+    });
+
+    resizeObserver.observe(dashboardShell);
+
+    const dashboardColumnsElement = dashboardShell.querySelector<HTMLElement>('.dashboard-columns');
+    if (dashboardColumnsElement) {
+      resizeObserver.observe(dashboardColumnsElement);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+    };
+  }, [
+    collapsedWidgetKey,
+    dashboardColumnKey,
+    dashboardForceScroll,
+    dashboardLayoutFit.isScrollable,
+    dashboardFitScale,
+    dashboardMetrics.height,
+    dashboardMeasuredFitBuffer,
+    dashboardSizeTierKey,
+    isResizing,
+    shouldPreferDashboardScroll,
+    visibleWidgetIds.length
+  ]);
 
   useEffect(() => {
     if (timer.endsAt && remainingMs === 0) {
@@ -2184,15 +2543,6 @@ function TeacherPopover() {
       ...layout,
       order: reorderWidgetIds(layout.order, fromId, toId)
     }));
-  };
-
-  const setWidgetElementRef = (widgetId: WidgetId, element: HTMLElement | null) => {
-    if (element) {
-      widgetElementRefs.current.set(widgetId, element);
-      return;
-    }
-
-    widgetElementRefs.current.delete(widgetId);
   };
 
   const setWidgetDragging = (widgetId: WidgetId | null) => {
@@ -2547,7 +2897,8 @@ function TeacherPopover() {
     const isPopoutOpen = openWidgetPopouts.includes(widgetId);
     const isColorModePaletteOpen =
       colorModePaletteTarget?.kind === 'widget' && colorModePaletteTarget.widgetId === widgetId;
-    const widthCategory = getWidgetWidthCategory(widgetId);
+    const sizeTier = dashboardLayoutFit.widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX;
+    const targetHeight = getWidgetDashboardHeight(widgetId, sizeTier, collapsed);
 
     const dragProps = {
       onPointerCancel: cancelWidgetDrag,
@@ -2599,7 +2950,6 @@ function TeacherPopover() {
           badgeTone={timerFinishedRecently ? 'alert' : 'default'}
           collapsed={collapsed}
           description="Presets, custom minutes, and a quick class countdown."
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2609,7 +2959,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <TimerWidgetContent
@@ -2638,7 +2989,6 @@ function TeacherPopover() {
           badge={`${rosterCount}`}
           collapsed={collapsed}
           description={selectedList ? `Using ${selectedList.name}` : 'Choose a class from the top bar.'}
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2648,7 +2998,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <PickerWidgetContent
@@ -2671,7 +3022,6 @@ function TeacherPopover() {
           badge={groupBadgeLabel}
           collapsed={collapsed}
           description={selectedList ? `Using ${selectedList.name}` : 'Choose a class from the top bar.'}
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2681,7 +3031,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <GroupMakerWidgetContent
@@ -2711,7 +3062,6 @@ function TeacherPopover() {
           description={
             selectedList ? `Previewing ${selectedList.name}` : 'Choose a class from the top bar.'
           }
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2721,7 +3071,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <SeatingChartWidgetContent
@@ -2743,7 +3094,6 @@ function TeacherPopover() {
           badge={plannerBadgeLabel}
           collapsed={collapsed}
           description={selectedList ? `Planning ${selectedList.name}` : 'Choose a class from the top bar.'}
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2753,7 +3103,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <PlannerWidgetContent
@@ -2780,7 +3131,6 @@ function TeacherPopover() {
           badgeTone={homeworkAssessmentTracker.badgeTone}
           collapsed={collapsed}
           description={homeworkAssessmentTracker.summaryDescription}
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2790,7 +3140,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <HomeworkAssessmentTrackerWidgetContent
@@ -2812,7 +3163,6 @@ function TeacherPopover() {
           badge={qrGenerator.preview.qrCode ? 'Ready' : null}
           collapsed={collapsed}
           description="Paste a link and the QR code appears right here."
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2822,7 +3172,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <QrGeneratorWidgetContent
@@ -2845,7 +3196,6 @@ function TeacherPopover() {
               ? `Using ${bellSchedule.activeProfileDisplayName}`
               : 'Set up a weekly bell schedule.'
           }
-          elementRef={(element) => setWidgetElementRef(widgetId, element)}
           headerDragMode="interactive"
           headerActions={headerActions}
           isDragOver={isDragOver}
@@ -2855,7 +3205,8 @@ function TeacherPopover() {
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
-          widthCategory={widthCategory}
+          sizeTier={sizeTier}
+          targetHeight={targetHeight}
           {...dragProps}
         >
           <BellScheduleWidgetContent
@@ -2877,7 +3228,6 @@ function TeacherPopover() {
         badge={stickyNotes.length > 0 ? `${stickyNotes.length}` : null}
         collapsed={collapsed}
         description="Capture reminders and quick thoughts."
-        elementRef={(element) => setWidgetElementRef(widgetId, element)}
         headerDragMode="interactive"
         headerActions={headerActions}
         isDragOver={isDragOver}
@@ -2887,7 +3237,8 @@ function TeacherPopover() {
         onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
         title={WIDGET_DETAILS[widgetId].title}
         widgetId={widgetId}
-        widthCategory={widthCategory}
+        sizeTier={sizeTier}
+        targetHeight={targetHeight}
         {...dragProps}
       >
         <NotesWidgetContent
@@ -2907,7 +3258,7 @@ function TeacherPopover() {
     >
       <main
         aria-label="Teacher tools popover"
-        className="window-stage window-stage--popover"
+        className={`window-stage window-stage--popover${isResizing ? ' window-stage--resizing' : ''}`}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) {
             window.electronAPI?.closePopover();
@@ -2970,6 +3321,7 @@ function TeacherPopover() {
                       {appUpdateStatusLabel}
                     </span>
                     <button
+                      aria-label={appUpdateButtonLabel}
                       className={`toolbar-link ${
                         appUpdate.status === 'downloaded'
                           ? 'toolbar-link--accent'
@@ -2984,22 +3336,44 @@ function TeacherPopover() {
                       onClick={handleAppUpdateAction}
                       type="button"
                     >
-                      {appUpdateButtonLabel}
+                      <span className="toolbar-button__label toolbar-button__label--full">
+                        {appUpdateButtonLabel}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="toolbar-button__label toolbar-button__label--compact"
+                      >
+                        ↻
+                      </span>
                     </button>
                   </div>
                   <button
+                    aria-label="Widgets"
                     className="toolbar-link"
                     onClick={() => window.electronAPI?.toggleWidgetPicker()}
                     type="button"
                   >
-                    Widgets
+                    <span className="toolbar-button__label toolbar-button__label--full">Widgets</span>
+                    <span
+                      aria-hidden="true"
+                      className="toolbar-button__label toolbar-button__label--compact"
+                    >
+                      ◫
+                    </span>
                   </button>
                   <button
+                    aria-label="Classes"
                     className="toolbar-link"
                     onClick={() => window.electronAPI?.toggleClassListBuilder()}
                     type="button"
                   >
-                    Classes
+                    <span className="toolbar-button__label toolbar-button__label--full">Classes</span>
+                    <span
+                      aria-hidden="true"
+                      className="toolbar-button__label toolbar-button__label--compact"
+                    >
+                      ≣
+                    </span>
                   </button>
                   <InterfaceScaleControls
                     canDecrease={canDecreaseInterfaceScale}
@@ -3045,12 +3419,16 @@ function TeacherPopover() {
             </header>
 
             <div
-              className={`dashboard-shell ${draggedWidgetId ? 'dashboard-shell--dragging' : ''}`}
+              className={`dashboard-shell ${draggedWidgetId ? 'dashboard-shell--dragging' : ''} ${
+                isResizing ? 'dashboard-shell--resizing' : ''
+              } ${
+                shouldAllowDashboardScroll ? 'dashboard-shell--scrolling' : ''
+              }`}
               ref={dashboardShellRef}
               style={
                 {
                   '--dashboard-column-gap': `${dashboardMetrics.gap}px`,
-                  '--dashboard-lane-width': `${dashboardMetrics.laneWidth}px`
+                  '--dashboard-fit-scale': String(effectiveDashboardFitScale)
                 } as CSSProperties
               }
             >
@@ -3058,13 +3436,11 @@ function TeacherPopover() {
                 <div className="dashboard-columns">
                   {dashboardColumns.map((column, columnIndex) => (
                     <div
-                      className={`dashboard-column dashboard-column--span-${column.span}`}
+                      className="dashboard-column"
                       key={`dashboard-column-${columnIndex}`}
                       style={{
-                        width:
-                          column.span === 2
-                            ? dashboardMetrics.laneWidth * 2 + dashboardMetrics.gap
-                            : dashboardMetrics.laneWidth
+                        flex: '1 1 0',
+                        minWidth: 0
                       }}
                     >
                       {column.widgetIds.map((widgetId) => renderWidget(widgetId))}
@@ -3114,6 +3490,7 @@ function TeacherPopover() {
         <button
           aria-label="Resize window from bottom left corner"
           className="resize-handle resize-handle--left"
+          data-tooltip-content="Resize window"
           onPointerCancel={endResize}
           onPointerDown={(event) => beginResize('bottom-left', event)}
           onPointerMove={continueResize}
@@ -3123,6 +3500,7 @@ function TeacherPopover() {
         <button
           aria-label="Resize window from bottom right corner"
           className="resize-handle resize-handle--right"
+          data-tooltip-content="Resize window"
           onPointerCancel={endResize}
           onPointerDown={(event) => beginResize('bottom-right', event)}
           onPointerMove={continueResize}
@@ -3148,13 +3526,18 @@ function WidgetPopoutWindow({
   const interfaceScaleControls = useInterfaceScaleControls();
   const resolvedTheme = useResolvedTheme(themePreference);
   const widgetMinSize = widgetId ? WIDGET_POPOUT_MIN_SIZES[widgetId] : null;
+  const widgetSizeTier = useResponsiveWidgetPopoutSizeTier({
+    scale: interfaceScaleControls.interfaceScale,
+    stageRef,
+    widgetId
+  });
   const { stopAutoFitToContent } = useAutoFitWindowToContent({
     enabled: autoSizeToContent && widgetId !== null,
     stageRef,
     panelRef,
     scale: interfaceScaleControls.interfaceScale
   });
-  const { beginResize, continueResize, endResize } = useWindowResizeHandles({
+  const { beginResize, continueResize, endResize, isResizing } = useWindowResizeHandles({
     minWidth: widgetMinSize?.minWidth ?? MIN_POPOVER_WIDTH,
     minHeight: widgetMinSize?.minHeight ?? MIN_POPOVER_HEIGHT,
     onResizeStart: stopAutoFitToContent
@@ -3182,27 +3565,68 @@ function WidgetPopoutWindow({
       </section>
     );
   } else if (widgetId === 'timer') {
-    content = <TimerWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <TimerWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'picker') {
-    content = <PickerWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <PickerWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'group-maker') {
-    content = <GroupMakerWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <GroupMakerWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'seating-chart') {
-    content = <SeatingChartWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <SeatingChartWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'bell-schedule') {
-    content = <BellScheduleWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <BellScheduleWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'planner') {
-    content = <PlannerWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <PlannerWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else if (widgetId === 'homework-assessment') {
     content = (
       <HomeworkAssessmentTrackerWidgetPopoutCard
         interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
       />
     );
   } else if (widgetId === 'qr-generator') {
-    content = <QrGeneratorWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <QrGeneratorWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   } else {
-    content = <NotesWidgetPopoutCard interfaceScaleControls={interfaceScaleControls} />;
+    content = (
+      <NotesWidgetPopoutCard
+        interfaceScaleControls={interfaceScaleControls}
+        sizeTier={widgetSizeTier}
+      />
+    );
   }
 
   return (
@@ -3211,7 +3635,10 @@ function WidgetPopoutWindow({
     >
       <main
         aria-label="Widget popout"
-        className="window-stage window-stage--builder window-stage--widget-popout"
+        className={`window-stage window-stage--builder window-stage--widget-popout${
+          isResizing ? ' window-stage--resizing' : ''
+        }`}
+        data-widget-size-tier={widgetId ? widgetSizeTier : undefined}
         ref={stageRef}
       >
         <section
@@ -3229,6 +3656,7 @@ function WidgetPopoutWindow({
             <button
               aria-label="Resize window from bottom left corner"
               className="resize-handle resize-handle--left"
+              data-tooltip-content="Resize window"
               onPointerCancel={endResize}
               onPointerDown={(event) => beginResize('bottom-left', event)}
               onPointerMove={continueResize}
@@ -3238,6 +3666,7 @@ function WidgetPopoutWindow({
             <button
               aria-label="Resize window from bottom right corner"
               className="resize-handle resize-handle--right"
+              data-tooltip-content="Resize window"
               onPointerCancel={endResize}
               onPointerDown={(event) => beginResize('bottom-right', event)}
               onPointerMove={continueResize}
@@ -3408,7 +3837,7 @@ function WidgetPickerWindow() {
                     <div className="widget-toggle__copy">
                       <span className="widget-toggle__name">{details.title}</span>
                       <span className="widget-toggle__hint">
-                        {`${getWidgetWidthCategory(widgetId) === 'double' ? 'Double' : 'Single'} width. ${details.description}`}
+                        {details.description}
                       </span>
                     </div>
                   </label>
@@ -3961,7 +4390,6 @@ function WidgetCard({
   children,
   collapsed,
   description,
-  elementRef,
   headerActions,
   headerDragMode = 'static',
   isDragOver,
@@ -3973,8 +4401,9 @@ function WidgetCard({
   onPointerUp,
   onToggleCollapsed,
   showCollapse = true,
-  title,
-  widthCategory
+  sizeTier,
+  targetHeight,
+  title
 }: {
   widgetId: WidgetId;
   badge: string | null;
@@ -3982,7 +4411,6 @@ function WidgetCard({
   children: React.ReactNode;
   collapsed: boolean;
   description: string;
-  elementRef?: (element: HTMLElement | null) => void;
   headerActions?: React.ReactNode;
   headerDragMode?: 'interactive' | 'static' | 'window';
   isDragOver: boolean;
@@ -3994,20 +4422,26 @@ function WidgetCard({
   onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onToggleCollapsed?: () => void;
   showCollapse?: boolean;
+  sizeTier?: WidgetSizeTier;
+  targetHeight?: number;
   title: string;
-  widthCategory: WidgetWidthCategory;
 }) {
   const { preferences: colorModePreferences, theme } = useColorModeAppearance();
   const colorModeStyle = getColorModeWidgetStyle(theme, colorModePreferences, widgetId);
+  const widgetStyle = {
+    ...(colorModeStyle ?? {}),
+    ...(typeof targetHeight === 'number' ? { '--widget-target-height': `${targetHeight}px` } : {})
+  } as CSSProperties;
 
   return (
     <article
+      data-size-tier={sizeTier}
+      data-size-tier-label={sizeTier ? WIDGET_SIZE_TIER_LABELS[sizeTier] : undefined}
       data-widget-id={widgetId}
-      ref={elementRef}
       className={`widget-card ${collapsed ? 'widget-card--collapsed' : ''} ${
         isDragging ? 'widget-card--dragging' : ''
-      } ${isDragOver ? 'widget-card--drag-over' : ''} widget-card--${widthCategory}`}
-      style={colorModeStyle}
+      } ${isDragOver ? 'widget-card--drag-over' : ''}`}
+      style={widgetStyle}
     >
       <div
         className={`widget-card__header ${
@@ -4199,9 +4633,52 @@ function TimerWidgetContent({
 }) {
   return (
     <>
-      <div className="timer-readout">{timerLabel}</div>
+      <div className="action-row widget-primary-actions">
+        {!isTimerRunning && !isTimerPaused && (
+          <button
+            aria-label="Start timer"
+            className="primary-link"
+            data-compact-icon="▶"
+            onClick={onStart}
+            type="button"
+          >
+            Start
+          </button>
+        )}
+        {isTimerRunning && (
+          <button
+            aria-label="Pause timer"
+            className="primary-link"
+            data-compact-icon="❚❚"
+            onClick={onPause}
+            type="button"
+          >
+            Pause
+          </button>
+        )}
+        {isTimerPaused && (
+          <button
+            aria-label="Resume timer"
+            className="primary-link"
+            data-compact-icon="▶"
+            onClick={onResume}
+            type="button"
+          >
+            Resume
+          </button>
+        )}
+        <button
+          aria-label="Reset timer"
+          className="secondary-link"
+          data-compact-icon="↻"
+          onClick={onReset}
+          type="button"
+        >
+          Reset
+        </button>
+      </div>
 
-      <div className="segmented-row">
+      <div className="segmented-row widget-top-controls">
         {TIMER_PRESETS.map((preset) => (
           <button
             aria-pressed={activeDurationMs === preset.ms}
@@ -4217,7 +4694,7 @@ function TimerWidgetContent({
         ))}
       </div>
 
-      <div className="custom-row">
+      <div className="custom-row widget-top-controls">
         <span className="helper-text">Custom</span>
         <div className="stepper">
           <button
@@ -4261,29 +4738,10 @@ function TimerWidgetContent({
         </div>
       </div>
 
+      <div className="timer-readout">{timerLabel}</div>
+
       <div className="progress">
         <span className="progress__fill" style={{ transform: `scaleX(${timerProgress})` }} />
-      </div>
-
-      <div className="action-row">
-        {!isTimerRunning && !isTimerPaused && (
-          <button className="primary-link" onClick={onStart} type="button">
-            Start
-          </button>
-        )}
-        {isTimerRunning && (
-          <button className="primary-link" onClick={onPause} type="button">
-            Pause
-          </button>
-        )}
-        {isTimerPaused && (
-          <button className="primary-link" onClick={onResume} type="button">
-            Resume
-          </button>
-        )}
-        <button className="secondary-link" onClick={onReset} type="button">
-          Reset
-        </button>
       </div>
     </>
   );
@@ -4315,6 +4773,44 @@ function PickerWidgetContent({
 
   return (
     <>
+      <div className="widget-top-controls picker-widget__top-controls">
+        <div className="action-row widget-primary-actions">
+          <button
+            aria-label={removePickedStudents ? 'Reset picker cycle' : 'Clear recent picks'}
+            className="secondary-link"
+            data-compact-icon="↻"
+            disabled={selectedStudentCount === 0}
+            onClick={onResetCycle}
+            type="button"
+          >
+            {removePickedStudents ? 'Reset cycle' : 'Clear picks'}
+          </button>
+          <button
+            aria-label={isPickerSpinning ? 'Picking student' : 'Pick student'}
+            className="primary-link"
+            data-compact-icon="✦"
+            disabled={selectedStudentCount === 0 || isPickerSpinning}
+            onClick={onPick}
+            type="button"
+          >
+            {isPickerSpinning ? 'Picking…' : 'Pick'}
+          </button>
+        </div>
+
+        <div className="helper-row picker-controls-row">
+          <button
+            aria-label={pickerModeLabel}
+            aria-pressed={removePickedStudents}
+            className="text-toggle picker-mode-toggle button-tone--utility"
+            data-compact-icon={removePickedStudents ? '−' : '='}
+            onClick={() => onToggleRemovePickedStudents(!removePickedStudents)}
+            type="button"
+          >
+            {pickerModeLabel}
+          </button>
+        </div>
+      </div>
+
       <div className="picker-stack">
         <div className={`picker-spinner ${isPickerSpinning ? 'picker-spinner--running' : ''}`}>
           <div className="picker-spinner__fade" />
@@ -4331,36 +4827,6 @@ function PickerWidgetContent({
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="helper-row picker-controls-row">
-        <button
-          aria-pressed={removePickedStudents}
-          className="text-toggle picker-mode-toggle button-tone--utility"
-          onClick={() => onToggleRemovePickedStudents(!removePickedStudents)}
-          type="button"
-        >
-          {pickerModeLabel}
-        </button>
-      </div>
-
-      <div className="action-row">
-        <button
-          className="secondary-link"
-          disabled={selectedStudentCount === 0}
-          onClick={onResetCycle}
-          type="button"
-        >
-          {removePickedStudents ? 'Reset cycle' : 'Clear picks'}
-        </button>
-        <button
-          className="primary-link"
-          disabled={selectedStudentCount === 0 || isPickerSpinning}
-          onClick={onPick}
-          type="button"
-        >
-          {isPickerSpinning ? 'Picking…' : 'Pick'}
-        </button>
       </div>
 
       {recentPicks.length > 0 && (
@@ -4392,7 +4858,7 @@ function GroupMakerWidgetContent({
 }: {
   activeGroups: string[][];
   emptyCopy: string;
-  groupMakerHint: string;
+  groupMakerHint: string | null;
   groupSize: number;
   hasSavedGroups: boolean;
   onClear: () => void;
@@ -4444,33 +4910,58 @@ function GroupMakerWidgetContent({
 
   return (
     <>
-      <div className="group-maker__controls">
-        <div className="custom-row">
-          <span className="helper-text">Students per group</span>
-          <div className="stepper">
-            <button
-              aria-label="Decrease preferred group size"
-              className="stepper__button"
-              disabled={groupSize === GROUP_SIZE_MIN}
-              onClick={() => onUpdateGroupSize(groupSize - 1)}
-              type="button"
-            >
-              −
-            </button>
-            <span className="stepper__value stepper__value--active">{groupSize}</span>
-            <button
-              aria-label="Increase preferred group size"
-              className="stepper__button"
-              disabled={groupSize === GROUP_SIZE_MAX}
-              onClick={() => onUpdateGroupSize(groupSize + 1)}
-              type="button"
-            >
-              +
-            </button>
+      <div className="widget-top-controls group-maker__top-controls">
+        <div className="group-maker__controls">
+          <div className="custom-row">
+            <span className="helper-text">Students per group</span>
+            <div className="stepper">
+              <button
+                aria-label="Decrease preferred group size"
+                className="stepper__button"
+                disabled={groupSize === GROUP_SIZE_MIN}
+                onClick={() => onUpdateGroupSize(groupSize - 1)}
+                type="button"
+              >
+                −
+              </button>
+              <span className="stepper__value stepper__value--active">{groupSize}</span>
+              <button
+                aria-label="Increase preferred group size"
+                className="stepper__button"
+                disabled={groupSize === GROUP_SIZE_MAX}
+                onClick={() => onUpdateGroupSize(groupSize + 1)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
           </div>
+
+          {groupMakerHint ? <p className="helper-text">{groupMakerHint}</p> : null}
         </div>
 
-        <p className="helper-text">{groupMakerHint}</p>
+        <div className="action-row widget-primary-actions">
+          <button
+            aria-label="Clear saved groups"
+            className="secondary-link"
+            data-compact-icon="×"
+            disabled={!hasSavedGroups}
+            onClick={onClear}
+            type="button"
+          >
+            Clear
+          </button>
+          <button
+            aria-label="Shuffle groups"
+            className="primary-link"
+            data-compact-icon="↻"
+            disabled={selectedStudentCount < 2}
+            onClick={onShuffle}
+            type="button"
+          >
+            Shuffle groups
+          </button>
+        </div>
       </div>
 
       {activeGroups.length > 0 ? (
@@ -4500,20 +4991,6 @@ function GroupMakerWidgetContent({
           <p className="empty-copy">{emptyCopy}</p>
         </div>
       )}
-
-      <div className="action-row">
-        <button className="secondary-link" disabled={!hasSavedGroups} onClick={onClear} type="button">
-          Clear
-        </button>
-        <button
-          className="primary-link"
-          disabled={selectedStudentCount < 2}
-          onClick={onShuffle}
-          type="button"
-        >
-          Shuffle groups
-        </button>
-      </div>
     </>
   );
 }
@@ -4533,7 +5010,7 @@ function NotesWidgetContent({
 }) {
   return (
     <>
-      <div className="note-input-row">
+      <div className="note-input-row widget-top-controls">
         <input
           className="text-field"
           onChange={(event) => onDraftChange(event.target.value)}
@@ -4547,7 +5024,13 @@ function NotesWidgetContent({
           type="text"
           value={noteDraft}
         />
-        <button className="primary-link" onClick={onAddNote} type="button">
+        <button
+          aria-label="Add note"
+          className="primary-link"
+          data-compact-icon="+"
+          onClick={onAddNote}
+          type="button"
+        >
           Add
         </button>
       </div>
@@ -4593,19 +5076,31 @@ function QrGeneratorWidgetContent({
 
   return (
     <div className="qr-widget">
-      <div className="field-stack">
-        <label className="field-label" htmlFor="qr-generator-link">
-          Link
-        </label>
-        <input
-          className="text-field"
-          id="qr-generator-link"
-          onChange={(event) => onDraftChange(event.target.value)}
-          placeholder="https://school.example.com/check-in"
-          spellCheck={false}
-          type="text"
-          value={linkDraft}
-        />
+      <div className="qr-widget__top-controls widget-top-controls">
+        <div className="field-stack">
+          <label className="field-label" htmlFor="qr-generator-link">
+            Link
+          </label>
+          <input
+            className="text-field"
+            id="qr-generator-link"
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder="https://school.example.com/check-in"
+            spellCheck={false}
+            type="text"
+            value={linkDraft}
+          />
+        </div>
+        <button
+          aria-label="Clear QR link"
+          className="secondary-link"
+          data-compact-icon="×"
+          disabled={!linkDraft.trim()}
+          onClick={onClear}
+          type="button"
+        >
+          Clear
+        </button>
       </div>
 
       {preview.qrCode ? (
@@ -4635,21 +5130,11 @@ function QrGeneratorWidgetContent({
         </div>
       )}
 
-      <div className="action-row qr-widget__actions">
-        <p className="helper-text">
-          {preview.qrCode
-            ? 'The code updates directly on the dashboard as you type.'
-            : 'Use a full web address or a domain name and the widget will handle the rest.'}
-        </p>
-        <button
-          className="secondary-link"
-          disabled={!linkDraft.trim()}
-          onClick={onClear}
-          type="button"
-        >
-          Clear
-        </button>
-      </div>
+      <p className="helper-text qr-widget__hint">
+        {preview.qrCode
+          ? 'The code updates directly on the dashboard as you type.'
+          : 'Use a full web address or a domain name and the widget will handle the rest.'}
+      </p>
     </div>
   );
 }
@@ -4681,6 +5166,7 @@ function PlannerWidgetContent({
 }) {
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthKeyFromDateKey(selectedDate));
   const [isCalendarCollapsed, setIsCalendarCollapsed] = useState(true);
+  const planTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const indicatorSet = new Set(entryDates);
   const monthDays = buildCalendarDays(visibleMonth, selectedDate, indicatorSet);
   const savedDaysInMonth = entryDates.filter((dateKey) => dateKey.startsWith(`${visibleMonth}-`)).length;
@@ -4696,6 +5182,16 @@ function PlannerWidgetContent({
     setVisibleMonth(getMonthKeyFromDateKey(selectedDate));
   }, [selectedDate]);
 
+  useLayoutEffect(() => {
+    const textarea = planTextareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [planText, selectedList]);
+
   const helperCopy = !selectedList
     ? 'Choose a class first, then save lesson plans and documents by date.'
     : planText.trim() || documents.length > 0
@@ -4703,8 +5199,8 @@ function PlannerWidgetContent({
       : `Select a date and start planning ${selectedList.name}.`;
 
   return (
-    <div className="planner-widget">
-      <div className="planner-widget__toolbar">
+    <div className={`planner-widget ${isCalendarCollapsed ? '' : 'planner-widget--calendar-open'}`}>
+      <div className="planner-widget__toolbar widget-top-controls">
         <div className="planner-widget__meta">
           <span className="card-label">Lesson date</span>
           <div className="planner-widget__date-row">
@@ -4715,15 +5211,38 @@ function PlannerWidgetContent({
               type="date"
               value={selectedDate}
             />
-            <button
-              className="secondary-link button-tone--utility planner-widget__today"
-              disabled={!selectedList}
-              onClick={() => onSelectDate(getTodayDateKey())}
-              type="button"
-            >
-              Today
-            </button>
           </div>
+        </div>
+        <div className="planner-widget__action-row">
+          <button
+            aria-label="Select today"
+            className="secondary-link button-tone--utility planner-widget__action-button planner-widget__today"
+            disabled={!selectedList}
+            onClick={() => onSelectDate(getTodayDateKey())}
+            type="button"
+          >
+            <span className="planner-widget__action-label">Today</span>
+          </button>
+          <button
+            aria-label={isCalendarCollapsed ? 'Show calendar' : 'Hide calendar'}
+            aria-expanded={!isCalendarCollapsed}
+            className="secondary-link button-tone--utility planner-widget__action-button planner-calendar__toggle"
+            onClick={() => setIsCalendarCollapsed((current) => !current)}
+            type="button"
+          >
+            <span className="planner-widget__action-label">
+              {isCalendarCollapsed ? 'Show calendar' : 'Hide calendar'}
+            </span>
+          </button>
+          <button
+            aria-label="Attach lesson files"
+            className="primary-link planner-widget__action-button planner-widget__attach"
+            disabled={!selectedList}
+            onClick={() => void onAttachDocuments()}
+            type="button"
+          >
+            <span className="planner-widget__action-label">Attach files</span>
+          </button>
         </div>
       </div>
 
@@ -4737,37 +5256,28 @@ function PlannerWidgetContent({
             </div>
             <span className="planner-calendar__summary">{selectionSummary}</span>
           </div>
-
-          <div className="planner-calendar__controls">
-            <button
-              aria-expanded={!isCalendarCollapsed}
-              className="secondary-link button-tone--utility planner-calendar__toggle"
-              onClick={() => setIsCalendarCollapsed((current) => !current)}
-              type="button"
-            >
-              {isCalendarCollapsed ? 'Show calendar' : 'Hide calendar'}
-            </button>
-            {!isCalendarCollapsed ? (
-              <>
-                <button
-                  aria-label="Previous month"
-                  className="widget-icon-button button-tone--utility"
-                  onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, -1))}
-                  type="button"
-                >
-                  ‹
-                </button>
-                <button
-                  aria-label="Next month"
-                  className="widget-icon-button button-tone--utility"
-                  onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, 1))}
-                  type="button"
-                >
-                  ›
-                </button>
-              </>
-            ) : null}
-          </div>
+          {!isCalendarCollapsed ? (
+            <div className="planner-calendar__month-nav" aria-label="Calendar month navigation">
+              <button
+                aria-label="Previous month"
+                className="widget-icon-button button-tone--utility planner-calendar__month-button"
+                disabled={!selectedList}
+                onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, -1))}
+                type="button"
+              >
+                ‹
+              </button>
+              <button
+                aria-label="Next month"
+                className="widget-icon-button button-tone--utility planner-calendar__month-button"
+                disabled={!selectedList}
+                onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, 1))}
+                type="button"
+              >
+                ›
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {!isCalendarCollapsed ? (
@@ -4806,7 +5316,7 @@ function PlannerWidgetContent({
         {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
       </div>
 
-      <div className="field-stack field-stack--fill">
+      <div className="field-stack field-stack--fill planner-widget__plan">
         <label className="field-label" htmlFor="lesson-plan-text">
           Lesson plan
         </label>
@@ -4816,6 +5326,7 @@ function PlannerWidgetContent({
           id="lesson-plan-text"
           onChange={(event) => onUpdatePlan(event.target.value)}
           placeholder="Outline your lesson, activities, reminders, and follow-up."
+          ref={planTextareaRef}
           value={planText}
         />
       </div>
@@ -4826,14 +5337,6 @@ function PlannerWidgetContent({
             <span className="field-label">Documents</span>
             <p className="helper-text">Attach files from your computer and reopen them from here.</p>
           </div>
-          <button
-            className="primary-link"
-            disabled={!selectedList}
-            onClick={() => void onAttachDocuments()}
-            type="button"
-          >
-            Attach files
-          </button>
         </div>
 
         {documents.length > 0 ? (
@@ -4999,6 +5502,20 @@ function HomeworkAssessmentTrackerWidgetContent({
 
   return (
     <div className="tracker-widget">
+      {!isPopout && onOpenManager ? (
+        <div className="tracker-summary__footer widget-top-controls">
+          <button
+            aria-label="Open homework and assessment editor"
+            className="secondary-link button-tone--utility"
+            data-compact-icon="✎"
+            onClick={onOpenManager}
+            type="button"
+          >
+            Open editor
+          </button>
+        </div>
+      ) : null}
+
       <section className={`tracker-summary ${isPopout ? '' : 'tracker-summary--compact'}`}>
         <section className="tracker-summary__section">
           <div className="tracker-summary__section-head">
@@ -5052,17 +5569,6 @@ function HomeworkAssessmentTrackerWidgetContent({
           )}
         </section>
 
-        {!isPopout && onOpenManager ? (
-          <div className="tracker-summary__footer">
-            <button
-              className="secondary-link button-tone--utility"
-              onClick={onOpenManager}
-              type="button"
-            >
-              Open editor
-            </button>
-          </div>
-        ) : null}
       </section>
 
       {isPopout ? (
@@ -5649,6 +6155,20 @@ function SeatingChartDashboardPreview({
 
   return (
     <div className="seating-chart seating-chart--dashboard-preview">
+      {onOpenEditor ? (
+        <div className="seating-chart__preview-actions widget-top-controls">
+          <button
+            aria-label="Open seating chart editor"
+            className="primary-link"
+            data-compact-icon="✎"
+            onClick={onOpenEditor}
+            type="button"
+          >
+            Open editor
+          </button>
+        </div>
+      ) : null}
+
       <div className="seating-chart__preview-card">
         <div className="seating-chart__preview-grid" aria-label={`${selectedList.name} seating plan preview`}>
           {Array.from({ length: SEATING_CHART_GRID_ROWS * SEATING_CHART_GRID_COLUMNS }, (_value, index) => {
@@ -5693,11 +6213,6 @@ function SeatingChartDashboardPreview({
         <p className="helper-text">
           Preview only. Open the editor to change seats or layouts for {selectedList.name}.
         </p>
-        {onOpenEditor ? (
-          <button className="primary-link" onClick={onOpenEditor} type="button">
-            Open editor
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -6744,7 +7259,7 @@ function BellScheduleWidgetContent({
 
   return (
     <div className={`bell-schedule ${showEditor ? 'bell-schedule--editing' : ''}`}>
-      <div className="bell-schedule__compact-toolbar">
+      <div className="bell-schedule__compact-toolbar widget-top-controls">
         <select
           aria-label="Schedule profile"
           className="text-field bell-schedule__profile-select"
@@ -6759,7 +7274,13 @@ function BellScheduleWidgetContent({
         </select>
 
         {handlePrimaryAction ? (
-          <button className="secondary-link button-tone--utility" onClick={handlePrimaryAction} type="button">
+          <button
+            aria-label={primaryActionLabel}
+            className="secondary-link button-tone--utility"
+            data-compact-icon={showEditor ? '✓' : '✎'}
+            onClick={handlePrimaryAction}
+            type="button"
+          >
             {primaryActionLabel}
           </button>
         ) : null}
@@ -7007,9 +7528,11 @@ function BellScheduleEditorPanel({
 }
 
 function TimerWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const timer = useTimerWidgetState();
 
@@ -7030,9 +7553,9 @@ function TimerWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS.timer.title}
       widgetId="timer"
-      widthCategory="single"
     >
       <TimerWidgetContent
         activeDurationMs={timer.timer.baseDurationMs}
@@ -7055,9 +7578,11 @@ function TimerWidgetPopoutCard({
 }
 
 function BellScheduleWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const [picker] = usePickerState();
   const bellSchedule = useBellScheduleController(picker.lists);
@@ -7083,9 +7608,9 @@ function BellScheduleWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS['bell-schedule'].title}
       widgetId="bell-schedule"
-      widthCategory={showEditor ? 'double' : 'single'}
     >
       <BellScheduleWidgetContent
         controller={bellSchedule}
@@ -7105,9 +7630,11 @@ function BellScheduleWidgetPopoutCard({
 }
 
 function PickerWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const picker = usePickerWidgetState();
 
@@ -7127,9 +7654,9 @@ function PickerWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS.picker.title}
       widgetId="picker"
-      widthCategory="single"
     >
       <PickerWidgetContent
         isPickerSpinning={picker.isPickerSpinning}
@@ -7146,9 +7673,11 @@ function PickerWidgetPopoutCard({
 }
 
 function GroupMakerWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const groupMaker = useGroupMakerWidgetState();
 
@@ -7172,9 +7701,9 @@ function GroupMakerWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS['group-maker'].title}
       widgetId="group-maker"
-      widthCategory="double"
     >
       <GroupMakerWidgetContent
         activeGroups={groupMaker.activeGroups}
@@ -7196,9 +7725,11 @@ function GroupMakerWidgetPopoutCard({
 }
 
 function SeatingChartWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const [picker] = usePickerState();
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
@@ -7224,9 +7755,9 @@ function SeatingChartWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS['seating-chart'].title}
       widgetId="seating-chart"
-      widthCategory="double"
     >
       <SeatingChartWidgetContent controller={seatingChart} mode="popout" />
     </WidgetCard>
@@ -7234,9 +7765,11 @@ function SeatingChartWidgetPopoutCard({
 }
 
 function PlannerWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const [picker] = usePickerState();
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
@@ -7258,9 +7791,9 @@ function PlannerWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS.planner.title}
       widgetId="planner"
-      widthCategory="double"
     >
       <PlannerWidgetContent
         documents={planner.documents}
@@ -7280,9 +7813,11 @@ function PlannerWidgetPopoutCard({
 }
 
 function HomeworkAssessmentTrackerWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const [picker] = usePickerState();
   const tracker = useHomeworkAssessmentTrackerController(picker.selectedListId, picker.lists);
@@ -7304,9 +7839,9 @@ function HomeworkAssessmentTrackerWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS['homework-assessment'].title}
       widgetId="homework-assessment"
-      widthCategory="single"
     >
       <HomeworkAssessmentTrackerWidgetContent controller={tracker} mode="popout" />
     </WidgetCard>
@@ -7314,9 +7849,11 @@ function HomeworkAssessmentTrackerWidgetPopoutCard({
 }
 
 function QrGeneratorWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const qrGenerator = useQrWidgetState();
 
@@ -7336,9 +7873,9 @@ function QrGeneratorWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS['qr-generator'].title}
       widgetId="qr-generator"
-      widthCategory="single"
     >
       <QrGeneratorWidgetContent
         linkDraft={qrGenerator.linkDraft}
@@ -7351,9 +7888,11 @@ function QrGeneratorWidgetPopoutCard({
 }
 
 function NotesWidgetPopoutCard({
-  interfaceScaleControls
+  interfaceScaleControls,
+  sizeTier
 }: {
   interfaceScaleControls: InterfaceScaleControlsState;
+  sizeTier: WidgetSizeTier;
 }) {
   const notes = useNotesWidgetState();
 
@@ -7373,9 +7912,9 @@ function NotesWidgetPopoutCard({
       isDragOver={false}
       isDragging={false}
       showCollapse={false}
+      sizeTier={sizeTier}
       title={WIDGET_DETAILS.notes.title}
       widgetId="notes"
-      widthCategory="single"
     >
       <NotesWidgetContent
         noteDraft={notes.noteDraft}
@@ -8144,7 +8683,7 @@ function useGroupMakerWidgetState() {
           ? `${selectedStudents.length} students arranged into ${groupCount} balanced group${
               groupCount === 1 ? '' : 's'
             }.`
-          : `Shuffle ${selectedStudents.length} students into groups of about ${groupMaker.groupSize}.`,
+          : null,
     makeGroups,
     selectedList,
     selectedStudents,
@@ -11392,16 +11931,8 @@ function toggleWidgetIdInList(widgetIds: WidgetId[], widgetId: WidgetId) {
     : normalizeWidgetIdCollection([...widgetIds, widgetId]);
 }
 
-function getWidgetWidthCategory(widgetId: WidgetId): WidgetWidthCategory {
-  return WIDGET_DETAILS[widgetId].width;
-}
-
-function getWidgetColumnSpan(widgetId: WidgetId, columnCount: number): 1 | 2 {
-  return getWidgetWidthCategory(widgetId) === 'double' && columnCount > 1 ? 2 : 1;
-}
-
-function computeDashboardMetrics(containerWidth: number): DashboardMetrics {
-  const safeWidth = Math.max(containerWidth, MIN_POPOVER_WIDTH);
+function computeDashboardMetrics(containerWidth: number, containerHeight: number): DashboardMetrics {
+  const safeWidth = Math.max(containerWidth, DASHBOARD_SINGLE_MIN_WIDTH);
   const maxColumnCount = Math.max(
     1,
     Math.floor((safeWidth + DASHBOARD_COLUMN_GAP) / (DASHBOARD_SINGLE_MIN_WIDTH + DASHBOARD_COLUMN_GAP))
@@ -11411,25 +11942,23 @@ function computeDashboardMetrics(containerWidth: number): DashboardMetrics {
     Math.ceil((safeWidth + DASHBOARD_COLUMN_GAP) / (DASHBOARD_SINGLE_MAX_WIDTH + DASHBOARD_COLUMN_GAP))
   );
   const columnCount = clampNumber(targetColumnCount, 1, maxColumnCount);
-  const laneWidth = Math.max(
-    DASHBOARD_SINGLE_MIN_WIDTH,
-    Math.floor((safeWidth - DASHBOARD_COLUMN_GAP * Math.max(columnCount - 1, 0)) / columnCount)
-  );
 
   return {
     columnCount,
     gap: DASHBOARD_COLUMN_GAP,
-    laneWidth: Math.min(laneWidth, DASHBOARD_SINGLE_MAX_WIDTH)
+    height: Math.max(0, Math.floor(containerHeight))
   };
 }
 
 function buildDashboardColumns({
+  collapsedWidgetIds,
   columnCount,
-  widgetHeights,
+  widgetSizeTiers,
   widgetIds
 }: {
+  collapsedWidgetIds: WidgetId[];
   columnCount: number;
-  widgetHeights: Partial<Record<WidgetId, number>>;
+  widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>>;
   widgetIds: WidgetId[];
 }) {
   if (widgetIds.length === 0) {
@@ -11437,94 +11966,505 @@ function buildDashboardColumns({
   }
 
   const normalizedColumnCount = Math.max(1, columnCount);
-  const columnSpans = getDashboardColumnSpans({
-    hasDoubleWidgets: widgetIds.some((widgetId) => getWidgetWidthCategory(widgetId) === 'double'),
-    laneCount: normalizedColumnCount
-  });
-  const widgets = widgetIds.map((widgetId) => ({
-    id: widgetId,
-    estimatedHeight: widgetHeights[widgetId] ?? WIDGET_ESTIMATED_HEIGHTS[widgetId],
-    span: getWidgetColumnSpan(widgetId, normalizedColumnCount)
-  }));
+  const widgetOrderIndex = new Map(widgetIds.map((widgetId, index) => [widgetId, index]));
+  const widgets = widgetIds
+    .map((widgetId, originalIndex) => {
+      return {
+        height: getWidgetDashboardHeight(
+          widgetId,
+          widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX,
+          collapsedWidgetIds.includes(widgetId)
+        ),
+        id: widgetId,
+        originalIndex
+      };
+    })
+    .sort((left, right) => {
+      if (right.height !== left.height) {
+        return right.height - left.height;
+      }
+
+      return left.originalIndex - right.originalIndex;
+    });
   const columns: Array<
     DashboardColumn & {
       estimatedHeight: number;
     }
-  > = columnSpans.map((span) => ({
-    span,
+  > = Array.from({ length: normalizedColumnCount }, () => ({
     widgetIds: [],
     estimatedHeight: 0
   }));
 
-  const pickShortestColumn = (availableColumns: typeof columns) => {
-    return availableColumns.reduce((shortestColumn, column) =>
-      column.estimatedHeight < shortestColumn.estimatedHeight ? column : shortestColumn
+  const getProjectedHeight = (column: DashboardColumn, widgetId: WidgetId) =>
+    getDashboardColumnEstimatedHeight(
+      { widgetIds: [...column.widgetIds, widgetId] },
+      widgetSizeTiers,
+      collapsedWidgetIds
+    );
+
+  const pickBestColumn = (widget: (typeof widgets)[number]) => {
+    return columns.reduce(
+      (best, column) => {
+        const projectedHeight = getProjectedHeight(column, widget.id);
+        if (!best) {
+          return { column, projectedHeight };
+        }
+
+        if (projectedHeight < best.projectedHeight - 0.5) {
+          return { column, projectedHeight };
+        }
+
+        if (Math.abs(projectedHeight - best.projectedHeight) <= 0.5) {
+          if (column.estimatedHeight < best.column.estimatedHeight) {
+            return { column, projectedHeight };
+          }
+        }
+
+        return best;
+      },
+      null as { column: (typeof columns)[number]; projectedHeight: number } | null
     );
   };
 
   for (const widget of widgets) {
-    const exactColumns = columns.filter((column) => column.span === widget.span);
-    const compatibleColumns = columns.filter((column) => column.span >= widget.span);
-    const targetColumn = pickShortestColumn(
-      exactColumns.length > 0 ? exactColumns : compatibleColumns.length > 0 ? compatibleColumns : columns
+    const bestColumnFit = pickBestColumn(widget);
+    const targetColumn = bestColumnFit?.column ?? columns[0];
+    targetColumn.widgetIds.push(widget.id);
+    targetColumn.estimatedHeight =
+      bestColumnFit?.projectedHeight ??
+      getDashboardColumnEstimatedHeight(
+        targetColumn,
+        widgetSizeTiers,
+        collapsedWidgetIds
+      );
+  }
+
+  return optimizeDashboardColumns({
+    collapsedWidgetIds,
+    columns: columns.map(({ estimatedHeight: _estimatedHeight, ...column }) => column),
+    widgetOrderIndex,
+    widgetSizeTiers
+  });
+}
+
+function optimizeDashboardColumns({
+  collapsedWidgetIds,
+  columns,
+  widgetOrderIndex,
+  widgetSizeTiers
+}: {
+  collapsedWidgetIds: WidgetId[];
+  columns: DashboardColumn[];
+  widgetOrderIndex: Map<WidgetId, number>;
+  widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>>;
+}) {
+  const arrangeColumnsForFit = (draftColumns: DashboardColumn[]) =>
+    draftColumns.map((column) => {
+      return {
+        ...column,
+        widgetIds: [...column.widgetIds].sort(
+          (left, right) => (widgetOrderIndex.get(left) ?? 0) - (widgetOrderIndex.get(right) ?? 0)
+        )
+      };
+    });
+
+  const getMetrics = (draftColumns: DashboardColumn[]) => {
+    const heights = draftColumns.map((column) =>
+      getDashboardColumnEstimatedHeight(
+        column,
+        widgetSizeTiers,
+        collapsedWidgetIds
+      )
+    );
+    const maxHeight = Math.max(0, ...heights);
+    const minHeight = Math.min(...heights);
+    const spread = heights.length > 1 ? maxHeight - minHeight : maxHeight;
+    const sumOfSquares = heights.reduce((total, height) => total + height * height, 0);
+    const totalHeight = heights.reduce((total, height) => total + height, 0);
+
+    return {
+      maxHeight,
+      spread,
+      sumOfSquares,
+      totalHeight
+    };
+  };
+
+  const isBetterLayout = (
+    nextMetrics: ReturnType<typeof getMetrics>,
+    currentMetrics: ReturnType<typeof getMetrics>
+  ) => {
+    if (nextMetrics.maxHeight !== currentMetrics.maxHeight) {
+      return nextMetrics.maxHeight < currentMetrics.maxHeight;
+    }
+
+    if (nextMetrics.spread !== currentMetrics.spread) {
+      return nextMetrics.spread < currentMetrics.spread;
+    }
+
+    if (nextMetrics.sumOfSquares !== currentMetrics.sumOfSquares) {
+      return nextMetrics.sumOfSquares < currentMetrics.sumOfSquares;
+    }
+
+    return nextMetrics.totalHeight < currentMetrics.totalHeight;
+  };
+  const isBetterBalancedLayout = (
+    nextMetrics: ReturnType<typeof getMetrics>,
+    currentMetrics: ReturnType<typeof getMetrics>
+  ) => {
+    if (nextMetrics.spread !== currentMetrics.spread) {
+      return nextMetrics.spread < currentMetrics.spread;
+    }
+
+    if (nextMetrics.maxHeight !== currentMetrics.maxHeight) {
+      return nextMetrics.maxHeight < currentMetrics.maxHeight;
+    }
+
+    if (nextMetrics.sumOfSquares !== currentMetrics.sumOfSquares) {
+      return nextMetrics.sumOfSquares < currentMetrics.sumOfSquares;
+    }
+
+    return nextMetrics.totalHeight < currentMetrics.totalHeight;
+  };
+  const getBestExactTwoColumnSplit = (draftColumns: DashboardColumn[]) => {
+    if (draftColumns.length !== 2) {
+      return null;
+    }
+
+    const widgetIds = draftColumns
+      .flatMap((column) => column.widgetIds)
+      .sort((left, right) => (widgetOrderIndex.get(left) ?? 0) - (widgetOrderIndex.get(right) ?? 0));
+
+    if (widgetIds.length <= 1) {
+      return arrangeColumnsForFit(draftColumns);
+    }
+
+    let bestSplit = arrangeColumnsForFit(draftColumns);
+    let bestSplitMetrics = getMetrics(bestSplit);
+    const totalMasks = 1 << widgetIds.length;
+
+    for (let mask = 0; mask < totalMasks; mask += 1) {
+      if (mask & 1) {
+        continue;
+      }
+
+      const nextColumns: DashboardColumn[] = [
+        { widgetIds: [] },
+        { widgetIds: [] }
+      ];
+
+      for (let index = 0; index < widgetIds.length; index += 1) {
+        const columnIndex = mask & (1 << index) ? 1 : 0;
+        nextColumns[columnIndex].widgetIds.push(widgetIds[index]);
+      }
+
+      if (nextColumns[0].widgetIds.length === 0 || nextColumns[1].widgetIds.length === 0) {
+        continue;
+      }
+
+      const normalizedColumns = arrangeColumnsForFit(nextColumns);
+      const nextMetrics = getMetrics(normalizedColumns);
+
+      if (!isBetterBalancedLayout(nextMetrics, bestSplitMetrics)) {
+        continue;
+      }
+
+      bestSplit = normalizedColumns;
+      bestSplitMetrics = nextMetrics;
+    }
+
+    return bestSplit;
+  };
+  let bestColumns = arrangeColumnsForFit(columns);
+  let bestMetrics = getMetrics(bestColumns);
+  let improved = true;
+
+  while (improved) {
+    improved = false;
+    let candidateColumns = bestColumns;
+    let candidateMetrics = bestMetrics;
+
+    for (let fromIndex = 0; fromIndex < bestColumns.length; fromIndex += 1) {
+      for (const widgetId of bestColumns[fromIndex].widgetIds) {
+        for (let toIndex = 0; toIndex < bestColumns.length; toIndex += 1) {
+          if (fromIndex === toIndex) {
+            continue;
+          }
+
+          const nextColumns = bestColumns.map((column) => ({
+            ...column,
+            widgetIds: [...column.widgetIds]
+          }));
+          nextColumns[fromIndex].widgetIds = nextColumns[fromIndex].widgetIds.filter(
+            (entry) => entry !== widgetId
+          );
+          nextColumns[toIndex].widgetIds.push(widgetId);
+
+          const normalizedColumns = arrangeColumnsForFit(nextColumns);
+          const nextMetrics = getMetrics(normalizedColumns);
+
+          if (isBetterLayout(nextMetrics, candidateMetrics)) {
+            candidateColumns = normalizedColumns;
+            candidateMetrics = nextMetrics;
+            improved = true;
+          }
+        }
+      }
+    }
+
+    for (let leftIndex = 0; leftIndex < bestColumns.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < bestColumns.length; rightIndex += 1) {
+        for (const leftWidgetId of bestColumns[leftIndex].widgetIds) {
+          for (const rightWidgetId of bestColumns[rightIndex].widgetIds) {
+            const nextColumns = bestColumns.map((column) => ({
+              ...column,
+              widgetIds: [...column.widgetIds]
+            }));
+            nextColumns[leftIndex].widgetIds = nextColumns[leftIndex].widgetIds.map((widgetId) =>
+              widgetId === leftWidgetId ? rightWidgetId : widgetId
+            );
+            nextColumns[rightIndex].widgetIds = nextColumns[rightIndex].widgetIds.map((widgetId) =>
+              widgetId === rightWidgetId ? leftWidgetId : widgetId
+            );
+
+            const normalizedColumns = arrangeColumnsForFit(nextColumns);
+            const nextMetrics = getMetrics(normalizedColumns);
+
+            if (isBetterLayout(nextMetrics, candidateMetrics)) {
+              candidateColumns = normalizedColumns;
+              candidateMetrics = nextMetrics;
+              improved = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (improved) {
+      bestColumns = candidateColumns;
+      bestMetrics = candidateMetrics;
+    }
+  }
+
+  if (bestColumns.length === 2) {
+    const exactBalancedColumns = getBestExactTwoColumnSplit(bestColumns);
+
+    if (exactBalancedColumns) {
+      bestColumns = exactBalancedColumns;
+      bestMetrics = getMetrics(bestColumns);
+    }
+  } else if (bestColumns.length > 1) {
+    let rebalanced = true;
+
+    while (rebalanced) {
+      rebalanced = false;
+      let candidateColumns = bestColumns;
+      let candidateMetrics = bestMetrics;
+      const indexedColumns = bestColumns
+        .map((column, index) => ({
+          column,
+          height: getDashboardColumnEstimatedHeight(
+            column,
+            widgetSizeTiers,
+            collapsedWidgetIds
+          ),
+          index
+        }))
+        .sort((left, right) => right.height - left.height);
+
+      for (const fromColumn of indexedColumns) {
+        for (const toColumn of [...indexedColumns].reverse()) {
+          if (fromColumn.index === toColumn.index || fromColumn.height <= toColumn.height) {
+            continue;
+          }
+
+          for (const widgetId of bestColumns[fromColumn.index].widgetIds) {
+            const nextColumns = bestColumns.map((column) => ({
+              ...column,
+              widgetIds: [...column.widgetIds]
+            }));
+            nextColumns[fromColumn.index].widgetIds = nextColumns[fromColumn.index].widgetIds.filter(
+              (entry) => entry !== widgetId
+            );
+            nextColumns[toColumn.index].widgetIds.push(widgetId);
+
+            const normalizedColumns = arrangeColumnsForFit(nextColumns);
+            const nextMetrics = getMetrics(normalizedColumns);
+
+            if (nextMetrics.maxHeight > bestMetrics.maxHeight) {
+              continue;
+            }
+
+            if (!isBetterBalancedLayout(nextMetrics, candidateMetrics)) {
+              continue;
+            }
+
+            candidateColumns = normalizedColumns;
+            candidateMetrics = nextMetrics;
+            rebalanced = true;
+          }
+        }
+      }
+
+      if (rebalanced) {
+        bestColumns = candidateColumns;
+        bestMetrics = candidateMetrics;
+      }
+    }
+  }
+
+  return bestColumns;
+}
+
+function buildResponsiveDashboardLayout({
+  availableHeight,
+  collapsedWidgetIds,
+  columnCount,
+  widgetIds
+}: {
+  availableHeight: number;
+  collapsedWidgetIds: WidgetId[];
+  columnCount: number;
+  widgetIds: WidgetId[];
+}) {
+  const widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>> = {};
+
+  for (const widgetId of widgetIds) {
+    widgetSizeTiers[widgetId] = WIDGET_SIZE_MAX;
+  }
+
+  const buildColumns = () =>
+    buildDashboardColumns({
+      collapsedWidgetIds,
+      columnCount,
+      widgetIds,
+      widgetSizeTiers
+    });
+  const fitHeight = Math.max(0, availableHeight - DASHBOARD_FIT_BOTTOM_PADDING);
+  const evaluateLayout = () => {
+    const nextColumns = buildColumns();
+    const heights = nextColumns.map((column) =>
+      getDashboardColumnEstimatedHeight(column, widgetSizeTiers, collapsedWidgetIds)
+    );
+    const overflow =
+      fitHeight > 0 ? Math.max(0, ...heights.map((height) => height - fitHeight)) : 0;
+    const maxHeight = Math.max(0, ...heights);
+    const minHeight = Math.min(...heights);
+
+    return {
+      columns: nextColumns,
+      maxHeight,
+      overflow,
+      spread: heights.length > 1 ? maxHeight - minHeight : maxHeight,
+      totalHeight: heights.reduce((total, height) => total + height, 0)
+    };
+  };
+  const isBetterEvaluation = (
+    nextEvaluation: ReturnType<typeof evaluateLayout>,
+    currentEvaluation: ReturnType<typeof evaluateLayout>
+  ) => {
+    if (nextEvaluation.overflow !== currentEvaluation.overflow) {
+      return nextEvaluation.overflow < currentEvaluation.overflow;
+    }
+
+    if (nextEvaluation.maxHeight !== currentEvaluation.maxHeight) {
+      return nextEvaluation.maxHeight < currentEvaluation.maxHeight;
+    }
+
+    if (nextEvaluation.spread !== currentEvaluation.spread) {
+      return nextEvaluation.spread < currentEvaluation.spread;
+    }
+
+    return nextEvaluation.totalHeight < currentEvaluation.totalHeight;
+  };
+
+  let evaluation = evaluateLayout();
+  let columns = evaluation.columns;
+  let guard = 0;
+
+  while (evaluation.overflow > 0) {
+    if (guard > WIDGET_IDS.length * WIDGET_SIZE_MAX * 2) {
+      break;
+    }
+
+    guard += 1;
+
+    let bestAdjustment:
+      | {
+          evaluation: ReturnType<typeof evaluateLayout>;
+          type: 'size';
+          widgetId: WidgetId;
+        }
+      | null = null;
+
+    for (const widgetId of widgetIds) {
+      if (
+        collapsedWidgetIds.includes(widgetId) ||
+        (widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX) <= WIDGET_SIZE_MIN
+      ) {
+        continue;
+      }
+
+      const previousTier = widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX;
+      widgetSizeTiers[widgetId] = clampWidgetSizeTier(previousTier - 1);
+      const nextEvaluation = evaluateLayout();
+      widgetSizeTiers[widgetId] = previousTier;
+
+      if (!isBetterEvaluation(nextEvaluation, bestAdjustment?.evaluation ?? evaluation)) {
+        continue;
+      }
+
+      bestAdjustment = {
+        evaluation: nextEvaluation,
+        type: 'size',
+        widgetId
+      };
+    }
+
+    if (!bestAdjustment) {
+      break;
+    }
+
+    widgetSizeTiers[bestAdjustment.widgetId] = clampWidgetSizeTier(
+      (widgetSizeTiers[bestAdjustment.widgetId] ?? WIDGET_SIZE_MAX) - 1
     );
 
-    targetColumn.widgetIds.push(widget.id);
-    targetColumn.estimatedHeight += widget.estimatedHeight + DASHBOARD_COLUMN_GAP;
+    evaluation = bestAdjustment.evaluation;
+    columns = evaluation.columns;
   }
 
-  return columns.map(({ estimatedHeight: _estimatedHeight, ...column }) => column);
+  return {
+    columns,
+    isScrollable: evaluation.overflow > 0,
+    widgetSizeTiers
+  };
 }
 
-function getDashboardColumnSpans({
-  hasDoubleWidgets,
-  laneCount
-}: {
-  hasDoubleWidgets: boolean;
-  laneCount: number;
-}) {
-  if (laneCount <= 1) {
-    return [1 as const];
-  }
-
-  if (!hasDoubleWidgets) {
-    return Array.from({ length: laneCount }, () => 1 as const);
-  }
-
-  if (laneCount === 2) {
-    return [1 as const, 1 as const];
-  }
-
-  return [...Array.from({ length: laneCount - 2 }, () => 1 as const), 2 as const];
-}
-
-function mergeMeasuredWidgetHeights(
-  current: Partial<Record<WidgetId, number>>,
-  next: Partial<Record<WidgetId, number>>,
-  visibleWidgetIds: WidgetId[]
+function getDashboardColumnEstimatedHeight(
+  column: DashboardColumn,
+  widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>>,
+  collapsedWidgetIds: WidgetId[]
 ) {
-  const merged: Partial<Record<WidgetId, number>> = {};
-  let changed = false;
-
-  for (const widgetId of visibleWidgetIds) {
-    const nextHeight = next[widgetId] ?? current[widgetId];
-
-    if (typeof nextHeight !== 'number') {
-      continue;
-    }
-
-    merged[widgetId] = nextHeight;
-
-    if (current[widgetId] !== nextHeight) {
-      changed = true;
-    }
+  if (column.widgetIds.length === 0) {
+    return 0;
   }
 
-  if (Object.keys(current).length !== Object.keys(merged).length) {
-    changed = true;
-  }
+  return column.widgetIds.reduce((total, widgetId, index) => {
+    const tier = widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX;
+    return (
+      total +
+      getWidgetDashboardHeight(widgetId, tier, collapsedWidgetIds.includes(widgetId)) +
+      (index > 0 ? DASHBOARD_COLUMN_GAP : 0)
+    );
+  }, 0);
+}
 
-  return changed ? merged : current;
+function getWidgetDashboardHeight(widgetId: WidgetId, sizeTier: WidgetSizeTier, collapsed: boolean) {
+  return collapsed ? WIDGET_COLLAPSED_DASHBOARD_HEIGHT : WIDGET_DASHBOARD_HEIGHTS[widgetId][sizeTier];
+}
+
+function clampWidgetSizeTier(value: number): WidgetSizeTier {
+  return clampNumber(Math.round(value), WIDGET_SIZE_MIN, WIDGET_SIZE_MAX) as WidgetSizeTier;
 }
 
 function normalizeClassList(raw: unknown): ClassList | null {

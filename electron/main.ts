@@ -21,8 +21,8 @@ const shell = (electron as typeof electron & {
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const OVERLAY_SIZE = 86;
 const OVERLAY_MARGIN = 22;
-const POPOVER_MIN_WIDTH = 320;
-const POPOVER_MIN_HEIGHT = 320;
+const POPOVER_MIN_WIDTH = 260;
+const POPOVER_MIN_HEIGHT = 300;
 const BUILDER_WIDTH = 360;
 const BUILDER_HEIGHT = 468;
 const WIDGET_PICKER_WIDTH = 292;
@@ -1376,7 +1376,7 @@ function createWidgetPopoutWindow(widgetId: WidgetPopoutId) {
     acceptFirstMouse: true,
     frame: false,
     transparent: true,
-    resizable: true,
+    resizable: false,
     movable: true,
     focusable: true,
     show: false,
