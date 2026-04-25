@@ -918,12 +918,34 @@ const fallbackAppUpdateState: AppUpdateState = {
   status: 'unsupported'
 };
 
+const STABLE_BUTTON_LIFT_SELECTOR = [
+  '.icon-button',
+  '.widget-icon-button',
+  '.toolbar-link',
+  '.primary-link',
+  '.secondary-link',
+  '.danger-link',
+  '.text-toggle',
+  '.widget-card__collapse',
+  '.picker-select__trigger',
+  '.picker-select__option',
+  '.builder-list__button',
+  '.stepper__button',
+  '.stepper__value',
+  '.note-row__delete'
+].join(',');
+const STABLE_BUTTON_STRONG_LIFT_SELECTOR =
+  '.window-spawn-button,[data-window-spawn-button="true"],.tracker-date-field__button';
+const STABLE_BUTTON_LIFT_CLASS = 'button-lift-stable';
+
 function returnToTeacherTools() {
   window.electronAPI?.returnToTeacherTools();
 }
 
 function App() {
   const [context, setContext] = useState<DesktopWindowContext | null>(null);
+
+  useStableButtonLift();
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -963,6 +985,159 @@ function App() {
       <GlobalTooltipLayer />
     </>
   );
+}
+
+function useStableButtonLift() {
+  useEffect(() => {
+    let activeButton: HTMLElement | null = null;
+    let activeZone: DOMRect | null = null;
+
+    const clearActiveButton = () => {
+      activeButton?.classList.remove(STABLE_BUTTON_LIFT_CLASS);
+      activeButton = null;
+      activeZone = null;
+    };
+
+    const getLiftButton = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) {
+        return null;
+      }
+
+      const button = target.closest<HTMLElement>(STABLE_BUTTON_LIFT_SELECTOR);
+      if (!button || !button.matches('button, [role="button"]')) {
+        return null;
+      }
+
+      if (button instanceof HTMLButtonElement && button.disabled) {
+        return null;
+      }
+
+      return button;
+    };
+
+    const getStableZone = (button: HTMLElement, rect = button.getBoundingClientRect()) => {
+      const isStrongLift = button.matches(STABLE_BUTTON_STRONG_LIFT_SELECTOR);
+      const lift = isStrongLift ? 10 : 3;
+      const horizontalGutter = isStrongLift ? 18 : 12;
+      const topGutter = 10;
+      const bottomGutter = isStrongLift ? 22 : 14;
+
+      return new DOMRect(
+        rect.left - horizontalGutter,
+        rect.top - lift - topGutter,
+        rect.width + horizontalGutter * 2,
+        rect.height + lift + topGutter + bottomGutter
+      );
+    };
+
+    const isPointInsideRect = (event: PointerEvent, rect: DOMRect | null) => {
+      if (!rect) {
+        return false;
+      }
+
+      return (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      );
+    };
+
+    const setActiveButton = (button: HTMLElement) => {
+      if (button === activeButton) {
+        return;
+      }
+
+      const zone = getStableZone(button);
+      clearActiveButton();
+      activeButton = button;
+      activeZone = zone;
+      button.classList.add(STABLE_BUTTON_LIFT_CLASS);
+    };
+
+    const getEventButton = (event: PointerEvent) => getLiftButton(event.target);
+
+    const handlePointerOver = (event: PointerEvent) => {
+      if (activeButton && isPointInsideRect(event, activeZone)) {
+        return;
+      }
+
+      const button = getLiftButton(event.target);
+
+      if (!button || button === activeButton) {
+        return;
+      }
+
+      setActiveButton(button);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!activeButton) {
+        const button = getEventButton(event);
+
+        if (button) {
+          setActiveButton(button);
+        }
+
+        return;
+      }
+
+      if (!isPointInsideRect(event, activeZone)) {
+        const button = getEventButton(event);
+
+        if (button) {
+          setActiveButton(button);
+        } else {
+          clearActiveButton();
+        }
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (activeButton?.contains(event.target as Node)) {
+        return;
+      }
+
+      if (activeButton && isPointInsideRect(event, activeZone)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      clearActiveButton();
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!activeButton || activeButton.contains(event.target as Node)) {
+        return;
+      }
+
+      if (!isPointInsideRect(event, activeZone)) {
+        clearActiveButton();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      activeButton.click();
+      clearActiveButton();
+    };
+
+    document.addEventListener('pointerover', handlePointerOver, true);
+    document.addEventListener('pointermove', handlePointerMove, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('blur', clearActiveButton);
+
+    return () => {
+      clearActiveButton();
+      document.removeEventListener('pointerover', handlePointerOver, true);
+      document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('blur', clearActiveButton);
+    };
+  }, []);
 }
 
 function GlobalTooltipLayer() {
@@ -3231,7 +3406,6 @@ function TeacherPopover() {
         >
           <PlannerWidgetContent
             documents={planner.documents}
-            entryDates={planner.entryDates}
             onAttachDocuments={planner.attachDocuments}
             onOpenDocument={planner.openDocument}
             onRemoveDocument={planner.removeDocument}
@@ -3478,7 +3652,7 @@ function TeacherPopover() {
                   </div>
                   <button
                     aria-label="Widgets"
-                    className="toolbar-link"
+                    className="toolbar-link window-spawn-button"
                     onClick={() => window.electronAPI?.toggleWidgetPicker()}
                     type="button"
                   >
@@ -3492,7 +3666,7 @@ function TeacherPopover() {
                   </button>
                   <button
                     aria-label="Classes"
-                    className="toolbar-link"
+                    className="toolbar-link window-spawn-button"
                     onClick={() => window.electronAPI?.toggleClassListBuilder()}
                     type="button"
                   >
@@ -3583,7 +3757,7 @@ function TeacherPopover() {
                     them back on.
                   </p>
                   <button
-                    className="primary-link"
+                    className="primary-link window-spawn-button"
                     onClick={() => window.electronAPI?.toggleWidgetPicker()}
                     type="button"
                   >
@@ -4632,6 +4806,7 @@ function WidgetPopoutButton({
       aria-label={isActive ? `Unpin ${title}` : `Pin ${title}`}
       aria-pressed={isActive}
       className="widget-icon-button"
+      data-window-spawn-button="true"
       onClick={(event) => {
         event.stopPropagation();
         onClick();
@@ -5254,7 +5429,6 @@ function QrGeneratorWidgetContent({
 
 function PlannerWidgetContent({
   documents,
-  entryDates,
   onAttachDocuments,
   onOpenDocument,
   onRemoveDocument,
@@ -5266,7 +5440,6 @@ function PlannerWidgetContent({
   statusMessage
 }: {
   documents: PlannerDocument[];
-  entryDates: string[];
   onAttachDocuments: () => Promise<void> | void;
   onOpenDocument: (document: PlannerDocument) => Promise<void> | void;
   onRemoveDocument: (id: string) => void;
@@ -5277,23 +5450,7 @@ function PlannerWidgetContent({
   selectedList: ClassList | null;
   statusMessage: string | null;
 }) {
-  const [visibleMonth, setVisibleMonth] = useState(() => getMonthKeyFromDateKey(selectedDate));
-  const [isCalendarCollapsed, setIsCalendarCollapsed] = useState(true);
   const planTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const indicatorSet = new Set(entryDates);
-  const monthDays = buildCalendarDays(visibleMonth, selectedDate, indicatorSet);
-  const savedDaysInMonth = entryDates.filter((dateKey) => dateKey.startsWith(`${visibleMonth}-`)).length;
-  const savedDaysLabel =
-    savedDaysInMonth === 0 ? 'No saved plans' : savedDaysInMonth === 1 ? '1 saved plan' : `${savedDaysInMonth} saved plans`;
-  const selectionSummary = !selectedList
-    ? 'Choose a class to unlock calendar planning.'
-    : selectedDate.startsWith(`${visibleMonth}-`)
-      ? `Selected ${formatLongDate(selectedDate)}`
-      : `Viewing ${formatMonthLabel(visibleMonth)}. Selected ${formatLongDate(selectedDate)}.`;
-
-  useEffect(() => {
-    setVisibleMonth(getMonthKeyFromDateKey(selectedDate));
-  }, [selectedDate]);
 
   useLayoutEffect(() => {
     const textarea = planTextareaRef.current;
@@ -5312,19 +5469,16 @@ function PlannerWidgetContent({
       : `Select a date and start planning ${selectedList.name}.`;
 
   return (
-    <div className={`planner-widget ${isCalendarCollapsed ? '' : 'planner-widget--calendar-open'}`}>
+    <div className="planner-widget">
       <div className="planner-widget__toolbar widget-top-controls">
         <div className="planner-widget__meta">
-          <span className="card-label">Lesson date</span>
-          <div className="planner-widget__date-row">
-            <input
-              className="text-field text-field--date"
-              disabled={!selectedList}
-              onChange={(event) => onSelectDate(event.target.value)}
-              type="date"
-              value={selectedDate}
-            />
-          </div>
+          <TrackerDateField
+            disabled={!selectedList}
+            id="lesson-plan-date"
+            label="Lesson date"
+            onChange={onSelectDate}
+            value={selectedDate}
+          />
         </div>
         <div className="planner-widget__action-row">
           <button
@@ -5337,19 +5491,8 @@ function PlannerWidgetContent({
             <span className="planner-widget__action-label">Today</span>
           </button>
           <button
-            aria-label={isCalendarCollapsed ? 'Show calendar' : 'Hide calendar'}
-            aria-expanded={!isCalendarCollapsed}
-            className="secondary-link button-tone--utility planner-widget__action-button planner-calendar__toggle"
-            onClick={() => setIsCalendarCollapsed((current) => !current)}
-            type="button"
-          >
-            <span className="planner-widget__action-label">
-              {isCalendarCollapsed ? 'Show calendar' : 'Hide calendar'}
-            </span>
-          </button>
-          <button
             aria-label="Attach lesson files"
-            className="primary-link planner-widget__action-button planner-widget__attach"
+            className="primary-link window-spawn-button planner-widget__action-button planner-widget__attach"
             disabled={!selectedList}
             onClick={() => void onAttachDocuments()}
             type="button"
@@ -5357,71 +5500,6 @@ function PlannerWidgetContent({
             <span className="planner-widget__action-label">Attach files</span>
           </button>
         </div>
-      </div>
-
-      <div className={`planner-calendar ${isCalendarCollapsed ? 'planner-calendar--collapsed' : ''}`}>
-        <div className="planner-calendar__header">
-          <div className="planner-calendar__header-copy">
-            <span className="planner-calendar__eyebrow">Planning calendar</span>
-            <div className="planner-calendar__title-row">
-              <span className="planner-calendar__title">{formatMonthLabel(visibleMonth)}</span>
-              <span className="planner-calendar__badge">{savedDaysLabel}</span>
-            </div>
-            <span className="planner-calendar__summary">{selectionSummary}</span>
-          </div>
-          {!isCalendarCollapsed ? (
-            <div className="planner-calendar__month-nav" aria-label="Calendar month navigation">
-              <button
-                aria-label="Previous month"
-                className="widget-icon-button button-tone--utility planner-calendar__month-button"
-                disabled={!selectedList}
-                onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, -1))}
-                type="button"
-              >
-                ‹
-              </button>
-              <button
-                aria-label="Next month"
-                className="widget-icon-button button-tone--utility planner-calendar__month-button"
-                disabled={!selectedList}
-                onClick={() => setVisibleMonth(shiftMonthKey(visibleMonth, 1))}
-                type="button"
-              >
-                ›
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        {!isCalendarCollapsed ? (
-          <>
-            <div className="planner-calendar__weekdays">
-              {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((weekday) => (
-                <span key={weekday}>{weekday}</span>
-              ))}
-            </div>
-
-            <div className="planner-calendar__grid">
-              {monthDays.map((day) => (
-                <button
-                  aria-current={day.isToday ? 'date' : undefined}
-                  aria-pressed={day.dateKey === selectedDate}
-                  className={`planner-calendar__day ${day.isCurrentMonth ? '' : 'planner-calendar__day--muted'} ${
-                    day.dateKey === selectedDate ? 'planner-calendar__day--selected' : ''
-                  } ${day.isToday ? 'planner-calendar__day--today' : ''} ${
-                    day.hasEntry ? 'planner-calendar__day--saved' : ''
-                  }`}
-                  disabled={!selectedList}
-                  key={day.dateKey}
-                  onClick={() => onSelectDate(day.dateKey)}
-                  type="button"
-                >
-                  <span className="planner-calendar__day-number">{day.day}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : null}
       </div>
 
       <div className="planner-widget__copy">
@@ -5656,7 +5734,7 @@ function HomeworkAssessmentTrackerWidgetContent({
           {onOpenManager ? (
             <button
               aria-label="Open homework and assessment editor"
-              className="secondary-link button-tone--utility"
+              className="secondary-link button-tone--utility window-spawn-button"
               data-compact-icon="✎"
               onClick={onOpenManager}
               type="button"
@@ -5667,7 +5745,7 @@ function HomeworkAssessmentTrackerWidgetContent({
           {onOpenCompletion ? (
             <button
               aria-label="Open homework completion tracker"
-              className="secondary-link button-tone--selection"
+              className="secondary-link button-tone--selection window-spawn-button"
               data-compact-icon="✓"
               onClick={onOpenCompletion}
               type="button"
@@ -6255,11 +6333,13 @@ function HomeworkAssessmentTrackerWidgetContent({
 }
 
 function TrackerDateField({
+  disabled = false,
   id,
   label,
   onChange,
   value
 }: {
+  disabled?: boolean;
   id: string;
   label: string;
   onChange: (dateKey: string) => void;
@@ -6295,6 +6375,10 @@ function TrackerDateField({
   }, [isOpen, value]);
 
   const openCalendar = () => {
+    if (disabled) {
+      return;
+    }
+
     setVisibleMonth(getMonthKeyFromDateKey(value));
     setIsOpen((current) => !current);
   };
@@ -6307,6 +6391,7 @@ function TrackerDateField({
       <div className="tracker-date-field__control">
         <input
           className="text-field text-field--date tracker-date-field__input"
+          disabled={disabled}
           id={id}
           onChange={(event) => onChange(event.target.value)}
           type="date"
@@ -6316,6 +6401,7 @@ function TrackerDateField({
           aria-expanded={isOpen}
           aria-label={`Choose ${label.toLowerCase()}`}
           className="widget-icon-button button-tone--utility tracker-date-field__button"
+          disabled={disabled}
           onClick={openCalendar}
           type="button"
         >
@@ -6561,7 +6647,7 @@ function SeatingChartDashboardPreview({
         <div className="seating-chart__preview-actions widget-top-controls">
           <button
             aria-label="Open seating chart editor"
-            className="primary-link"
+            className="primary-link window-spawn-button"
             data-compact-icon="✎"
             onClick={onOpenEditor}
             type="button"
@@ -7838,7 +7924,7 @@ function BellScheduleEditorPanel({
 
         {controller.classLists.length === 0 ? (
           <button
-            className="secondary-link button-tone--utility"
+            className="secondary-link button-tone--utility window-spawn-button"
             onClick={() => window.electronAPI?.toggleClassListBuilder()}
             type="button"
           >
@@ -8313,7 +8399,6 @@ function PlannerWidgetPopoutCard({
     >
       <PlannerWidgetContent
         documents={planner.documents}
-        entryDates={planner.entryDates}
         onAttachDocuments={planner.attachDocuments}
         onOpenDocument={planner.openDocument}
         onRemoveDocument={planner.removeDocument}
