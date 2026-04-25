@@ -5909,6 +5909,70 @@ body[data-window-resizing='true'] .window-stage * {
   flex-wrap: wrap;
 }
 
+.bell-schedule-editor__day-header {
+  position: relative;
+}
+
+.bell-schedule-editor__day-actions,
+.bell-schedule-editor__time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bell-schedule-editor__day-actions {
+  flex: 0 0 auto;
+}
+
+.bell-schedule-editor__day-actions .icon-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  font-size: 0.82rem;
+}
+
+.bell-schedule-editor__day-actions .icon-button--active {
+  border-color: var(--tone-action-border);
+  color: var(--tone-action);
+}
+
+.bell-schedule-editor__add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 4;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+  background:
+    linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
+    linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
+  box-shadow: 0 10px 24px rgba(8, 12, 18, 0.16);
+}
+
+.bell-schedule-editor__time-row {
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.bell-schedule-editor__time-row label {
+  display: flex;
+  flex: 1 1 84px;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bell-schedule-editor__time-row .text-field {
+  min-width: 0;
+  padding-inline: 8px;
+}
+
 .bell-schedule__status-pill--teaching {
   border-color: var(--tone-action-border);
   background:

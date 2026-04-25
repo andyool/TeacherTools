@@ -145,15 +145,7 @@ type HomeworkTrackerDraft = {
 };
 
 type BellScheduleDayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
-type BellScheduleSlotId =
-  | 'period-1'
-  | 'period-2'
-  | 'recess'
-  | 'homeroom'
-  | 'period-3'
-  | 'period-4'
-  | 'lunch'
-  | 'period-5';
+type BellScheduleSlotId = string;
 type BellScheduleSlotKind = 'break' | 'teaching';
 type BellScheduleSlotAssignment = {
   classListId: string | null;
@@ -162,6 +154,7 @@ type BellScheduleSlotAssignment = {
 
 type BellScheduleDay = {
   assignmentsBySlotId: Partial<Record<BellScheduleSlotId, BellScheduleSlotAssignment>>;
+  slotDefinitions: BellScheduleSlotDefinition[];
 };
 
 type BellScheduleProfile = {
@@ -5803,11 +5796,12 @@ function HomeworkAssessmentTrackerWidgetContent({
                       <tr>
                         <th scope="col">Student</th>
                         {completionHomework.map((item) => (
-                          <th key={`completion-head-${item.id}`} scope="col">
-                            <span
-                              className="tracker-completion-table__date"
-                              title={item.title}
-                            >
+                          <th
+                            data-tooltip-content={item.title}
+                            key={`completion-head-${item.id}`}
+                            scope="col"
+                          >
+                            <span className="tracker-completion-table__date">
                               {formatLongDate(item.dueDate)}
                             </span>
                           </th>
@@ -7800,6 +7794,9 @@ function BellScheduleEditorPanel({
 }: {
   controller: ReturnType<typeof useBellScheduleController>;
 }) {
+  const [addMenuDayKey, setAddMenuDayKey] = useState<BellScheduleDayKey | null>(null);
+  const [timeEditorDayKey, setTimeEditorDayKey] = useState<BellScheduleDayKey | null>(null);
+
   return (
     <section className="bell-schedule-editor">
       <div className="bell-schedule-editor__toolbar">
@@ -7859,6 +7856,8 @@ function BellScheduleEditorPanel({
         {BELL_SCHEDULE_DAY_KEYS.map((dayKey) => {
           const dayEntries = controller.weekTimelineByDay[dayKey] ?? [];
           const teachingCount = dayEntries.filter((entry) => entry.status === 'teaching').length;
+          const isAddMenuOpen = addMenuDayKey === dayKey;
+          const isTimeEditorOpen = timeEditorDayKey === dayKey;
 
           return (
             <article className="bell-schedule-editor__day" key={dayKey}>
@@ -7872,6 +7871,67 @@ function BellScheduleEditorPanel({
                       ? 'No teaching blocks selected.'
                       : `${teachingCount} teaching block${teachingCount === 1 ? '' : 's'}.`}
                   </p>
+                </div>
+                <div className="bell-schedule-editor__day-actions">
+                  <button
+                    aria-label={`Add block to ${BELL_SCHEDULE_DAY_LABELS[dayKey]}`}
+                    className="icon-button button-tone--utility"
+                    onClick={() =>
+                      setAddMenuDayKey((currentDayKey) =>
+                        currentDayKey === dayKey ? null : dayKey
+                      )
+                    }
+                    type="button"
+                  >
+                    +
+                  </button>
+                  <button
+                    aria-label={`Remove last block from ${BELL_SCHEDULE_DAY_LABELS[dayKey]}`}
+                    className="icon-button"
+                    disabled={dayEntries.length === 0}
+                    onClick={() => controller.removeDaySlot(dayKey)}
+                    type="button"
+                  >
+                    -
+                  </button>
+                  <button
+                    aria-label={`Edit ${BELL_SCHEDULE_DAY_LABELS[dayKey]} times`}
+                    className={`icon-button button-tone--utility ${
+                      isTimeEditorOpen ? 'icon-button--active' : ''
+                    }`}
+                    onClick={() =>
+                      setTimeEditorDayKey((currentDayKey) =>
+                        currentDayKey === dayKey ? null : dayKey
+                      )
+                    }
+                    type="button"
+                  >
+                    ✎
+                  </button>
+                  {isAddMenuOpen ? (
+                    <div className="bell-schedule-editor__add-menu">
+                      <button
+                        className="secondary-link button-tone--utility"
+                        onClick={() => {
+                          controller.addDaySlot(dayKey, 'teaching');
+                          setAddMenuDayKey(null);
+                        }}
+                        type="button"
+                      >
+                        Lesson
+                      </button>
+                      <button
+                        className="secondary-link"
+                        onClick={() => {
+                          controller.addDaySlot(dayKey, 'break');
+                          setAddMenuDayKey(null);
+                        }}
+                        type="button"
+                      >
+                        Break
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -7889,6 +7949,42 @@ function BellScheduleEditorPanel({
                         <span className="bell-schedule-editor__slot-time">
                           {formatBellTimeRange(entry.definition)}
                         </span>
+                        {isTimeEditorOpen ? (
+                          <div className="bell-schedule-editor__time-row">
+                            <label>
+                              <span>Start</span>
+                              <input
+                                className="text-field"
+                                onChange={(event) =>
+                                  controller.updateDaySlotTime(
+                                    dayKey,
+                                    entry.definition.id,
+                                    'startMinutes',
+                                    event.target.value
+                                  )
+                                }
+                                type="time"
+                                value={formatBellTimeInputValue(entry.definition.startMinutes)}
+                              />
+                            </label>
+                            <label>
+                              <span>End</span>
+                              <input
+                                className="text-field"
+                                onChange={(event) =>
+                                  controller.updateDaySlotTime(
+                                    dayKey,
+                                    entry.definition.id,
+                                    'endMinutes',
+                                    event.target.value
+                                  )
+                                }
+                                type="time"
+                                value={formatBellTimeInputValue(entry.definition.endMinutes)}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
                       </div>
                       <span
                         className={`pill bell-schedule__status-pill bell-schedule__status-pill--${entry.status}`}
@@ -8497,18 +8593,18 @@ function useBellScheduleController(classLists: ClassList[]) {
   const todayTimeline = todayDayKey ? weekTimelineByDay[todayDayKey] : [];
   const todayTeachingTimeline = todayTimeline.filter((entry) => entry.status === 'teaching');
   const currentEntry =
-    todayTeachingTimeline.find(
+    todayTimeline.find(
       (entry) =>
         currentMinutes >= entry.definition.startMinutes &&
         currentMinutes < entry.definition.endMinutes
     ) ?? null;
   const nextEntry =
-    todayTeachingTimeline.find((entry) => entry.definition.startMinutes > currentMinutes) ?? null;
+    todayTimeline.find((entry) => entry.definition.startMinutes > currentMinutes) ?? null;
   const upcomingEntries = currentEntry
-    ? todayTeachingTimeline.filter(
+    ? todayTimeline.filter(
         (entry) => entry.definition.startMinutes >= currentEntry.definition.endMinutes
       )
-    : todayTeachingTimeline.filter((entry) => entry.definition.startMinutes > currentMinutes);
+    : todayTimeline.filter((entry) => entry.definition.startMinutes > currentMinutes);
   const currentStartMs = currentEntry
     ? getTimestampForMinutes(todayDate, currentEntry.definition.startMinutes)
     : null;
@@ -8611,9 +8707,47 @@ function useBellScheduleController(classLists: ClassList[]) {
     );
   };
 
+  const addDaySlot = (dayKey: BellScheduleDayKey, kind: BellScheduleSlotKind) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? addBellScheduleDaySlot(current, current.activeProfileId, dayKey, kind)
+        : current
+    );
+  };
+
+  const removeDaySlot = (dayKey: BellScheduleDayKey) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? removeBellScheduleDaySlot(current, current.activeProfileId, dayKey)
+        : current
+    );
+  };
+
+  const updateDaySlotTime = (
+    dayKey: BellScheduleDayKey,
+    slotId: BellScheduleSlotId,
+    edge: 'endMinutes' | 'startMinutes',
+    value: string
+  ) => {
+    const minutes = parseBellTimeInputValue(value);
+
+    if (minutes === null) {
+      return;
+    }
+
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? updateBellScheduleDaySlotTimes(current, current.activeProfileId, dayKey, slotId, {
+            [edge]: minutes
+          })
+        : current
+    );
+  };
+
   return {
     activeProfile,
     activeProfileDisplayName,
+    addDaySlot,
     badgeLabel,
     bellSchedule,
     classLists,
@@ -8635,6 +8769,8 @@ function useBellScheduleController(classLists: ClassList[]) {
     todayDayKey,
     todayTimeline,
     upcomingEntries,
+    removeDaySlot,
+    updateDaySlotTime,
     updateSlotClassList,
     updateSlotEnabled,
     weekTimelineByDay
@@ -10129,6 +10265,29 @@ function formatBellTimeRange(definition: Pick<BellScheduleSlotDefinition, 'endMi
   return `${formatBellTime(definition.startMinutes)}-${formatBellTime(definition.endMinutes)}`;
 }
 
+function formatBellTimeInputValue(minutes: number) {
+  return `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60)
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+function parseBellTimeInputValue(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
 function getMinutesSinceMidnight(date: Date) {
   return date.getHours() * 60 + date.getMinutes();
 }
@@ -10178,10 +10337,23 @@ function getDefaultBellScheduleSlotAssignment(): BellScheduleSlotAssignment {
   };
 }
 
+function getBellScheduleDefaultSlotDefinitions() {
+  return BELL_SCHEDULE_SLOT_DEFINITIONS.map((slot) => ({ ...slot }));
+}
+
+function getBellScheduleDaySlotDefinitions(day: BellScheduleDay) {
+  return day.slotDefinitions.length > 0
+    ? day.slotDefinitions
+    : getBellScheduleDefaultSlotDefinitions();
+}
+
 function createBellScheduleDay(source?: BellScheduleDay): BellScheduleDay {
   const assignmentsBySlotId: Partial<Record<BellScheduleSlotId, BellScheduleSlotAssignment>> = {};
+  const slotDefinitions = source
+    ? getBellScheduleDaySlotDefinitions(source).map((slot) => ({ ...slot }))
+    : getBellScheduleDefaultSlotDefinitions();
 
-  BELL_SCHEDULE_SLOT_DEFINITIONS.forEach((slot) => {
+  slotDefinitions.forEach((slot) => {
     if (slot.kind !== 'teaching') {
       return;
     }
@@ -10193,7 +10365,8 @@ function createBellScheduleDay(source?: BellScheduleDay): BellScheduleDay {
   });
 
   return {
-    assignmentsBySlotId
+    assignmentsBySlotId,
+    slotDefinitions
   };
 }
 
@@ -10329,16 +10502,18 @@ function updateBellScheduleSlotAssignment(
   slotId: BellScheduleSlotId,
   updater: (assignment: BellScheduleSlotAssignment) => BellScheduleSlotAssignment
 ) {
-  const slotDefinition = BELL_SCHEDULE_SLOT_DEFINITIONS.find((slot) => slot.id === slotId);
-
-  if (!slotDefinition || slotDefinition.kind !== 'teaching') {
-    return snapshot;
-  }
-
   return {
     ...snapshot,
     profiles: snapshot.profiles.map((profile) => {
       if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const slotDefinition = getBellScheduleDaySlotDefinitions(profile.days[dayKey]).find(
+        (slot) => slot.id === slotId
+      );
+
+      if (!slotDefinition || slotDefinition.kind !== 'teaching') {
         return profile;
       }
 
@@ -10364,14 +10539,175 @@ function updateBellScheduleSlotAssignment(
   };
 }
 
+function getNextBellScheduleTeachingPeriodNumber(slotDefinitions: BellScheduleSlotDefinition[]) {
+  const numbers = slotDefinitions
+    .filter((slot) => slot.kind === 'teaching')
+    .map((slot) => /^Period\s+(\d+)$/i.exec(slot.label.trim())?.[1])
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  return numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+}
+
+function createBellScheduleSlotDefinition(
+  slotDefinitions: BellScheduleSlotDefinition[],
+  kind: BellScheduleSlotKind
+): BellScheduleSlotDefinition {
+  const previousSlot = slotDefinitions[slotDefinitions.length - 1] ?? null;
+  const startMinutes = previousSlot ? previousSlot.endMinutes : 8 * 60 + 45;
+  const durationMinutes = kind === 'teaching' ? 60 : 20;
+  const endMinutes = Math.min(startMinutes + durationMinutes, 24 * 60 - 1);
+
+  if (kind === 'teaching') {
+    const periodNumber = getNextBellScheduleTeachingPeriodNumber(slotDefinitions);
+
+    return {
+      endMinutes,
+      id: `period-${periodNumber}-${createStickyNoteId()}`,
+      kind,
+      label: `Period ${periodNumber}`,
+      shortLabel: `P${periodNumber}`,
+      startMinutes
+    };
+  }
+
+  const breakCount = slotDefinitions.filter((slot) => slot.kind === 'break').length + 1;
+  const label = breakCount === 1 ? 'Break' : `Break ${breakCount}`;
+
+  return {
+    endMinutes,
+    id: `break-${breakCount}-${createStickyNoteId()}`,
+    kind,
+    label,
+    shortLabel: breakCount === 1 ? 'Break' : `B${breakCount}`,
+    startMinutes
+  };
+}
+
+function addBellScheduleDaySlot(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey,
+  kind: BellScheduleSlotKind
+) {
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+      const slotDefinitions = getBellScheduleDaySlotDefinitions(day);
+      const nextSlot = createBellScheduleSlotDefinition(slotDefinitions, kind);
+      const assignmentsBySlotId = {
+        ...day.assignmentsBySlotId
+      };
+
+      if (nextSlot.kind === 'teaching') {
+        assignmentsBySlotId[nextSlot.id] = getDefaultBellScheduleSlotAssignment();
+      }
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            assignmentsBySlotId,
+            slotDefinitions: [...slotDefinitions, nextSlot]
+          }
+        }
+      };
+    })
+  };
+}
+
+function removeBellScheduleDaySlot(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey
+) {
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+      const slotDefinitions = getBellScheduleDaySlotDefinitions(day);
+
+      if (slotDefinitions.length === 0) {
+        return profile;
+      }
+
+      const nextSlotDefinitions = slotDefinitions.slice(0, -1);
+      const removedSlot = slotDefinitions[slotDefinitions.length - 1];
+      const assignmentsBySlotId = { ...day.assignmentsBySlotId };
+
+      delete assignmentsBySlotId[removedSlot.id];
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            assignmentsBySlotId,
+            slotDefinitions: nextSlotDefinitions
+          }
+        }
+      };
+    })
+  };
+}
+
+function updateBellScheduleDaySlotTimes(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey,
+  slotId: BellScheduleSlotId,
+  times: Partial<Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>>
+) {
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            ...day,
+            slotDefinitions: getBellScheduleDaySlotDefinitions(day).map((slot) =>
+              slot.id === slotId
+                ? {
+                    ...slot,
+                    ...times
+                  }
+                : slot
+            )
+          }
+        }
+      };
+    })
+  };
+}
+
 function buildBellTimelineEntries(
   profile: BellScheduleProfile,
   dayKey: BellScheduleDayKey,
   classLists: ClassList[]
 ) {
   const classListById = new Map(classLists.map((list) => [list.id, list] as const));
+  const slotDefinitions = getBellScheduleDaySlotDefinitions(profile.days[dayKey]);
 
-  return BELL_SCHEDULE_SLOT_DEFINITIONS.map((definition) => {
+  return slotDefinitions.map((definition) => {
     const assignment =
       definition.kind === 'teaching'
         ? profile.days[dayKey].assignmentsBySlotId[definition.id] ??
@@ -12219,8 +12555,15 @@ function normalizeBellScheduleDay(raw: unknown): BellScheduleDay {
       ? (nextRaw.assignmentsBySlotId as Record<string, unknown>)
       : {};
   const assignmentsBySlotId: Partial<Record<BellScheduleSlotId, BellScheduleSlotAssignment>> = {};
+  const slotDefinitions = Array.isArray(nextRaw.slotDefinitions)
+    ? nextRaw.slotDefinitions
+        .map((slot) => normalizeBellScheduleSlotDefinition(slot))
+        .filter((slot): slot is BellScheduleSlotDefinition => slot !== null)
+    : getBellScheduleDefaultSlotDefinitions();
+  const nextSlotDefinitions =
+    slotDefinitions.length > 0 ? slotDefinitions : getBellScheduleDefaultSlotDefinitions();
 
-  BELL_SCHEDULE_SLOT_DEFINITIONS.forEach((slot) => {
+  nextSlotDefinitions.forEach((slot) => {
     if (slot.kind !== 'teaching') {
       return;
     }
@@ -12232,7 +12575,55 @@ function normalizeBellScheduleDay(raw: unknown): BellScheduleDay {
   });
 
   return {
-    assignmentsBySlotId
+    assignmentsBySlotId,
+    slotDefinitions: nextSlotDefinitions
+  };
+}
+
+function normalizeBellScheduleSlotDefinition(raw: unknown): BellScheduleSlotDefinition | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const nextRaw = raw as {
+    endMinutes?: unknown;
+    id?: unknown;
+    kind?: unknown;
+    label?: unknown;
+    shortLabel?: unknown;
+    startMinutes?: unknown;
+  };
+  const startMinutes =
+    typeof nextRaw.startMinutes === 'number'
+      ? Math.round(clampNumber(nextRaw.startMinutes, 0, 24 * 60 - 1))
+      : null;
+  const endMinutes =
+    typeof nextRaw.endMinutes === 'number'
+      ? Math.round(clampNumber(nextRaw.endMinutes, 0, 24 * 60 - 1))
+      : null;
+
+  if (
+    typeof nextRaw.id !== 'string' ||
+    !nextRaw.id.trim() ||
+    (nextRaw.kind !== 'break' && nextRaw.kind !== 'teaching') ||
+    typeof nextRaw.label !== 'string' ||
+    !nextRaw.label.trim() ||
+    startMinutes === null ||
+    endMinutes === null
+  ) {
+    return null;
+  }
+
+  return {
+    endMinutes,
+    id: nextRaw.id,
+    kind: nextRaw.kind,
+    label: nextRaw.label,
+    shortLabel:
+      typeof nextRaw.shortLabel === 'string' && nextRaw.shortLabel.trim()
+        ? nextRaw.shortLabel
+        : nextRaw.label,
+    startMinutes
   };
 }
 
