@@ -3,10 +3,11 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState
 } from 'react';
-import type { CSSProperties, RefObject } from 'react';
+import type { CSSProperties, Ref, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
@@ -292,6 +293,12 @@ type DashboardColumn = {
   widgetIds: WidgetId[];
 };
 
+type DashboardLayoutFit = {
+  columns: DashboardColumn[];
+  isScrollable: boolean;
+  widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>>;
+};
+
 type DashboardLayoutsSnapshot = {
   layoutsByListId: Record<string, WidgetLayout>;
 };
@@ -349,9 +356,9 @@ const PICKER_SPINNER_WINDOW_SIZE = 5;
 const PICKER_SPINNER_VISIBLE_SIZE = 3;
 const PICKER_SPINNER_CENTER_INDEX = Math.floor(PICKER_SPINNER_WINDOW_SIZE / 2);
 const PICKER_SPIN_MIN_STEPS = 8;
-const PICKER_SPIN_MIN_DURATION_MS = 850;
-const PICKER_SPIN_MAX_DURATION_MS = 1500;
-const PICKER_SPIN_STEP_DURATION_MS = 48;
+const PICKER_SPIN_MIN_DURATION_MS = 620;
+const PICKER_SPIN_MAX_DURATION_MS = 1100;
+const PICKER_SPIN_STEP_DURATION_MS = 36;
 const MIN_POPOVER_WIDTH = 260;
 const MIN_POPOVER_HEIGHT = 300;
 const QR_WIDGET_SVG_BORDER_MODULES = 2;
@@ -1209,6 +1216,8 @@ function OverlayDot() {
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
+  const pendingOverlayPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const overlayDragAnimationFrameRef = useRef<number | null>(null);
   const now = useNow(timer.endsAt);
   const remainingMs = timer.endsAt ? Math.max(timer.endsAt - now, 0) : timer.pausedRemainingMs;
   const isTimerAlertActive = hasUnacknowledgedTimerCompletion(timer);
@@ -1217,6 +1226,12 @@ function OverlayDot() {
     window.electronAPI?.getOverlayBounds().then((bounds) => {
       overlayBoundsRef.current = bounds;
     });
+
+    return () => {
+      if (overlayDragAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(overlayDragAnimationFrameRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1275,10 +1290,22 @@ function OverlayDot() {
     };
 
     overlayBoundsRef.current = nextBounds;
-    window.electronAPI?.setOverlayPosition({
+    pendingOverlayPositionRef.current = {
       x: nextBounds.x,
       y: nextBounds.y
-    });
+    };
+
+    if (overlayDragAnimationFrameRef.current === null) {
+      overlayDragAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        overlayDragAnimationFrameRef.current = null;
+        const pendingPosition = pendingOverlayPositionRef.current;
+        pendingOverlayPositionRef.current = null;
+
+        if (pendingPosition) {
+          window.electronAPI?.setOverlayPosition(pendingPosition);
+        }
+      });
+    }
   };
 
   const finishPointerInteraction = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1890,6 +1917,11 @@ function TeacherPopover() {
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
+  const pickerSpinnerTrackRef = useRef<HTMLDivElement | null>(null);
+  const pickerRenderedPositionRef = useRef(0);
+  const widgetDragAnimationFrameRef = useRef<number | null>(null);
+  const widgetDragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const stableDashboardLayoutFitRef = useRef<DashboardLayoutFit | null>(null);
   const widgetDragStateRef = useRef<{
     draggedWidgetId: WidgetId;
     hasMoved: boolean;
@@ -1969,28 +2001,55 @@ function TeacherPopover() {
   const visibleWidgetIds = selectedLayout.order.filter((widgetId) => !selectedLayout.hidden.includes(widgetId));
   const visibleWidgetKey = visibleWidgetIds.join('|');
   const collapsedWidgetKey = selectedLayout.collapsed.join('|');
-  const dashboardLayoutFit = buildResponsiveDashboardLayout({
-    availableHeight: Math.max(0, dashboardMetrics.height - dashboardMeasuredFitBuffer),
-    collapsedWidgetIds: selectedLayout.collapsed,
-    columnCount: dashboardMetrics.columnCount,
-    widgetIds: visibleWidgetIds
+  const { beginResize, continueResize, endResize, isResizing } = useWindowResizeHandles({
+    minWidth: MIN_POPOVER_WIDTH,
+    minHeight: MIN_POPOVER_HEIGHT
   });
+  const calculatedDashboardLayoutFit = useMemo(
+    () =>
+      buildResponsiveDashboardLayout({
+        availableHeight: Math.max(0, dashboardMetrics.height - dashboardMeasuredFitBuffer),
+        collapsedWidgetIds: selectedLayout.collapsed,
+        columnCount: dashboardMetrics.columnCount,
+        widgetIds: visibleWidgetIds
+      }),
+    [
+      collapsedWidgetKey,
+      dashboardMeasuredFitBuffer,
+      dashboardMetrics.columnCount,
+      dashboardMetrics.height,
+      visibleWidgetKey
+    ]
+  );
+  const dashboardLayoutFit =
+    isResizing && stableDashboardLayoutFitRef.current
+      ? stableDashboardLayoutFitRef.current
+      : calculatedDashboardLayoutFit;
+
+  if (!isResizing) {
+    stableDashboardLayoutFitRef.current = calculatedDashboardLayoutFit;
+  }
+
   const dashboardColumns = dashboardLayoutFit.columns;
   const dashboardColumnKey = dashboardColumns.map((column) => column.widgetIds.join(',')).join('|');
   const dashboardSizeTierKey = visibleWidgetIds
     .map((widgetId) => `${widgetId}:${dashboardLayoutFit.widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX}`)
     .join('|');
+  const dashboardHasMinimumFunctionalSizes = visibleWidgetIds.every(
+    (widgetId) =>
+      selectedLayout.collapsed.includes(widgetId) ||
+      (dashboardLayoutFit.widgetSizeTiers[widgetId] ?? WIDGET_SIZE_MAX) <= WIDGET_SIZE_MIN
+  );
   const shouldPreferDashboardScroll = dashboardMetrics.columnCount <= 1;
   const shouldAllowDashboardScroll =
-    shouldPreferDashboardScroll || dashboardLayoutFit.isScrollable || dashboardForceScroll;
+    shouldPreferDashboardScroll ||
+    calculatedDashboardLayoutFit.isScrollable ||
+    dashboardLayoutFit.isScrollable ||
+    dashboardForceScroll;
   const effectiveDashboardFitScale = shouldAllowDashboardScroll ? 1 : dashboardFitScale;
   const rosterCount = selectedStudents.length;
   const timerLabel = formatDuration(remainingMs);
-  const todayLabel = new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  }).format(new Date());
+  const todayLabel = formatSchoolDateLabel(new Date(now));
   const appUpdateButtonLabel = getAppUpdateButtonLabel(appUpdate);
   const appUpdateStatusLabel = getAppUpdateStatusLabel(appUpdate);
   const appUpdateStatusTone = getAppUpdateStatusTone(appUpdate);
@@ -2044,11 +2103,6 @@ function TeacherPopover() {
     : planner.hasContent
       ? `Saved for ${formatLongDate(planner.selectedDate)}.`
       : `Plan ${selectedList.name} for ${formatLongDate(planner.selectedDate)}.`;
-  const { beginResize, continueResize, endResize, isResizing } = useWindowResizeHandles({
-    minWidth: MIN_POPOVER_WIDTH,
-    minHeight: MIN_POPOVER_HEIGHT
-  });
-
   const handleAppUpdateAction = () => {
     if (appUpdate.status === 'downloaded') {
       const installAppUpdate = window.electronAPI?.installAppUpdate;
@@ -2185,6 +2239,10 @@ function TeacherPopover() {
     let frameId = 0;
 
     const syncDashboardLayout = () => {
+      if (isResizing) {
+        return;
+      }
+
       const nextMetrics = computeDashboardMetrics(
         dashboardShell.clientWidth,
         dashboardShell.clientHeight
@@ -2221,7 +2279,7 @@ function TeacherPopover() {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
     };
-  }, [interfaceScale, visibleWidgetKey]);
+  }, [interfaceScale, isResizing, visibleWidgetKey]);
 
   useEffect(() => {
     setDashboardMeasuredFitBuffer(0);
@@ -2262,6 +2320,13 @@ function TeacherPopover() {
       if (overflow <= 0) {
         if (dashboardForceScroll) {
           setDashboardForceScroll(false);
+        }
+        return;
+      }
+
+      if (overflow > 0 && dashboardHasMinimumFunctionalSizes) {
+        if (!dashboardForceScroll) {
+          setDashboardForceScroll(true);
         }
         return;
       }
@@ -2336,6 +2401,7 @@ function TeacherPopover() {
     collapsedWidgetKey,
     dashboardColumnKey,
     dashboardForceScroll,
+    dashboardHasMinimumFunctionalSizes,
     dashboardLayoutFit.isScrollable,
     dashboardFitScale,
     dashboardMetrics.height,
@@ -2448,6 +2514,9 @@ function TeacherPopover() {
     return () => {
       if (pickerSpinAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
+      }
+      if (widgetDragAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(widgetDragAnimationFrameRef.current);
       }
     };
   }, []);
@@ -2603,10 +2672,25 @@ function TeacherPopover() {
       setWidgetDragging(dragState.draggedWidgetId);
     }
 
-    const hoveredWidgetId = getWidgetIdUnderPointer(event.clientX, event.clientY);
-    if (dragOverWidgetIdRef.current !== hoveredWidgetId) {
-      dragOverWidgetIdRef.current = hoveredWidgetId;
-      setDragOverWidgetId(hoveredWidgetId);
+    widgetDragPointerRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+
+    if (widgetDragAnimationFrameRef.current === null) {
+      widgetDragAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        widgetDragAnimationFrameRef.current = null;
+        const pointer = widgetDragPointerRef.current;
+        if (!pointer || !widgetDragStateRef.current?.hasMoved) {
+          return;
+        }
+
+        const hoveredWidgetId = getWidgetIdUnderPointer(pointer.clientX, pointer.clientY);
+        if (dragOverWidgetIdRef.current !== hoveredWidgetId) {
+          dragOverWidgetIdRef.current = hoveredWidgetId;
+          setDragOverWidgetId(hoveredWidgetId);
+        }
+      });
     }
   };
 
@@ -2625,6 +2709,11 @@ function TeacherPopover() {
       hoveredWidgetId !== dragState.draggedWidgetId;
 
     widgetDragStateRef.current = null;
+    widgetDragPointerRef.current = null;
+    if (widgetDragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(widgetDragAnimationFrameRef.current);
+      widgetDragAnimationFrameRef.current = null;
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -2643,6 +2732,11 @@ function TeacherPopover() {
     }
 
     widgetDragStateRef.current = null;
+    widgetDragPointerRef.current = null;
+    if (widgetDragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(widgetDragAnimationFrameRef.current);
+      widgetDragAnimationFrameRef.current = null;
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -2723,9 +2817,21 @@ function TeacherPopover() {
       window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
     }
 
+    const syncSpinnerPosition = (nextPosition: number, shouldRender: boolean) => {
+      pickerSpinnerTrackRef.current?.style.setProperty(
+        '--picker-spinner-translate',
+        `${getPickerSpinnerTranslatePercent(nextPosition - Math.floor(nextPosition))}%`
+      );
+
+      if (shouldRender) {
+        pickerRenderedPositionRef.current = nextPosition;
+        setSpinnerPosition(nextPosition);
+      }
+    };
+
     setIsClassMenuOpen(false);
     setIsPickerSpinning(true);
-    setSpinnerPosition(startPosition);
+    syncSpinnerPosition(startPosition, true);
 
     const spinStartedAt = window.performance.now();
 
@@ -2733,8 +2839,17 @@ function TeacherPopover() {
       const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
       const easedProgress = easeOutPickerSpin(progress);
       const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
+      const nextBaseIndex = Math.floor(nextPosition);
+      const nextActiveStep = Math.round(nextPosition - nextBaseIndex);
+      const renderedBaseIndex = Math.floor(pickerRenderedPositionRef.current);
+      const renderedActiveStep = Math.round(
+        pickerRenderedPositionRef.current - renderedBaseIndex
+      );
 
-      setSpinnerPosition(nextPosition);
+      syncSpinnerPosition(
+        nextPosition,
+        nextBaseIndex !== renderedBaseIndex || nextActiveStep !== renderedActiveStep
+      );
 
       if (progress < 1) {
         pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
@@ -2743,7 +2858,7 @@ function TeacherPopover() {
 
       pickerSpinAnimationFrameRef.current = null;
 
-      setSpinnerPosition(finalIndex);
+      syncSpinnerPosition(finalIndex, true);
       setIsPickerSpinning(false);
       setPicker((current) => {
         if (current.selectedListId !== selectedListId) {
@@ -3008,6 +3123,7 @@ function TeacherPopover() {
             onResetCycle={resetCurrentListCycle}
             onToggleRemovePickedStudents={toggleRemovePickedStudents}
             pickerSpinnerView={pickerSpinnerView}
+            spinnerTrackRef={pickerSpinnerTrackRef}
             recentPicks={recentPicks}
             removePickedStudents={picker.removePickedStudents}
             selectedStudentCount={selectedStudents.length}
@@ -3275,7 +3391,7 @@ function TeacherPopover() {
           <div className="panel__content panel__content--main">
             <header className="panel-header panel-header--main">
               <div className="panel-header__title">
-                <span className="panel-kicker">{todayLabel}</span>
+                <span className="panel-kicker panel-kicker--school-date">{todayLabel}</span>
                 <h1 className="panel-title">TeacherTools</h1>
               </div>
 
@@ -4518,7 +4634,7 @@ function WidgetPopoutButton({
       data-tooltip-content={isActive ? `Unpin ${title}` : `Pin ${title}`}
       type="button"
     >
-      <LockIcon locked={isActive} />
+      <PopoutIcon />
     </button>
   );
 }
@@ -4564,38 +4680,25 @@ function PopoutWidgetActions({
   );
 }
 
-function LockIcon({ locked }: { locked: boolean }) {
+function PopoutIcon() {
   return (
-    <svg aria-hidden="true" className="lock-icon" viewBox="0 0 16 16">
+    <svg aria-hidden="true" className="popout-icon" viewBox="0 0 16 16">
       <path
-        d={locked ? 'M5.1 7V5.5A2.9 2.9 0 0 1 8 2.6a2.9 2.9 0 0 1 2.9 2.9V7' : 'M5.1 7V5.8A2.9 2.9 0 0 1 8 2.9a2.9 2.9 0 0 1 2.9 2.9'}
+        d="M7.1 3.1H4.2A1.2 1.2 0 0 0 3 4.3v7.5A1.2 1.2 0 0 0 4.2 13h7.5a1.2 1.2 0 0 0 1.2-1.2V8.9"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
-        strokeWidth="1.2"
+        strokeLinejoin="round"
+        strokeWidth="1.35"
       />
-      {!locked ? (
-        <path
-          d="M10.9 5.8h1a2 2 0 0 1 2 2V12a1.9 1.9 0 0 1-1.9 1.9H4A1.9 1.9 0 0 1 2.1 12V7.8a2 2 0 0 1 2-2h5.4"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.2"
-        />
-      ) : (
-        <rect
-          fill="none"
-          height="6.9"
-          rx="1.5"
-          stroke="currentColor"
-          strokeWidth="1.2"
-          width="10.8"
-          x="2.6"
-          y="6.5"
-        />
-      )}
-      <circle cx="8" cy="9.8" fill="currentColor" r="0.85" />
+      <path
+        d="M8.7 2.9h4.4v4.4M7.4 8.6 13 3"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.35"
+      />
     </svg>
   );
 }
@@ -4753,6 +4856,7 @@ function PickerWidgetContent({
   onResetCycle,
   onToggleRemovePickedStudents,
   pickerSpinnerView,
+  spinnerTrackRef,
   recentPicks,
   removePickedStudents,
   selectedStudentCount
@@ -4762,6 +4866,7 @@ function PickerWidgetContent({
   onResetCycle: () => void;
   onToggleRemovePickedStudents: (removePickedStudents: boolean) => void;
   pickerSpinnerView: PickerSpinnerView;
+  spinnerTrackRef?: Ref<HTMLDivElement>;
   recentPicks: string[];
   removePickedStudents: boolean;
   selectedStudentCount: number;
@@ -4814,7 +4919,7 @@ function PickerWidgetContent({
       <div className="picker-stack">
         <div className={`picker-spinner ${isPickerSpinning ? 'picker-spinner--running' : ''}`}>
           <div className="picker-spinner__fade" />
-          <div className="picker-spinner__track" style={pickerSpinnerStyle}>
+          <div className="picker-spinner__track" ref={spinnerTrackRef} style={pickerSpinnerStyle}>
             {pickerSpinnerView.items.map((item) => (
               <span
                 className={`picker-spinner__name${item.isActive ? ' picker-spinner__name--active' : ''}${
@@ -6439,8 +6544,10 @@ function SeatingChartEditorContent({
       }
 
       const targetSeatId = getSeatIdFromPoint(moveEvent.clientX, moveEvent.clientY);
-      activeDrag.targetSeatId = targetSeatId;
-      setAssignmentTargetSeatId(targetSeatId);
+      if (activeDrag.targetSeatId !== targetSeatId) {
+        activeDrag.targetSeatId = targetSeatId;
+        setAssignmentTargetSeatId(targetSeatId);
+      }
     };
 
     const handlePointerUp = (upEvent: PointerEvent) => {
@@ -6941,8 +7048,17 @@ function SeatingChartGrid({
     }
 
     const targetCell = getCellFromPoint(clientX, clientY);
+    const targetCellKey = targetCell ? getSeatingChartCellKey(targetCell.x, targetCell.y) : null;
+    const currentCellKey = activeDrag.targetCell
+      ? getSeatingChartCellKey(activeDrag.targetCell.x, activeDrag.targetCell.y)
+      : null;
+
+    if (targetCellKey === currentCellKey) {
+      return;
+    }
+
     activeDrag.targetCell = targetCell;
-    setDragTargetCellKey(targetCell ? getSeatingChartCellKey(targetCell.x, targetCell.y) : null);
+    setDragTargetCellKey(targetCellKey);
   };
 
   const finishPointerDrag = (clientX?: number, clientY?: number) => {
@@ -7664,6 +7780,7 @@ function PickerWidgetPopoutCard({
         onResetCycle={picker.resetCurrentListCycle}
         onToggleRemovePickedStudents={picker.toggleRemovePickedStudents}
         pickerSpinnerView={picker.pickerSpinnerView}
+        spinnerTrackRef={picker.spinnerTrackRef}
         recentPicks={picker.recentPicks}
         removePickedStudents={picker.picker.removePickedStudents}
         selectedStudentCount={picker.selectedStudents.length}
@@ -8454,6 +8571,8 @@ function useTimerWidgetState() {
 
 function usePickerWidgetState() {
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
+  const pickerSpinnerTrackRef = useRef<HTMLDivElement | null>(null);
+  const pickerRenderedPositionRef = useRef(0);
   const [picker, setPicker] = usePickerState();
   const [isPickerSpinning, setIsPickerSpinning] = useState(false);
   const [spinnerPosition, setSpinnerPosition] = useState(0);
@@ -8548,8 +8667,20 @@ function usePickerWidgetState() {
       window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
     }
 
+    const syncSpinnerPosition = (nextPosition: number, shouldRender: boolean) => {
+      pickerSpinnerTrackRef.current?.style.setProperty(
+        '--picker-spinner-translate',
+        `${getPickerSpinnerTranslatePercent(nextPosition - Math.floor(nextPosition))}%`
+      );
+
+      if (shouldRender) {
+        pickerRenderedPositionRef.current = nextPosition;
+        setSpinnerPosition(nextPosition);
+      }
+    };
+
     setIsPickerSpinning(true);
-    setSpinnerPosition(startPosition);
+    syncSpinnerPosition(startPosition, true);
 
     const spinStartedAt = window.performance.now();
 
@@ -8557,8 +8688,17 @@ function usePickerWidgetState() {
       const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
       const easedProgress = easeOutPickerSpin(progress);
       const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
+      const nextBaseIndex = Math.floor(nextPosition);
+      const nextActiveStep = Math.round(nextPosition - nextBaseIndex);
+      const renderedBaseIndex = Math.floor(pickerRenderedPositionRef.current);
+      const renderedActiveStep = Math.round(
+        pickerRenderedPositionRef.current - renderedBaseIndex
+      );
 
-      setSpinnerPosition(nextPosition);
+      syncSpinnerPosition(
+        nextPosition,
+        nextBaseIndex !== renderedBaseIndex || nextActiveStep !== renderedActiveStep
+      );
 
       if (progress < 1) {
         pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
@@ -8567,7 +8707,7 @@ function usePickerWidgetState() {
 
       pickerSpinAnimationFrameRef.current = null;
 
-      setSpinnerPosition(finalIndex);
+      syncSpinnerPosition(finalIndex, true);
       setIsPickerSpinning(false);
       setPicker((current) => {
         if (current.selectedListId !== selectedListId) {
@@ -8604,6 +8744,7 @@ function usePickerWidgetState() {
     rosterCount: selectedStudents.length,
     selectedList,
     selectedStudents,
+    spinnerTrackRef: pickerSpinnerTrackRef,
     toggleRemovePickedStudents
   };
 }
@@ -9951,6 +10092,51 @@ function normalizeDateKey(dateKey: string) {
 function getTodayDateKey() {
   const today = new Date();
   return formatDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
+const SCHOOL_TERMS = [
+  { end: { day: 2, monthIndex: 3 }, start: { day: 2, monthIndex: 1 }, term: 1 },
+  { end: { day: 3, monthIndex: 6 }, start: { day: 20, monthIndex: 3 }, term: 2 },
+  { end: { day: 25, monthIndex: 8 }, start: { day: 20, monthIndex: 6 }, term: 3 },
+  { end: { day: 17, monthIndex: 11 }, start: { day: 12, monthIndex: 9 }, term: 4 }
+] as const;
+
+function getDateUtcDayValue(year: number, monthIndex: number, day: number) {
+  return Date.UTC(year, monthIndex, day) / (24 * 60 * 60 * 1000);
+}
+
+function getSchoolTermWeek(date: Date) {
+  const year = date.getFullYear();
+  const todayDayValue = getDateUtcDayValue(year, date.getMonth(), date.getDate());
+
+  for (const schoolTerm of SCHOOL_TERMS) {
+    const startDayValue = getDateUtcDayValue(
+      year,
+      schoolTerm.start.monthIndex,
+      schoolTerm.start.day
+    );
+    const endDayValue = getDateUtcDayValue(year, schoolTerm.end.monthIndex, schoolTerm.end.day);
+
+    if (todayDayValue >= startDayValue && todayDayValue <= endDayValue) {
+      return {
+        term: schoolTerm.term,
+        week: Math.floor((todayDayValue - startDayValue) / 7) + 1
+      };
+    }
+  }
+
+  return null;
+}
+
+function formatSchoolDateLabel(date: Date) {
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date);
+  const schoolTermWeek = getSchoolTermWeek(date);
+
+  if (!schoolTermWeek) {
+    return `${weekday}, School holidays`;
+  }
+
+  return `${weekday}, Week ${schoolTermWeek.week}, Term ${schoolTermWeek.term}`;
 }
 
 function formatLongDate(dateKey: string) {
@@ -12326,7 +12512,7 @@ function buildResponsiveDashboardLayout({
   collapsedWidgetIds: WidgetId[];
   columnCount: number;
   widgetIds: WidgetId[];
-}) {
+}): DashboardLayoutFit {
   const widgetSizeTiers: Partial<Record<WidgetId, WidgetSizeTier>> = {};
 
   for (const widgetId of widgetIds) {

@@ -142,6 +142,12 @@ const windowContexts = new Map<number, WindowContext>();
 let persistentStateCache: PersistentStateFile | null = null;
 let appUpdater: AppUpdater | null = null;
 let appUpdateCheckPromise: Promise<unknown> | null = null;
+let pendingOverlayBounds: Bounds | null = null;
+let overlayBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPopoverSize: Pick<Bounds, 'width' | 'height'> | null = null;
+let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let widgetPopoutBoundsCache: Partial<Record<WidgetPopoutId, Partial<Bounds>>> | null = null;
+let widgetPopoutBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let appUpdateState: AppUpdateState = {
   availableVersion: null,
   currentVersion: app.getVersion(),
@@ -154,6 +160,7 @@ const APP_UPDATE_CACHE_DIR_NAME = 'teachertools-overlay-updater';
 const APP_UPDATE_LOG_FILENAME = 'app-update.log';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
+const WINDOW_STATE_SAVE_DELAY_MS = 350;
 
 function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
   return (
@@ -202,6 +209,15 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function boundsAreEqual(left: Bounds, right: Bounds) {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
 function getDefaultOverlayBounds() {
   const { workArea } = screen.getPrimaryDisplay();
   return {
@@ -233,13 +249,44 @@ function loadStoredOverlayBounds() {
   }
 }
 
-function saveOverlayBounds(bounds: Bounds) {
+function writeOverlayBounds(bounds: Bounds) {
   try {
     fs.mkdirSync(path.dirname(getOverlayStateFilePath()), { recursive: true });
     fs.writeFileSync(getOverlayStateFilePath(), JSON.stringify(bounds, null, 2), 'utf8');
   } catch {
     // Best effort persistence only.
   }
+}
+
+function saveOverlayBounds(bounds: Bounds, options: { immediate?: boolean } = {}) {
+  pendingOverlayBounds = bounds;
+
+  if (overlayBoundsSaveTimer) {
+    clearTimeout(overlayBoundsSaveTimer);
+    overlayBoundsSaveTimer = null;
+  }
+
+  if (options.immediate) {
+    flushOverlayBoundsSave();
+    return;
+  }
+
+  overlayBoundsSaveTimer = setTimeout(flushOverlayBoundsSave, WINDOW_STATE_SAVE_DELAY_MS);
+}
+
+function flushOverlayBoundsSave() {
+  if (overlayBoundsSaveTimer) {
+    clearTimeout(overlayBoundsSaveTimer);
+    overlayBoundsSaveTimer = null;
+  }
+
+  if (!pendingOverlayBounds) {
+    return;
+  }
+
+  const bounds = pendingOverlayBounds;
+  pendingOverlayBounds = null;
+  writeOverlayBounds(bounds);
 }
 
 function loadStoredPopoverSize() {
@@ -260,7 +307,7 @@ function loadStoredPopoverSize() {
   }
 }
 
-function savePopoverSize(bounds: Pick<Bounds, 'width' | 'height'>) {
+function writePopoverSize(bounds: Pick<Bounds, 'width' | 'height'>) {
   try {
     fs.mkdirSync(path.dirname(getPopoverStateFilePath()), { recursive: true });
     fs.writeFileSync(
@@ -280,7 +327,45 @@ function savePopoverSize(bounds: Pick<Bounds, 'width' | 'height'>) {
   }
 }
 
+function savePopoverSize(
+  bounds: Pick<Bounds, 'width' | 'height'>,
+  options: { immediate?: boolean } = {}
+) {
+  pendingPopoverSize = bounds;
+
+  if (popoverSizeSaveTimer) {
+    clearTimeout(popoverSizeSaveTimer);
+    popoverSizeSaveTimer = null;
+  }
+
+  if (options.immediate) {
+    flushPopoverSizeSave();
+    return;
+  }
+
+  popoverSizeSaveTimer = setTimeout(flushPopoverSizeSave, WINDOW_STATE_SAVE_DELAY_MS);
+}
+
+function flushPopoverSizeSave() {
+  if (popoverSizeSaveTimer) {
+    clearTimeout(popoverSizeSaveTimer);
+    popoverSizeSaveTimer = null;
+  }
+
+  if (!pendingPopoverSize) {
+    return;
+  }
+
+  const bounds = pendingPopoverSize;
+  pendingPopoverSize = null;
+  writePopoverSize(bounds);
+}
+
 function loadStoredWidgetPopoutBounds() {
+  if (widgetPopoutBoundsCache) {
+    return widgetPopoutBoundsCache;
+  }
+
   try {
     const raw = fs.readFileSync(getWidgetPopoutStateFilePath(), 'utf8');
     const parsed = JSON.parse(raw) as Record<string, Partial<Bounds>>;
@@ -294,13 +379,15 @@ function loadStoredWidgetPopoutBounds() {
       boundsByWidgetId[widgetId] = bounds;
     }
 
+    widgetPopoutBoundsCache = boundsByWidgetId;
     return boundsByWidgetId;
   } catch {
-    return {};
+    widgetPopoutBoundsCache = {};
+    return widgetPopoutBoundsCache;
   }
 }
 
-function saveStoredWidgetPopoutBounds(boundsByWidgetId: Partial<Record<WidgetPopoutId, Bounds>>) {
+function writeStoredWidgetPopoutBounds(boundsByWidgetId: Partial<Record<WidgetPopoutId, Bounds>>) {
   try {
     fs.mkdirSync(path.dirname(getWidgetPopoutStateFilePath()), { recursive: true });
     fs.writeFileSync(
@@ -313,14 +400,53 @@ function saveStoredWidgetPopoutBounds(boundsByWidgetId: Partial<Record<WidgetPop
   }
 }
 
+function saveStoredWidgetPopoutBounds(
+  boundsByWidgetId: Partial<Record<WidgetPopoutId, Bounds>>,
+  options: { immediate?: boolean } = {}
+) {
+  widgetPopoutBoundsCache = boundsByWidgetId;
+
+  if (widgetPopoutBoundsSaveTimer) {
+    clearTimeout(widgetPopoutBoundsSaveTimer);
+    widgetPopoutBoundsSaveTimer = null;
+  }
+
+  if (options.immediate) {
+    flushWidgetPopoutBoundsSave();
+    return;
+  }
+
+  widgetPopoutBoundsSaveTimer = setTimeout(
+    flushWidgetPopoutBoundsSave,
+    WINDOW_STATE_SAVE_DELAY_MS
+  );
+}
+
+function flushWidgetPopoutBoundsSave() {
+  if (widgetPopoutBoundsSaveTimer) {
+    clearTimeout(widgetPopoutBoundsSaveTimer);
+    widgetPopoutBoundsSaveTimer = null;
+  }
+
+  if (!widgetPopoutBoundsCache) {
+    return;
+  }
+
+  writeStoredWidgetPopoutBounds(widgetPopoutBoundsCache as Partial<Record<WidgetPopoutId, Bounds>>);
+}
+
 function getStoredWidgetPopoutBounds(widgetId: WidgetPopoutId) {
   return loadStoredWidgetPopoutBounds()[widgetId] ?? null;
 }
 
-function setStoredWidgetPopoutBounds(widgetId: WidgetPopoutId, bounds: Bounds) {
+function setStoredWidgetPopoutBounds(
+  widgetId: WidgetPopoutId,
+  bounds: Bounds,
+  options: { immediate?: boolean } = {}
+) {
   const currentBounds = loadStoredWidgetPopoutBounds();
   currentBounds[widgetId] = bounds;
-  saveStoredWidgetPopoutBounds(currentBounds as Partial<Record<WidgetPopoutId, Bounds>>);
+  saveStoredWidgetPopoutBounds(currentBounds as Partial<Record<WidgetPopoutId, Bounds>>, options);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -868,32 +994,12 @@ function getPopoverBounds(preferredSize?: Partial<Pick<Bounds, 'width' | 'height
     POPOVER_MIN_HEIGHT,
     maxHeight
   );
-  const openLeft = overlayBounds.x - workArea.x > workArea.width * 0.55;
-  const openUp = overlayBounds.y - workArea.y > workArea.height * 0.55;
+  const anchorX = overlayBounds.x + Math.round(overlayBounds.width / 2);
+  const anchorY = overlayBounds.y + Math.round(overlayBounds.height / 2);
 
   return {
-    x: openLeft
-      ? clamp(
-          overlayBounds.x + overlayBounds.width - width,
-          workArea.x + 14,
-          workArea.x + workArea.width - width - 14
-        )
-      : clamp(
-          overlayBounds.x,
-          workArea.x + 14,
-          workArea.x + workArea.width - width - 14
-        ),
-    y: openUp
-      ? clamp(
-          overlayBounds.y - height - 14,
-          workArea.y + 14,
-          workArea.y + workArea.height - height - 14
-        )
-      : clamp(
-          overlayBounds.y + overlayBounds.height + 14,
-          workArea.y + 14,
-          workArea.y + workArea.height - height - 14
-        ),
+    x: clamp(anchorX, workArea.x + 14, workArea.x + workArea.width - width - 14),
+    y: clamp(anchorY, workArea.y + 14, workArea.y + workArea.height - height - 14),
     width,
     height
   };
@@ -1557,7 +1663,9 @@ function setOverlayPosition(position: { x: number; y: number }) {
   }
 
   const nextBounds = normalizeOverlayBounds(position);
-  overlayWindow.setBounds(nextBounds);
+  if (!boundsAreEqual(overlayWindow.getBounds(), nextBounds)) {
+    overlayWindow.setBounds(nextBounds);
+  }
   saveOverlayBounds(nextBounds);
 }
 
@@ -1567,7 +1675,9 @@ function setPopoverBounds(bounds: Bounds) {
   }
 
   const nextBounds = normalizePopoverBounds(bounds);
-  popoverWindow.setBounds(nextBounds, false);
+  if (!boundsAreEqual(popoverWindow.getBounds(), nextBounds)) {
+    popoverWindow.setBounds(nextBounds, false);
+  }
   preferredPopoverSize = {
     width: nextBounds.width,
     height: nextBounds.height
@@ -1582,7 +1692,9 @@ function setBuilderBounds(bounds: Bounds) {
   }
 
   const nextBounds = normalizeBuilderBounds(bounds);
-  builderWindow.setBounds(nextBounds, false);
+  if (!boundsAreEqual(builderWindow.getBounds(), nextBounds)) {
+    builderWindow.setBounds(nextBounds, false);
+  }
   preferredBuilderSize = {
     width: nextBounds.width,
     height: nextBounds.height
@@ -1599,7 +1711,9 @@ function setWidgetPickerBounds(bounds: Bounds) {
     WIDGET_PICKER_MIN_WIDTH,
     WIDGET_PICKER_MIN_HEIGHT
   );
-  widgetPickerWindow.setBounds(nextBounds, false);
+  if (!boundsAreEqual(widgetPickerWindow.getBounds(), nextBounds)) {
+    widgetPickerWindow.setBounds(nextBounds, false);
+  }
   preferredWidgetPickerSize = {
     width: nextBounds.width,
     height: nextBounds.height
@@ -1614,7 +1728,9 @@ function setWidgetPopoutBounds(widgetId: WidgetPopoutId, bounds: Bounds) {
 
   const defaults = WIDGET_POPOUT_DEFAULTS[widgetId];
   const nextBounds = normalizeManagedWindowBounds(bounds, defaults.minWidth, defaults.minHeight);
-  widgetWindow.setBounds(nextBounds, false);
+  if (!boundsAreEqual(widgetWindow.getBounds(), nextBounds)) {
+    widgetWindow.setBounds(nextBounds, false);
+  }
   setStoredWidgetPopoutBounds(widgetId, nextBounds);
 }
 
@@ -1675,6 +1791,10 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  flushOverlayBoundsSave();
+  flushPopoverSizeSave();
+  flushWidgetPopoutBoundsSave();
+
   if (!persistentStateCache) {
     return;
   }
