@@ -10520,6 +10520,7 @@ function updateBellScheduleSlotAssignment(
         days: {
           ...profile.days,
           [dayKey]: {
+            ...profile.days[dayKey],
             assignmentsBySlotId: {
               ...profile.days[dayKey].assignmentsBySlotId,
               [slotId]: normalizeBellScheduleSlotAssignment(
