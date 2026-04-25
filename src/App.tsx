@@ -4213,11 +4213,6 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
     <main
       aria-label="Class list builder"
       className="window-stage window-stage--builder window-stage--class-list-builder"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          returnToTeacherTools();
-        }
-      }}
       ref={stageRef}
     >
       <section
@@ -4247,7 +4242,7 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
               <button
                 aria-label="Close class list builder"
                 className="icon-button icon-button--close"
-                onClick={returnToTeacherTools}
+                onClick={() => window.electronAPI?.closeClassListBuilder()}
                 type="button"
               >
                 ×

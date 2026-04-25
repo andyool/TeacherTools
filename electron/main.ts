@@ -1301,7 +1301,10 @@ function createPopoverWindow() {
         return;
       }
 
-      if (builderWindow || widgetPickerWindow) {
+      const builderFocused = builderWindow?.isFocused() ?? false;
+      const widgetPickerFocused = widgetPickerWindow?.isFocused() ?? false;
+
+      if (builderFocused || widgetPickerFocused) {
         return;
       }
 
@@ -1374,10 +1377,6 @@ function createBuilderWindow() {
 
       const popoverFocused = popoverWindow?.isFocused() ?? false;
       const widgetPickerFocused = widgetPickerWindow?.isFocused() ?? false;
-
-      if (builderWindow && !builderWindow.isFocused()) {
-        closeBuilderWindow();
-      }
 
       if (!popoverFocused && !widgetPickerFocused) {
         closePopover();
@@ -1568,10 +1567,6 @@ function closeWidgetPopoutWindow(widgetId: WidgetPopoutId) {
 }
 
 function closePopover() {
-  if (builderWindow) {
-    closeBuilderWindow();
-  }
-
   if (widgetPickerWindow) {
     closeWidgetPickerWindow();
   }
