@@ -470,7 +470,7 @@ const WIDGET_POPOUT_DEFAULT_SIZES: Record<WidgetId, { height: number; width: num
   picker: { width: 392, height: 332 },
   'group-maker': { width: 600, height: 456 },
   'seating-chart': { width: 980, height: 760 },
-  'bell-schedule': { width: 380, height: 340 },
+  'bell-schedule': { width: 1220, height: 840 },
   'homework-assessment': { width: 820, height: 860 },
   'qr-generator': { width: 420, height: 460 },
   notes: { width: 420, height: 420 },
@@ -6346,10 +6346,12 @@ function TrackerDateField({
   onChange: (dateKey: string) => void;
   value: string;
 }) {
+  const { theme } = useColorModeAppearance();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [pickerStyle, setPickerStyle] = useState<CSSProperties | null>(null);
+  const [draftValue, setDraftValue] = useState(() => formatDateKeyForInput(value));
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthKeyFromDateKey(value));
   const selectedDate = normalizeDateKey(value) ?? getTodayDateKey();
   const calendarDays = buildCalendarDays(visibleMonth, selectedDate, new Set<string>());
@@ -6425,6 +6427,22 @@ function TrackerDateField({
     }
   }, [isOpen, value]);
 
+  useEffect(() => {
+    setDraftValue(formatDateKeyForInput(value));
+  }, [value]);
+
+  const commitDraftValue = () => {
+    const normalizedDate = parseDateInputValue(draftValue);
+
+    if (!normalizedDate) {
+      setDraftValue(formatDateKeyForInput(value));
+      return;
+    }
+
+    setDraftValue(formatDateKeyForInput(normalizedDate));
+    onChange(normalizedDate);
+  };
+
   const openCalendar = () => {
     if (disabled) {
       return;
@@ -6441,12 +6459,32 @@ function TrackerDateField({
       </label>
       <div className="tracker-date-field__control">
         <input
+          aria-expanded={isOpen}
+          aria-haspopup="dialog"
           className="text-field text-field--date tracker-date-field__input"
           disabled={disabled}
           id={id}
-          onChange={(event) => onChange(event.target.value)}
-          type="date"
-          value={value}
+          inputMode="numeric"
+          onBlur={commitDraftValue}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setDraftValue(nextValue);
+
+            const normalizedDate = parseDateInputValue(nextValue);
+            if (normalizedDate) {
+              onChange(normalizedDate);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitDraftValue();
+              setIsOpen(false);
+            }
+          }}
+          placeholder="dd/mm/yyyy"
+          type="text"
+          value={draftValue}
         />
         <button
           aria-expanded={isOpen}
@@ -6464,6 +6502,7 @@ function TrackerDateField({
         ? createPortal(
             <div
               className="tracker-date-picker"
+              data-theme={theme}
               ref={pickerRef}
               role="dialog"
               aria-label={`${label} calendar`}
@@ -6510,6 +6549,7 @@ function TrackerDateField({
                     key={`tracker-date-${id}-${day.dateKey}`}
                     onClick={() => {
                       onChange(day.dateKey);
+                      setDraftValue(formatDateKeyForInput(day.dateKey));
                       setIsOpen(false);
                     }}
                     type="button"
@@ -10935,6 +10975,28 @@ function normalizeDateKey(dateKey: string) {
   }
 
   return formatDateKey(parsed.year, parsed.monthIndex, parsed.day);
+}
+
+function formatDateKeyForInput(dateKey: string) {
+  const parsed = parseDateKey(dateKey);
+  if (!parsed) {
+    return '';
+  }
+
+  return `${`${parsed.day}`.padStart(2, '0')}/${`${parsed.monthIndex + 1}`.padStart(2, '0')}/${parsed.year}`;
+}
+
+function parseDateInputValue(value: string) {
+  const match = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const year = Number(match[3]);
+
+  return normalizeDateKey(formatDateKey(year, monthIndex, day));
 }
 
 function getTodayDateKey() {

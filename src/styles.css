@@ -4938,10 +4938,15 @@ body[data-window-resizing='true'] .window-stage * {
 .tracker-date-field__input {
   width: 100%;
   padding-right: 38px;
+  cursor: pointer;
 }
 
 .tracker-date-field__input::-webkit-calendar-picker-indicator {
   opacity: 0;
+}
+
+.tracker-date-field__input:disabled {
+  cursor: default;
 }
 
 .tracker-date-field__button {
@@ -5008,20 +5013,75 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .tracker-date-picker {
+  --field-fill-top: #fbfdff;
+  --field-fill-bottom: #eef4fa;
+  --field-border: rgba(112, 137, 170, 0.24);
+  --surface-overlay-top: rgba(255, 255, 255, 0.2);
+  --surface-overlay-bottom: rgba(104, 132, 166, 0.04);
+  --text-primary: #0b223b;
+  --text-secondary: rgba(11, 34, 59, 0.8);
+  --text-muted: rgba(11, 34, 59, 0.46);
+  --button-neutral-border-strong: rgba(79, 109, 136, 0.42);
+  --tone-utility-border: rgba(47, 126, 216, 0.28);
+  --tone-selection: #8a61dd;
+  --tone-selection-soft: rgba(138, 97, 221, 0.18);
+  --tone-selection-border-strong: rgba(138, 97, 221, 0.42);
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: auto;
   left: 0;
   z-index: 30;
   width: min(272px, calc(100vw - 32px));
   padding: 10px;
   border-radius: var(--radius-control);
   border: 1px solid var(--field-border);
+  background-color: #f4f8fc;
   background:
     linear-gradient(180deg, var(--surface-overlay-top), var(--surface-overlay-bottom)),
-    linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom));
+    linear-gradient(180deg, var(--field-fill-top), var(--field-fill-bottom)),
+    #f4f8fc;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 14px 34px rgba(8, 12, 18, 0.18);
+}
+
+.tracker-date-picker[data-theme='dark'] {
+  --field-fill-top: #0f1725;
+  --field-fill-bottom: #080f1a;
+  --field-border: rgba(195, 218, 255, 0.16);
+  --surface-overlay-top: rgba(238, 246, 255, 0.026);
+  --surface-overlay-bottom: rgba(0, 0, 0, 0.1);
+  --text-primary: #f6fbff;
+  --text-secondary: rgba(236, 244, 255, 0.9);
+  --text-muted: rgba(236, 244, 255, 0.5);
+  --button-neutral-border-strong: rgba(187, 213, 241, 0.4);
+  --tone-utility-border: rgba(126, 203, 255, 0.28);
+  --tone-selection: #c5adff;
+  --tone-selection-soft: rgba(197, 173, 255, 0.18);
+  --tone-selection-border-strong: rgba(197, 173, 255, 0.42);
+  background-color: #0b111d;
+  background:
+    linear-gradient(180deg, rgba(238, 246, 255, 0.035), rgba(0, 0, 0, 0.12)),
+    #0b111d;
+}
+
+.tracker-date-picker[data-theme='color'] {
+  --field-fill-top: #fff9ee;
+  --field-fill-bottom: #f3dfb8;
+  --field-border: rgba(47, 36, 69, 0.28);
+  --surface-overlay-top: rgba(255, 255, 255, 0.2);
+  --surface-overlay-bottom: rgba(255, 255, 255, 0.12);
+  --text-primary: #241a39;
+  --text-secondary: rgba(36, 26, 57, 0.72);
+  --text-muted: rgba(36, 26, 57, 0.46);
+  --button-neutral-border-strong: rgba(36, 26, 57, 0.36);
+  --tone-utility-border: rgba(38, 89, 181, 0.22);
+  --tone-selection: #5c39b0;
+  --tone-selection-soft: rgba(92, 57, 176, 0.12);
+  --tone-selection-border-strong: rgba(92, 57, 176, 0.38);
+  background-color: #fff0cc;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(47, 36, 69, 0.04)),
+    #fff0cc;
 }
 
 .tracker-date-picker__header,

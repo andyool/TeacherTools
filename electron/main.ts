@@ -39,7 +39,7 @@ const WIDGET_POPOUT_DEFAULTS: Record<
   picker: { width: 392, height: 332, minWidth: 300, minHeight: 240 },
   'group-maker': { width: 600, height: 456, minWidth: 320, minHeight: 280 },
   'seating-chart': { width: 980, height: 760, minWidth: 760, minHeight: 560 },
-  'bell-schedule': { width: 380, height: 340, minWidth: 340, minHeight: 300 },
+  'bell-schedule': { width: 1220, height: 840, minWidth: 340, minHeight: 300 },
   'homework-assessment': { width: 820, height: 860, minWidth: 520, minHeight: 520 },
   'qr-generator': { width: 420, height: 460, minWidth: 320, minHeight: 320 },
   notes: { width: 420, height: 420, minWidth: 300, minHeight: 244 },
@@ -437,6 +437,27 @@ function flushWidgetPopoutBoundsSave() {
 
 function getStoredWidgetPopoutBounds(widgetId: WidgetPopoutId) {
   return loadStoredWidgetPopoutBounds()[widgetId] ?? null;
+}
+
+function getPreferredWidgetPopoutBounds(
+  widgetId: WidgetPopoutId,
+  storedBounds: Partial<Bounds> | null
+) {
+  if (
+    widgetId === 'bell-schedule' &&
+    storedBounds &&
+    (typeof storedBounds.width !== 'number' || storedBounds.width <= 420) &&
+    (typeof storedBounds.height !== 'number' || storedBounds.height <= 380)
+  ) {
+    const defaults = WIDGET_POPOUT_DEFAULTS[widgetId];
+    return {
+      ...storedBounds,
+      width: defaults.width,
+      height: defaults.height
+    };
+  }
+
+  return storedBounds;
 }
 
 function setStoredWidgetPopoutBounds(
@@ -1473,7 +1494,8 @@ function createWidgetPopoutWindow(widgetId: WidgetPopoutId) {
 
   const defaults = WIDGET_POPOUT_DEFAULTS[widgetId];
   const storedBounds = getStoredWidgetPopoutBounds(widgetId);
-  const bounds = getWidgetPopoutBounds(widgetId, storedBounds);
+  const preferredBounds = getPreferredWidgetPopoutBounds(widgetId, storedBounds);
+  const bounds = getWidgetPopoutBounds(widgetId, preferredBounds);
   const widgetWindow = new BrowserWindow({
     ...bounds,
     minWidth: defaults.minWidth,
@@ -1504,7 +1526,7 @@ function createWidgetPopoutWindow(widgetId: WidgetPopoutId) {
     role: 'widget-popout',
     anchor: buildAnchorPayload(),
     widgetId,
-    autoSizeToContent: !storedBounds
+    autoSizeToContent: !storedBounds || preferredBounds !== storedBounds
   });
 
   widgetWindow.loadURL(getRendererUrl(`widget-popout/${widgetId}`));
