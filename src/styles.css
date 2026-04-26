@@ -202,7 +202,7 @@ textarea {
   position: fixed;
   z-index: 9999;
   max-width: min(320px, calc(100vw - 24px));
-  padding: 8px 10px;
+  padding: 5px 7px;
   border-radius: 6px;
   border: 1px solid rgba(212, 230, 255, 0.28);
   background:
@@ -214,7 +214,7 @@ textarea {
   color: #f5fbff;
   font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.25;
   letter-spacing: 0.01em;
   pointer-events: none;
 }
@@ -754,8 +754,8 @@ textarea {
 .panel[data-theme='color'] .widget-card .button-lift-stable {
   transform: translateY(-3px);
   box-shadow:
-    0 12px 20px -4px rgba(36, 26, 57, 0.38),
-    0 24px 36px -8px rgba(36, 26, 57, 0.3);
+    0 8px 12px -4px rgba(36, 26, 57, 0.4),
+    0 14px 20px -8px rgba(36, 26, 57, 0.28);
 }
 
 .panel[data-theme='color'] .widget-card .icon-button:active,
@@ -811,8 +811,8 @@ textarea {
   transform: translateY(-3px);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.46),
-    0 12px 20px -4px rgba(36, 26, 57, 0.38),
-    0 24px 36px -8px rgba(36, 26, 57, 0.3);
+    0 8px 12px -4px rgba(36, 26, 57, 0.4),
+    0 14px 20px -8px rgba(36, 26, 57, 0.28);
 }
 
 .panel[data-theme='color'] .widget-card .stepper,
@@ -951,6 +951,26 @@ textarea {
 
 .panel[data-theme='color'] .widget-card .picker-spinner__fade {
   display: none;
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='picker'] .picker-spinner {
+  border-top-color: rgba(86, 111, 145, 0.06);
+  border-bottom-color: rgba(86, 111, 145, 0.08);
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='picker'] .picker-spinner::before {
+  border-color: rgba(42, 92, 148, 0.08);
+  background: rgba(42, 92, 148, 0.035);
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='picker'] .picker-spinner__fade {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 34, 59, 0.06) 0%,
+    rgba(11, 34, 59, 0) 22%,
+    rgba(11, 34, 59, 0) 78%,
+    rgba(11, 34, 59, 0.06) 100%
+  );
 }
 
 .panel[data-theme='color'] .widget-card .planner-calendar__day {
@@ -1463,8 +1483,8 @@ textarea {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 0 rgba(8, 12, 18, 0.08),
-    0 12px 20px -4px rgba(8, 12, 18, 0.22),
-    0 24px 36px -8px rgba(8, 12, 18, 0.16);
+    0 8px 12px -4px rgba(8, 12, 18, 0.24),
+    0 14px 20px -8px rgba(8, 12, 18, 0.14);
 }
 
 .icon-button.button-lift-stable::before,
@@ -1539,7 +1559,7 @@ textarea {
 .window-spawn-button.button-lift-stable:not(:disabled),
 [data-window-spawn-button='true'].button-lift-stable:not(:disabled),
 .button-lift-stable:is(.window-spawn-button, [data-window-spawn-button='true']) {
-  transform: translateY(-10px);
+  transform: translateY(-6px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
     inset 0 -1px 0 rgba(8, 12, 18, 0.08),
@@ -1619,8 +1639,8 @@ textarea {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 0 rgba(8, 12, 18, 0.12),
-    0 12px 22px -3px rgba(0, 0, 0, 0.76),
-    0 26px 44px -7px rgba(0, 0, 0, 0.62);
+    0 8px 14px -4px rgba(0, 0, 0, 0.78),
+    0 16px 24px -8px rgba(0, 0, 0, 0.58);
 }
 
 .panel[data-theme='dark'] :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled),
@@ -1634,7 +1654,7 @@ textarea {
 
 .panel[data-theme='color'] .widget-card :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled),
 .panel[data-theme='color'] .widget-card .button-lift-stable:is(.window-spawn-button, [data-window-spawn-button='true']) {
-  transform: translateY(-10px);
+  transform: translateY(-6px);
   box-shadow:
     0 20px 30px -4px rgba(36, 26, 57, 0.44),
     0 34px 48px -8px rgba(36, 26, 57, 0.34);
@@ -2308,7 +2328,7 @@ textarea {
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
-  font-size: 0.92rem;
+  font-size: 1rem;
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .group-grid {
@@ -2684,7 +2704,7 @@ textarea {
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .group-maker__top-controls {
@@ -4294,7 +4314,8 @@ body[data-window-resizing='true'] .window-stage * {
 
 .picker-spinner__name--active {
   color: var(--text-primary);
-  font-weight: 800;
+  font-size: 1.22rem;
+  font-weight: 700;
   opacity: 1;
   transform: scale(1);
 }
@@ -4937,7 +4958,7 @@ body[data-window-resizing='true'] .window-stage * {
 
 .tracker-date-field__button.button-lift-stable:not(:disabled),
 .tracker-date-field__button.button-lift-stable {
-  transform: translateY(calc(-50% - 10px));
+  transform: translateY(calc(-50% - 6px));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
     inset 0 -1px 0 rgba(8, 12, 18, 0.08),
@@ -4965,7 +4986,7 @@ body[data-window-resizing='true'] .window-stage * {
 
 .panel[data-theme='color'] .widget-card .tracker-date-field__button.button-lift-stable:not(:disabled),
 .panel[data-theme='color'] .widget-card .tracker-date-field__button.button-lift-stable {
-  transform: translateY(calc(-50% - 10px));
+  transform: translateY(calc(-50% - 6px));
   box-shadow:
     0 20px 30px -4px rgba(36, 26, 57, 0.44),
     0 34px 48px -8px rgba(36, 26, 57, 0.34);

@@ -7,6 +7,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties, Ref, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -350,10 +351,10 @@ const GROUP_GRID_MIN_COLUMN_WIDTH = 136;
 const PICKER_SPINNER_WINDOW_SIZE = 5;
 const PICKER_SPINNER_VISIBLE_SIZE = 3;
 const PICKER_SPINNER_CENTER_INDEX = Math.floor(PICKER_SPINNER_WINDOW_SIZE / 2);
-const PICKER_SPIN_MIN_STEPS = 8;
-const PICKER_SPIN_MIN_DURATION_MS = 620;
-const PICKER_SPIN_MAX_DURATION_MS = 1100;
-const PICKER_SPIN_STEP_DURATION_MS = 36;
+const PICKER_SPIN_MIN_STEPS = 24;
+const PICKER_SPIN_MIN_DURATION_MS = 4800;
+const PICKER_SPIN_MAX_DURATION_MS = 5400;
+const PICKER_SPIN_STEP_DURATION_MS = 150;
 const MIN_POPOVER_WIDTH = 260;
 const MIN_POPOVER_HEIGHT = 300;
 const QR_WIDGET_SVG_BORDER_MODULES = 2;
@@ -6346,10 +6347,43 @@ function TrackerDateField({
   value: string;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [pickerStyle, setPickerStyle] = useState<CSSProperties | null>(null);
   const [visibleMonth, setVisibleMonth] = useState(() => getMonthKeyFromDateKey(value));
   const selectedDate = normalizeDateKey(value) ?? getTodayDateKey();
   const calendarDays = buildCalendarDays(visibleMonth, selectedDate, new Set<string>());
+
+  const updatePickerPosition = () => {
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
+
+    const rect = root.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const pickerWidth = Math.min(272, Math.max(0, viewportWidth - 32));
+    const pickerHeight = pickerRef.current?.offsetHeight ?? 282;
+    const gap = 6;
+    const viewportPadding = 16;
+    const preferredTop = rect.bottom + gap;
+    const fallbackTop = rect.top - pickerHeight - gap;
+    const top =
+      preferredTop + pickerHeight <= viewportHeight - viewportPadding
+        ? preferredTop
+        : Math.max(viewportPadding, fallbackTop);
+
+    setPickerStyle({
+      left: Math.min(
+        Math.max(viewportPadding, rect.left),
+        Math.max(viewportPadding, viewportWidth - pickerWidth - viewportPadding)
+      ),
+      position: 'fixed',
+      top,
+      width: pickerWidth
+    });
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -6357,7 +6391,9 @@ function TrackerDateField({
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+
+      if (rootRef.current?.contains(target) || pickerRef.current?.contains(target)) {
         return;
       }
 
@@ -6367,6 +6403,21 @@ function TrackerDateField({
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isOpen]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPickerStyle(null);
+      return;
+    }
+
+    updatePickerPosition();
+    window.addEventListener('resize', updatePickerPosition);
+    window.addEventListener('scroll', updatePickerPosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePickerPosition);
+      window.removeEventListener('scroll', updatePickerPosition, true);
+    };
+  }, [isOpen, visibleMonth]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -6409,59 +6460,68 @@ function TrackerDateField({
         </button>
       </div>
 
-      {isOpen ? (
-        <div className="tracker-date-picker" role="dialog" aria-label={`${label} calendar`}>
-          <div className="tracker-date-picker__header">
-            <button
-              aria-label="Previous month"
-              className="widget-icon-button button-tone--utility tracker-date-picker__month-button"
-              onClick={() => setVisibleMonth((current) => shiftMonthKey(current, -1))}
-              type="button"
+      {isOpen
+        ? createPortal(
+            <div
+              className="tracker-date-picker"
+              ref={pickerRef}
+              role="dialog"
+              aria-label={`${label} calendar`}
+              style={pickerStyle ?? undefined}
             >
-              &lt;
-            </button>
-            <span className="tracker-date-picker__month">{formatMonthLabel(visibleMonth)}</span>
-            <button
-              aria-label="Next month"
-              className="widget-icon-button button-tone--utility tracker-date-picker__month-button"
-              onClick={() => setVisibleMonth((current) => shiftMonthKey(current, 1))}
-              type="button"
-            >
-              &gt;
-            </button>
-          </div>
+              <div className="tracker-date-picker__header">
+                <button
+                  aria-label="Previous month"
+                  className="widget-icon-button button-tone--utility tracker-date-picker__month-button"
+                  onClick={() => setVisibleMonth((current) => shiftMonthKey(current, -1))}
+                  type="button"
+                >
+                  &lt;
+                </button>
+                <span className="tracker-date-picker__month">{formatMonthLabel(visibleMonth)}</span>
+                <button
+                  aria-label="Next month"
+                  className="widget-icon-button button-tone--utility tracker-date-picker__month-button"
+                  onClick={() => setVisibleMonth((current) => shiftMonthKey(current, 1))}
+                  type="button"
+                >
+                  &gt;
+                </button>
+              </div>
 
-          <div className="tracker-date-picker__weekdays" aria-hidden="true">
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
-            <span>Sat</span>
-            <span>Sun</span>
-          </div>
+              <div className="tracker-date-picker__weekdays" aria-hidden="true">
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+                <span>Sun</span>
+              </div>
 
-          <div className="tracker-date-picker__grid">
-            {calendarDays.map((day) => (
-              <button
-                className={`tracker-date-picker__day ${
-                  day.isCurrentMonth ? '' : 'tracker-date-picker__day--muted'
-                } ${day.dateKey === selectedDate ? 'tracker-date-picker__day--selected' : ''} ${
-                  day.isToday ? 'tracker-date-picker__day--today' : ''
-                }`}
-                key={`tracker-date-${id}-${day.dateKey}`}
-                onClick={() => {
-                  onChange(day.dateKey);
-                  setIsOpen(false);
-                }}
-                type="button"
-              >
-                {day.day}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+              <div className="tracker-date-picker__grid">
+                {calendarDays.map((day) => (
+                  <button
+                    className={`tracker-date-picker__day ${
+                      day.isCurrentMonth ? '' : 'tracker-date-picker__day--muted'
+                    } ${day.dateKey === selectedDate ? 'tracker-date-picker__day--selected' : ''} ${
+                      day.isToday ? 'tracker-date-picker__day--today' : ''
+                    }`}
+                    key={`tracker-date-${id}-${day.dateKey}`}
+                    onClick={() => {
+                      onChange(day.dateKey);
+                      setIsOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {day.day}
+                  </button>
+                ))}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -13757,7 +13817,7 @@ function getPickerSpinDuration(totalSteps: number) {
 }
 
 function easeOutPickerSpin(progress: number) {
-  return 1 - Math.pow(1 - progress, 4);
+  return 1 - Math.pow(1 - progress, 5);
 }
 
 function getPickerSpinStepCount(studentCount: number, currentIndex: number, finalIndex: number) {
