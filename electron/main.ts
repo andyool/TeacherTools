@@ -1222,9 +1222,34 @@ function broadcastWidgetPopoutState() {
   });
 }
 
+function isRunningFromDefaultElectronApp() {
+  return process.defaultApp === true || app.getName() === 'Electron';
+}
+
+function shouldBlockLaunchAtLogin() {
+  return process.platform === 'darwin' && !app.isPackaged && isRunningFromDefaultElectronApp();
+}
+
+function getLaunchAtLoginSettings() {
+  if (shouldBlockLaunchAtLogin()) {
+    return {
+      ...app.getLoginItemSettings(),
+      openAtLogin: false
+    };
+  }
+
+  return app.getLoginItemSettings();
+}
+
+function clearBlockedLaunchAtLogin() {
+  if (shouldBlockLaunchAtLogin() && app.getLoginItemSettings().openAtLogin) {
+    app.setLoginItemSettings({ openAtLogin: false });
+  }
+}
+
 function getAppSettings(): AppSettings {
   return {
-    launchAtLogin: app.getLoginItemSettings().openAtLogin
+    launchAtLogin: getLaunchAtLoginSettings().openAtLogin
   };
 }
 
@@ -1246,9 +1271,14 @@ function broadcastAppSettings() {
 }
 
 function setLaunchAtLogin(enabled: boolean) {
-  app.setLoginItemSettings({
-    openAtLogin: enabled
-  });
+  if (enabled && shouldBlockLaunchAtLogin()) {
+    app.setLoginItemSettings({ openAtLogin: false });
+  } else {
+    app.setLoginItemSettings({
+      openAtLogin: enabled
+    });
+  }
+
   broadcastAppSettings();
   refreshTrayMenu();
   return getAppSettings();
@@ -1839,6 +1869,7 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  clearBlockedLaunchAtLogin();
   preferredPopoverSize = loadStoredPopoverSize();
   ensurePersistentStateCache();
   createOverlayWindow();

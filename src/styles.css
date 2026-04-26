@@ -4396,6 +4396,7 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .picker-select__chevron {
+  flex-shrink: 0;
   color: currentColor;
   opacity: 0.72;
   font-size: 0.86rem;
@@ -7208,12 +7209,12 @@ body[data-window-resizing='true'] .window-stage * {
 
 @container (max-width: 380px) {
   .panel--main .panel-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 6px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 5px;
   }
 
   .panel--main .panel-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
     flex-wrap: nowrap;
   }
 
