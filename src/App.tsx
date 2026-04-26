@@ -16,6 +16,7 @@ import type {
   AppUpdateState,
   DesktopWindowContext,
   LessonDocumentSelection,
+  TimerSpeechVoice,
   WidgetPopoutId,
   WindowBounds
 } from './electron-types';
@@ -1248,7 +1249,8 @@ const fallbackAppUpdateState: AppUpdateState = {
   status: 'unsupported'
 };
 const fallbackAppSettings: AppSettings = {
-  launchAtLogin: false
+  launchAtLogin: false,
+  timerSpeechVoice: 'male'
 };
 
 const STABLE_BUTTON_LIFT_SELECTOR = [
@@ -2753,6 +2755,30 @@ function TeacherPopover() {
       });
   };
 
+  const handleTimerSpeechVoiceChange = (voice: TimerSpeechVoice) => {
+    const setTimerSpeechVoice = window.electronAPI?.setTimerSpeechVoice;
+
+    setAppSettings((current) => ({
+      ...current,
+      timerSpeechVoice: voice
+    }));
+
+    if (!setTimerSpeechVoice) {
+      return;
+    }
+
+    void setTimerSpeechVoice(voice)
+      .then((settings) => {
+        setAppSettings(settings);
+      })
+      .catch(() => {
+        setAppSettings((current) => ({
+          ...current,
+          timerSpeechVoice: voice === 'male' ? 'female' : 'male'
+        }));
+      });
+  };
+
   const closeColorModePalette = () => {
     setColorModePaletteTarget(null);
   };
@@ -4107,6 +4133,7 @@ function TeacherPopover() {
                         onAppUpdateAction={handleAppUpdateAction}
                         onLaunchAtLoginChange={handleLaunchAtLoginChange}
                         onThemePreferenceChange={() => setThemePreference(nextThemePreference)}
+                        onTimerSpeechVoiceChange={handleTimerSpeechVoiceChange}
                         onToggleBackgroundColor={(anchorRect) =>
                           toggleColorModePalette({
                             anchorRect,
@@ -4115,6 +4142,7 @@ function TeacherPopover() {
                         }
                         resolvedTheme={resolvedTheme}
                         themePreference={themePreference}
+                        timerSpeechVoice={appSettings.timerSpeechVoice}
                       />
                     ) : null}
                   </div>
@@ -5109,9 +5137,11 @@ function SettingsPopover({
   onAppUpdateAction,
   onLaunchAtLoginChange,
   onThemePreferenceChange,
+  onTimerSpeechVoiceChange,
   onToggleBackgroundColor,
   resolvedTheme,
-  themePreference
+  themePreference,
+  timerSpeechVoice
 }: {
   appUpdate: AppUpdateState;
   appUpdateActionDisabled: boolean;
@@ -5131,9 +5161,11 @@ function SettingsPopover({
   onAppUpdateAction: () => void;
   onLaunchAtLoginChange: (enabled: boolean) => void;
   onThemePreferenceChange: () => void;
+  onTimerSpeechVoiceChange: (voice: TimerSpeechVoice) => void;
   onToggleBackgroundColor: (anchorRect: DOMRect) => void;
   resolvedTheme: ThemeMode;
   themePreference: ThemePreference;
+  timerSpeechVoice: TimerSpeechVoice;
 }) {
   return (
     <div aria-label="Settings" className="settings-popout" role="dialog">
@@ -5162,6 +5194,25 @@ function SettingsPopover({
           />
           <span aria-hidden="true" className="settings-toggle__switch" />
         </label>
+        <div className="settings-row">
+          <span className="settings-row__label">Timer voice</span>
+          <div className="settings-row__cluster">
+            {(['male', 'female'] as const).map((voice) => (
+              <button
+                aria-pressed={timerSpeechVoice === voice}
+                className={`text-toggle settings-voice-toggle ${
+                  timerSpeechVoice === voice ? 'text-toggle--active' : ''
+                }`}
+                disabled={!window.electronAPI?.setTimerSpeechVoice}
+                key={voice}
+                onClick={() => onTimerSpeechVoiceChange(voice)}
+                type="button"
+              >
+                {voice === 'male' ? 'Male' : 'Female'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="settings-section">

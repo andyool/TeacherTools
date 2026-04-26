@@ -79,7 +79,10 @@ export type AppUpdateState = {
 
 export type AppSettings = {
   launchAtLogin: boolean;
+  timerSpeechVoice: TimerSpeechVoice;
 };
+
+export type TimerSpeechVoice = 'female' | 'male';
 
 export type ElectronBridge = {
   getWindowContext: () => Promise<DesktopWindowContext>;
@@ -93,6 +96,7 @@ export type ElectronBridge = {
   speakTimerAlert: (text: string) => Promise<boolean>;
   onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
   setLaunchAtLogin: (enabled: boolean) => Promise<AppSettings>;
+  setTimerSpeechVoice: (voice: TimerSpeechVoice) => Promise<AppSettings>;
   onAppSettingsChanged: (listener: (settings: AppSettings) => void) => () => void;
   getPersistentState: (key: string) => PersistentStateSnapshot;
   setPersistentState: (key: string, value: unknown) => Promise<boolean>;

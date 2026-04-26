@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
   setLaunchAtLogin: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-launch-at-login', enabled),
+  setTimerSpeechVoice: (voice: string) => ipcRenderer.invoke('app-settings:set-timer-speech-voice', voice),
   onAppSettingsChanged: (listener: (settings: unknown) => void) => {
     const handler = (_event: unknown, settings: unknown) => {
       listener(settings);

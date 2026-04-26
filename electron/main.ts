@@ -109,7 +109,10 @@ type AppUpdateState = {
 
 type AppSettings = {
   launchAtLogin: boolean;
+  timerSpeechVoice: TimerSpeechVoice;
 };
+
+type TimerSpeechVoice = 'female' | 'male';
 
 type PersistentStateFile = {
   version: 1;
@@ -166,6 +169,7 @@ const APP_UPDATE_CACHE_DIR_NAME = 'teachertools-overlay-updater';
 const APP_UPDATE_LOG_FILENAME = 'app-update.log';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
+const TIMER_SPEECH_VOICE_SETTINGS_KEY = 'teacher-tools.timer-speech-voice';
 const WINDOW_STATE_SAVE_DELAY_MS = 350;
 
 function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
@@ -965,6 +969,22 @@ function setPersistentStateValue(key: string, value: unknown) {
   }
 }
 
+function normalizeTimerSpeechVoice(value: unknown): TimerSpeechVoice {
+  return value === 'female' ? 'female' : 'male';
+}
+
+function getTimerSpeechVoice() {
+  return normalizeTimerSpeechVoice(
+    ensurePersistentStateCache().valuesByKey[TIMER_SPEECH_VOICE_SETTINGS_KEY]
+  );
+}
+
+function setTimerSpeechVoice(voice: unknown) {
+  setPersistentStateValue(TIMER_SPEECH_VOICE_SETTINGS_KEY, normalizeTimerSpeechVoice(voice));
+  broadcastAppSettings();
+  return getAppSettings();
+}
+
 function normalizeOverlayBounds(bounds: Partial<Bounds> | null) {
   if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number') {
     return getDefaultOverlayBounds();
@@ -1251,7 +1271,8 @@ function clearBlockedLaunchAtLogin() {
 
 function getAppSettings(): AppSettings {
   return {
-    launchAtLogin: getLaunchAtLoginSettings().openAtLogin
+    launchAtLogin: getLaunchAtLoginSettings().openAtLogin,
+    timerSpeechVoice: getTimerSpeechVoice()
   };
 }
 
@@ -1272,7 +1293,8 @@ function speakTimerText(text: unknown) {
       activeTimerSpeechProcess = null;
     }
 
-    const speechProcess = spawn('say', ['-r', '175', spokenText], {
+    const voiceName = getTimerSpeechVoice() === 'female' ? 'Samantha' : 'Alex';
+    const speechProcess = spawn('say', ['-v', voiceName, '-r', '175', spokenText], {
       stdio: 'ignore'
     });
     activeTimerSpeechProcess = speechProcess;
@@ -1982,6 +2004,10 @@ ipcMain.handle('app-settings:get', () => {
 
 ipcMain.handle('app-settings:set-launch-at-login', (_event, enabled: unknown) => {
   return setLaunchAtLogin(enabled === true);
+});
+
+ipcMain.handle('app-settings:set-timer-speech-voice', (_event, voice: unknown) => {
+  return setTimerSpeechVoice(voice);
 });
 
 ipcMain.handle('timer:speak', (_event, text: unknown) => {
