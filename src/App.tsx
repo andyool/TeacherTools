@@ -12,6 +12,7 @@ import type { CSSProperties, Ref, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
+  AppSettings,
   AppUpdateState,
   DesktopWindowContext,
   LessonDocumentSelection,
@@ -917,6 +918,9 @@ const fallbackAppUpdateState: AppUpdateState = {
   message: 'Updates are available in installed desktop builds.',
   progressPercent: null,
   status: 'unsupported'
+};
+const fallbackAppSettings: AppSettings = {
+  launchAtLogin: false
 };
 
 const STABLE_BUTTON_LIFT_SELECTOR = [
@@ -2087,6 +2091,7 @@ function TeacherPopover() {
   const classMenuRef = useRef<HTMLDivElement | null>(null);
   const colorModePopoverRef = useRef<HTMLElement | null>(null);
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
+  const settingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
   const pickerSpinnerTrackRef = useRef<HTMLDivElement | null>(null);
@@ -2154,6 +2159,9 @@ function TeacherPopover() {
   const [dashboardFitScale, setDashboardFitScale] = useState(1);
   const [dashboardForceScroll, setDashboardForceScroll] = useState(false);
   const [appUpdate, setAppUpdate] = useAppUpdateState();
+  const [appSettings, setAppSettings] = useAppSettingsState();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLaunchAtLoginSaving, setIsLaunchAtLoginSaving] = useState(false);
   const openWidgetPopouts = useWidgetPopoutIds();
   const liveNowUntil = timer.endsAt ?? (timer.lastCompletedAt ? timer.lastCompletedAt + 5000 : null);
   const now = useNow(liveNowUntil);
@@ -2350,6 +2358,34 @@ function TeacherPopover() {
           progressPercent: null,
           status: 'error'
         }));
+      });
+  };
+
+  const handleLaunchAtLoginChange = (enabled: boolean) => {
+    const setLaunchAtLogin = window.electronAPI?.setLaunchAtLogin;
+
+    if (!setLaunchAtLogin) {
+      return;
+    }
+
+    setIsLaunchAtLoginSaving(true);
+    setAppSettings((current) => ({
+      ...current,
+      launchAtLogin: enabled
+    }));
+
+    void setLaunchAtLogin(enabled)
+      .then((settings) => {
+        setAppSettings(settings);
+      })
+      .catch(() => {
+        setAppSettings((current) => ({
+          ...current,
+          launchAtLogin: !enabled
+        }));
+      })
+      .finally(() => {
+        setIsLaunchAtLoginSaving(false);
       });
   };
 
@@ -2634,6 +2670,11 @@ function TeacherPopover() {
         return;
       }
 
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+        return;
+      }
+
       if (isClassMenuOpen) {
         setIsClassMenuOpen(false);
         return;
@@ -2644,7 +2685,7 @@ function TeacherPopover() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isClassMenuOpen]);
+  }, [isClassMenuOpen, isSettingsOpen]);
 
   useEffect(() => {
     if (!isClassMenuOpen) {
@@ -2666,6 +2707,27 @@ function TeacherPopover() {
     window.addEventListener('mousedown', handlePointerDown);
     return () => window.removeEventListener('mousedown', handlePointerDown);
   }, [isClassMenuOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+
+      if (settingsPopoverRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setIsSettingsOpen(false);
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => window.removeEventListener('mousedown', handlePointerDown);
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     if (isPickerSpinning || !selectedStudents.length) {
@@ -3620,37 +3682,6 @@ function TeacherPopover() {
                 </div>
 
                 <div className="panel-actions">
-                  <div className="update-toolbar">
-                    <span className={`update-status-pill update-status-pill--${appUpdateStatusTone}`}>
-                      {appUpdateStatusLabel}
-                    </span>
-                    <button
-                      aria-label={appUpdateButtonLabel}
-                      className={`toolbar-link ${
-                        appUpdate.status === 'downloaded'
-                          ? 'toolbar-link--accent'
-                          : appUpdate.status === 'error' || appUpdate.status === 'unsupported'
-                            ? 'button-tone--warning'
-                            : appUpdate.status === 'up-to-date'
-                              ? 'button-tone--selection'
-                              : ''
-                      }`}
-                      data-tooltip-content={getAppUpdateTooltip(appUpdate)}
-                      disabled={appUpdateActionDisabled}
-                      onClick={handleAppUpdateAction}
-                      type="button"
-                    >
-                      <span className="toolbar-button__label toolbar-button__label--full">
-                        {appUpdateButtonLabel}
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className="toolbar-button__label toolbar-button__label--compact"
-                      >
-                        ↻
-                      </span>
-                    </button>
-                  </div>
                   <button
                     aria-label="Widgets"
                     className="toolbar-link window-spawn-button"
@@ -3679,37 +3710,52 @@ function TeacherPopover() {
                       ≣
                     </span>
                   </button>
-                  <InterfaceScaleControls
-                    canDecrease={canDecreaseInterfaceScale}
-                    canIncrease={canIncreaseInterfaceScale}
-                    onDecrease={decreaseInterfaceScale}
-                    onIncrease={increaseInterfaceScale}
-                    scale={interfaceScale}
-                  />
-                  {resolvedTheme === 'color' ? (
-                    <ColorModeTriggerButton
-                      active={colorModePaletteTarget?.kind === 'background'}
-                      appearance="background"
-                      label="Change dashboard background colour"
-                      onClick={(event) =>
-                        toggleColorModePalette({
-                          anchorRect: event.currentTarget.getBoundingClientRect(),
-                          kind: 'background'
-                        })
-                      }
-                      swatchId={colorModePreferences.backgroundColorId}
-                      variant="toolbar"
-                    />
-                  ) : null}
-                  <button
-                    aria-label={`Theme ${getThemePreferenceLabel(themePreference)}. Switch to ${getThemePreferenceLabel(nextThemePreference)}.`}
-                    className="icon-button button-tone--theme"
-                    data-tooltip-content={`Theme ${getThemePreferenceLabel(themePreference)} -> ${getThemePreferenceLabel(nextThemePreference)}`}
-                    onClick={() => setThemePreference(nextThemePreference)}
-                    type="button"
-                  >
-                    <ThemeCycleIcon preference={themePreference} />
-                  </button>
+                  <div className="settings-menu" ref={settingsPopoverRef}>
+                    <button
+                      aria-expanded={isSettingsOpen}
+                      aria-label="Settings"
+                      className={`icon-button button-tone--theme ${isSettingsOpen ? 'settings-button--active' : ''}`}
+                      data-tooltip-content="Settings"
+                      onClick={() => {
+                        setIsClassMenuOpen(false);
+                        setIsSettingsOpen((current) => !current);
+                      }}
+                      type="button"
+                    >
+                      <SettingsCogIcon />
+                    </button>
+
+                    {isSettingsOpen ? (
+                      <SettingsPopover
+                        appUpdate={appUpdate}
+                        appUpdateActionDisabled={appUpdateActionDisabled}
+                        appUpdateButtonLabel={appUpdateButtonLabel}
+                        appUpdateStatusLabel={appUpdateStatusLabel}
+                        appUpdateStatusTone={appUpdateStatusTone}
+                        canDecreaseInterfaceScale={canDecreaseInterfaceScale}
+                        canIncreaseInterfaceScale={canIncreaseInterfaceScale}
+                        colorModePaletteTarget={colorModePaletteTarget}
+                        colorModePreferences={colorModePreferences}
+                        decreaseInterfaceScale={decreaseInterfaceScale}
+                        increaseInterfaceScale={increaseInterfaceScale}
+                        interfaceScale={interfaceScale}
+                        isLaunchAtLoginSaving={isLaunchAtLoginSaving}
+                        launchAtLogin={appSettings.launchAtLogin}
+                        nextThemePreference={nextThemePreference}
+                        onAppUpdateAction={handleAppUpdateAction}
+                        onLaunchAtLoginChange={handleLaunchAtLoginChange}
+                        onThemePreferenceChange={() => setThemePreference(nextThemePreference)}
+                        onToggleBackgroundColor={(anchorRect) =>
+                          toggleColorModePalette({
+                            anchorRect,
+                            kind: 'background'
+                          })
+                        }
+                        resolvedTheme={resolvedTheme}
+                        themePreference={themePreference}
+                      />
+                    ) : null}
+                  </div>
                   <button
                     aria-label="Close panel"
                     className="icon-button icon-button--close"
@@ -4679,6 +4725,146 @@ function ColorModeTriggerButton({
       />
       {variant === 'toolbar' ? <span className="color-mode-trigger__text">Background</span> : null}
     </button>
+  );
+}
+
+function SettingsPopover({
+  appUpdate,
+  appUpdateActionDisabled,
+  appUpdateButtonLabel,
+  appUpdateStatusLabel,
+  appUpdateStatusTone,
+  canDecreaseInterfaceScale,
+  canIncreaseInterfaceScale,
+  colorModePaletteTarget,
+  colorModePreferences,
+  decreaseInterfaceScale,
+  increaseInterfaceScale,
+  interfaceScale,
+  isLaunchAtLoginSaving,
+  launchAtLogin,
+  nextThemePreference,
+  onAppUpdateAction,
+  onLaunchAtLoginChange,
+  onThemePreferenceChange,
+  onToggleBackgroundColor,
+  resolvedTheme,
+  themePreference
+}: {
+  appUpdate: AppUpdateState;
+  appUpdateActionDisabled: boolean;
+  appUpdateButtonLabel: string;
+  appUpdateStatusLabel: string;
+  appUpdateStatusTone: string;
+  canDecreaseInterfaceScale: boolean;
+  canIncreaseInterfaceScale: boolean;
+  colorModePaletteTarget: ColorModePaletteTarget | null;
+  colorModePreferences: ColorModePreferences;
+  decreaseInterfaceScale: () => void;
+  increaseInterfaceScale: () => void;
+  interfaceScale: number;
+  isLaunchAtLoginSaving: boolean;
+  launchAtLogin: boolean;
+  nextThemePreference: ThemePreference;
+  onAppUpdateAction: () => void;
+  onLaunchAtLoginChange: (enabled: boolean) => void;
+  onThemePreferenceChange: () => void;
+  onToggleBackgroundColor: (anchorRect: DOMRect) => void;
+  resolvedTheme: ThemeMode;
+  themePreference: ThemePreference;
+}) {
+  return (
+    <div aria-label="Settings" className="settings-popout" role="dialog">
+      <div className="settings-popout__header">
+        <div>
+          <span className="panel-kicker">Settings</span>
+          <h2 className="settings-popout__title">App controls</h2>
+        </div>
+        <span className={`update-status-pill update-status-pill--${appUpdateStatusTone}`}>
+          {appUpdateStatusLabel}
+        </span>
+      </div>
+
+      <div className="settings-section">
+        <span className="card-label">System</span>
+        <label className="settings-toggle">
+          <span className="settings-toggle__text">
+            <span className="settings-toggle__title">Open at login</span>
+            <span className="settings-toggle__copy">Start TeacherTools when the computer starts.</span>
+          </span>
+          <input
+            checked={launchAtLogin}
+            disabled={isLaunchAtLoginSaving || !window.electronAPI?.setLaunchAtLogin}
+            onChange={(event) => onLaunchAtLoginChange(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span aria-hidden="true" className="settings-toggle__switch" />
+        </label>
+      </div>
+
+      <div className="settings-section">
+        <span className="card-label">Appearance</span>
+        <div className="settings-row">
+          <span className="settings-row__label">Theme</span>
+          <button
+            aria-label={`Theme ${getThemePreferenceLabel(themePreference)}. Switch to ${getThemePreferenceLabel(nextThemePreference)}.`}
+            className="toolbar-link button-tone--theme settings-row__action"
+            onClick={onThemePreferenceChange}
+            type="button"
+          >
+            <ThemeCycleIcon preference={themePreference} />
+            <span>{getThemePreferenceLabel(themePreference)}</span>
+          </button>
+        </div>
+        <div className="settings-row">
+          <span className="settings-row__label">Interface size</span>
+          <div className="settings-row__cluster">
+            <InterfaceScaleControls
+              canDecrease={canDecreaseInterfaceScale}
+              canIncrease={canIncreaseInterfaceScale}
+              onDecrease={decreaseInterfaceScale}
+              onIncrease={increaseInterfaceScale}
+              scale={interfaceScale}
+            />
+            <span className="settings-value">{formatInterfaceScaleLabel(interfaceScale)}</span>
+          </div>
+        </div>
+        {resolvedTheme === 'color' ? (
+          <div className="settings-row">
+            <span className="settings-row__label">Dashboard colour</span>
+            <ColorModeTriggerButton
+              active={colorModePaletteTarget?.kind === 'background'}
+              appearance="background"
+              label="Change dashboard background colour"
+              onClick={(event) => onToggleBackgroundColor(event.currentTarget.getBoundingClientRect())}
+              swatchId={colorModePreferences.backgroundColorId}
+              variant="toolbar"
+            />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="settings-section">
+        <span className="card-label">Updates</span>
+        <p className="settings-copy">{getAppUpdateTooltip(appUpdate)}</p>
+        <button
+          className={`toolbar-link settings-update-button ${
+            appUpdate.status === 'downloaded'
+              ? 'toolbar-link--accent'
+              : appUpdate.status === 'error' || appUpdate.status === 'unsupported'
+                ? 'button-tone--warning'
+                : appUpdate.status === 'up-to-date'
+                  ? 'button-tone--selection'
+                  : ''
+          }`}
+          disabled={appUpdateActionDisabled}
+          onClick={onAppUpdateAction}
+          type="button"
+        >
+          {appUpdateButtonLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -9013,6 +9199,34 @@ function useAppUpdateState() {
   return [appUpdate, setAppUpdate] as const;
 }
 
+function useAppSettingsState() {
+  const [appSettings, setAppSettings] = useState<AppSettings>(fallbackAppSettings);
+
+  useEffect(() => {
+    if (!window.electronAPI?.getAppSettings || !window.electronAPI.onAppSettingsChanged) {
+      return;
+    }
+
+    let cancelled = false;
+    window.electronAPI.getAppSettings().then((settings) => {
+      if (!cancelled) {
+        setAppSettings(settings);
+      }
+    });
+
+    const unsubscribe = window.electronAPI.onAppSettingsChanged((settings) => {
+      setAppSettings(settings);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  return [appSettings, setAppSettings] as const;
+}
+
 function getAppUpdateButtonLabel(appUpdate: AppUpdateState) {
   switch (appUpdate.status) {
     case 'checking':
@@ -10212,6 +10426,21 @@ function useResolvedTheme(preference: ThemePreference): ThemeMode {
   }, []);
 
   return preference === 'system' ? systemTheme : preference;
+}
+
+function SettingsCogIcon() {
+  return (
+    <svg aria-hidden="true" className="settings-cog-icon" viewBox="0 0 16 16">
+      <path
+        d="M6.9 1.7h2.2l.4 1.7c.3.1.6.2.9.4l1.5-.9 1.6 1.6-.9 1.5c.2.3.3.6.4.9l1.7.4v2.2l-1.7.4c-.1.3-.2.6-.4.9l.9 1.5-1.6 1.6-1.5-.9c-.3.2-.6.3-.9.4l-.4 1.7H6.9l-.4-1.7c-.3-.1-.6-.2-.9-.4l-1.5.9-1.6-1.6.9-1.5c-.2-.3-.3-.6-.4-.9l-1.7-.4V7.3L3 6.9c.1-.3.2-.6.4-.9l-.9-1.5 1.6-1.6 1.5.9c.3-.2.6-.3.9-.4l.4-1.7Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.15"
+      />
+      <circle cx="8" cy="8.4" fill="none" r="2.1" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
 }
 
 function ThemeCycleIcon({ preference }: { preference: ThemePreference }) {

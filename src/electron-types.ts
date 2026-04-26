@@ -77,15 +77,22 @@ export type AppUpdateState = {
   status: AppUpdateStatus;
 };
 
+export type AppSettings = {
+  launchAtLogin: boolean;
+};
+
 export type ElectronBridge = {
   getWindowContext: () => Promise<DesktopWindowContext>;
   getOverlayBounds: () => Promise<WindowBounds>;
   getCurrentWindowBounds: () => Promise<WindowBounds>;
   getOpenWidgetPopouts: () => Promise<WidgetPopoutId[]>;
   getAppUpdateState: () => Promise<AppUpdateState>;
+  getAppSettings: () => Promise<AppSettings>;
   checkForAppUpdates: () => Promise<AppUpdateState>;
   installAppUpdate: () => Promise<boolean>;
   onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
+  setLaunchAtLogin: (enabled: boolean) => Promise<AppSettings>;
+  onAppSettingsChanged: (listener: (settings: AppSettings) => void) => () => void;
   getPersistentState: (key: string) => PersistentStateSnapshot;
   setPersistentState: (key: string, value: unknown) => Promise<boolean>;
   onPersistentStateChanged: (listener: (change: PersistentStateChange) => void) => () => void;

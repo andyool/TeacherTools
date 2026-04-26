@@ -106,6 +106,10 @@ type AppUpdateState = {
   status: AppUpdateStatus;
 };
 
+type AppSettings = {
+  launchAtLogin: boolean;
+};
+
 type PersistentStateFile = {
   version: 1;
   profileId: string;
@@ -1218,6 +1222,38 @@ function broadcastWidgetPopoutState() {
   });
 }
 
+function getAppSettings(): AppSettings {
+  return {
+    launchAtLogin: app.getLoginItemSettings().openAtLogin
+  };
+}
+
+function broadcastAppSettings() {
+  const settings = getAppSettings();
+  const targetWindows = [
+    overlayWindow,
+    popoverWindow,
+    builderWindow,
+    widgetPickerWindow,
+    ...widgetPopoutWindows.values()
+  ];
+
+  targetWindows.forEach((targetWindow) => {
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send('app-settings:changed', settings);
+    }
+  });
+}
+
+function setLaunchAtLogin(enabled: boolean) {
+  app.setLoginItemSettings({
+    openAtLogin: enabled
+  });
+  broadcastAppSettings();
+  refreshTrayMenu();
+  return getAppSettings();
+}
+
 function createOverlayWindow() {
   const bounds = normalizeOverlayBounds(loadStoredOverlayBounds());
 
@@ -1770,6 +1806,15 @@ function refreshTrayMenu() {
         type: 'separator'
       },
       {
+        checked: getAppSettings().launchAtLogin,
+        label: 'Open at Login',
+        type: 'checkbox',
+        click: (menuItem) => setLaunchAtLogin(menuItem.checked)
+      },
+      {
+        type: 'separator'
+      },
+      {
         label: 'Quit',
         click: () => app.quit()
       }
@@ -1862,6 +1907,14 @@ ipcMain.handle('app-update:check', async () => {
 
 ipcMain.handle('app-update:install', () => {
   return installDownloadedAppUpdate();
+});
+
+ipcMain.handle('app-settings:get', () => {
+  return getAppSettings();
+});
+
+ipcMain.handle('app-settings:set-launch-at-login', (_event, enabled: unknown) => {
+  return setLaunchAtLogin(enabled === true);
 });
 
 ipcMain.on('storage:get', (event, key: unknown) => {

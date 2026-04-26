@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentWindowBounds: () => ipcRenderer.invoke('window:get-current-bounds'),
   getOpenWidgetPopouts: () => ipcRenderer.invoke('widget-popout:get-open-ids'),
   getAppUpdateState: () => ipcRenderer.invoke('app-update:get-state'),
+  getAppSettings: () => ipcRenderer.invoke('app-settings:get'),
   checkForAppUpdates: () => ipcRenderer.invoke('app-update:check'),
   installAppUpdate: () => ipcRenderer.invoke('app-update:install'),
   onAppUpdateStateChanged: (listener: (state: unknown) => void) => {
@@ -18,6 +19,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app-update:state', handler);
     return () => {
       ipcRenderer.removeListener('app-update:state', handler);
+    };
+  },
+  setLaunchAtLogin: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-launch-at-login', enabled),
+  onAppSettingsChanged: (listener: (settings: unknown) => void) => {
+    const handler = (_event: unknown, settings: unknown) => {
+      listener(settings);
+    };
+
+    ipcRenderer.on('app-settings:changed', handler);
+    return () => {
+      ipcRenderer.removeListener('app-settings:changed', handler);
     };
   },
   getPersistentState: (key: string) => ipcRenderer.sendSync('storage:get', key),
