@@ -217,6 +217,12 @@ textarea {
   pointer-events: none;
 }
 
+.app-tooltip--measure {
+  left: 0;
+  top: 0;
+  visibility: hidden;
+}
+
 .app-tooltip::after {
   content: '';
   position: absolute;

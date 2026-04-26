@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppSettings: () => ipcRenderer.invoke('app-settings:get'),
   checkForAppUpdates: () => ipcRenderer.invoke('app-update:check'),
   installAppUpdate: () => ipcRenderer.invoke('app-update:install'),
+  speakTimerAlert: (text: string) => ipcRenderer.invoke('timer:speak', text),
   onAppUpdateStateChanged: (listener: (state: unknown) => void) => {
     const handler = (_event: unknown, state: unknown) => {
       listener(state);

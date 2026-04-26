@@ -28,6 +28,7 @@ type TimerSnapshot = {
   pausedRemainingMs: number;
   lastCompletedAt: number | null;
 };
+type TimerSoundAlertKind = 'done' | 'half' | 'ten-percent';
 
 type ClassList = {
   id: string;
@@ -71,9 +72,17 @@ type LegacyPickerSnapshot = {
 type ThemeMode = 'light' | 'dark' | 'color';
 type ThemePreference = 'system' | ThemeMode;
 type TooltipPlacement = 'bottom' | 'top';
+type TooltipAlignment = 'center' | 'end' | 'start';
 type TooltipState = {
+  alignment: TooltipAlignment;
   anchorRect: DOMRect;
   text: string;
+};
+type TooltipPosition = {
+  arrowLeft: number;
+  left: number;
+  placement: TooltipPlacement;
+  top: number;
 };
 
 type StickyNote = {
@@ -324,6 +333,7 @@ const TIMER_PRESETS = [
 ];
 
 const CUSTOM_TIMER_MAX_MINUTES = 60;
+const CUSTOM_TIMER_SHORT_SECONDS = [10, 15, 30, 45];
 const TRACKER_REMINDER_OPTIONS = [
   { label: 'No reminder', value: 0 },
   { label: '1 day before', value: 1 },
@@ -882,6 +892,324 @@ function hasUnacknowledgedTimerCompletion(timer: Pick<TimerSnapshot, 'lastComple
   );
 }
 
+const TIMER_SOUND_ALERT_CLAIMS_KEY = 'teacher-tools.timer-sound-alert-claims';
+const timerSoundFallbackClaims = new Set<string>();
+let timerAudioContext: AudioContext | null = null;
+let activeTimerSpeechUtterance: SpeechSynthesisUtterance | null = null;
+
+function getTimerSoundRunKey(timer: Pick<TimerSnapshot, 'baseDurationMs' | 'endsAt'>) {
+  return timer.endsAt === null ? null : `${timer.endsAt}:${timer.baseDurationMs}`;
+}
+
+function claimTimerSoundAlert(runKey: string, kind: TimerSoundAlertKind) {
+  const claimKey = `${runKey}:${kind}`;
+
+  try {
+    const rawClaims = window.localStorage.getItem(TIMER_SOUND_ALERT_CLAIMS_KEY);
+    const parsedClaims = rawClaims ? JSON.parse(rawClaims) : {};
+    const claims =
+      parsedClaims && typeof parsedClaims === 'object'
+        ? (parsedClaims as Record<string, number>)
+        : {};
+
+    if (claims[claimKey]) {
+      return false;
+    }
+
+    const now = Date.now();
+    const freshClaims = Object.fromEntries(
+      Object.entries(claims)
+        .filter(([, claimedAt]) => typeof claimedAt === 'number' && now - claimedAt < 24 * 60 * 60 * 1000)
+        .slice(-64)
+    );
+
+    freshClaims[claimKey] = now;
+    window.localStorage.setItem(TIMER_SOUND_ALERT_CLAIMS_KEY, JSON.stringify(freshClaims));
+    return true;
+  } catch {
+    if (timerSoundFallbackClaims.has(claimKey)) {
+      return false;
+    }
+
+    timerSoundFallbackClaims.add(claimKey);
+    return true;
+  }
+}
+
+function getTimerAudioContext() {
+  if (!timerAudioContext) {
+    timerAudioContext = new AudioContext();
+  }
+
+  return timerAudioContext;
+}
+
+function primeTimerAudio() {
+  try {
+    void getTimerAudioContext().resume();
+  } catch {
+    // Audio can be unavailable in restricted renderer contexts.
+  }
+}
+
+function formatTimerSpeechDuration(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.ceil(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes > 0 && seconds > 0) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'} and ${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
+  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+}
+
+function getTimerSpeechMessage(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
+  if (kind === 'done') {
+    return 'Time is up';
+  }
+
+  const timeRemaining = formatTimerSpeechDuration(alertRemainingMs ?? 0);
+  return kind === 'half'
+    ? `Halfway, ${timeRemaining} remaining`
+    : `${timeRemaining} remaining`;
+}
+
+function speakTimerAlertWithBrowserVoice(message: string, kind: TimerSoundAlertKind) {
+  try {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance !== 'function') {
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(message);
+
+    utterance.lang = 'en-US';
+    utterance.rate = kind === 'done' ? 0.82 : 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onend = () => {
+      if (activeTimerSpeechUtterance === utterance) {
+        activeTimerSpeechUtterance = null;
+      }
+    };
+    utterance.onerror = () => {
+      if (activeTimerSpeechUtterance === utterance) {
+        activeTimerSpeechUtterance = null;
+      }
+    };
+    activeTimerSpeechUtterance = utterance;
+    window.speechSynthesis.cancel();
+    window.setTimeout(() => window.speechSynthesis.speak(utterance), 0);
+  } catch {
+    // Speech is a bonus cue; the timer sound still carries the alert.
+  }
+}
+
+function speakTimerAlert(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
+  const message = getTimerSpeechMessage(kind, alertRemainingMs);
+  const speakWithBrowserVoice = () => speakTimerAlertWithBrowserVoice(message, kind);
+  const speakTimerAlertWithNativeVoice = window.electronAPI?.speakTimerAlert;
+
+  if (!speakTimerAlertWithNativeVoice) {
+    speakWithBrowserVoice();
+    return;
+  }
+
+  void speakTimerAlertWithNativeVoice(message)
+    .then((didSpeak) => {
+      if (!didSpeak) {
+        speakWithBrowserVoice();
+      }
+    })
+    .catch(() => {
+      speakWithBrowserVoice();
+    });
+}
+
+function playTimerSound(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
+  try {
+    const audioContext = getTimerAudioContext();
+    void audioContext.resume();
+    const startedAt = audioContext.currentTime + 0.02;
+    const notes =
+      kind === 'done'
+        ? [
+            { duration: 0.18, frequency: 784, offset: 0 },
+            { duration: 0.18, frequency: 988, offset: 0.2 },
+            { duration: 0.18, frequency: 1175, offset: 0.4 },
+            { duration: 0.42, frequency: 1568, offset: 0.62 }
+          ]
+        : kind === 'ten-percent'
+          ? [
+              { duration: 0.12, frequency: 880, offset: 0 },
+              { duration: 0.12, frequency: 1319, offset: 0.14 },
+              { duration: 0.12, frequency: 880, offset: 0.28 },
+              { duration: 0.22, frequency: 1319, offset: 0.42 }
+            ]
+        : [
+            { duration: 0.2, frequency: 523, offset: 0 },
+            { duration: 0.2, frequency: 659, offset: 0.22 },
+            { duration: 0.28, frequency: 784, offset: 0.44 }
+          ];
+
+    notes.forEach((note) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const noteStart = startedAt + note.offset;
+      const noteEnd = noteStart + note.duration;
+
+      oscillator.type = kind === 'half' ? 'triangle' : 'square';
+      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(kind === 'done' ? 0.34 : 0.24, noteStart + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(noteStart);
+      oscillator.stop(noteEnd + 0.02);
+    });
+  } catch {
+    // The visual timer state still completes even if sound playback is blocked.
+  }
+
+  window.setTimeout(() => speakTimerAlert(kind, alertRemainingMs), kind === 'done' ? 1050 : 700);
+}
+
+function useTimerSoundAlerts(
+  timer: TimerSnapshot,
+  remainingMs: number,
+  setTimer: ReturnType<typeof usePersistentState<TimerSnapshot>>[1]
+) {
+  const isRunning = timer.endsAt !== null && remainingMs > 0;
+
+  useEffect(() => {
+    if (!isRunning || timer.baseDurationMs <= 0) {
+      return;
+    }
+
+    const runKey = getTimerSoundRunKey(timer);
+    if (!runKey) {
+      return;
+    }
+
+    const tenPercentRemainingMs = timer.baseDurationMs * 0.1;
+    const halfwayRemainingMs = timer.baseDurationMs * 0.5;
+
+    if (remainingMs <= tenPercentRemainingMs && claimTimerSoundAlert(runKey, 'ten-percent')) {
+      playTimerSound('ten-percent', tenPercentRemainingMs);
+      return;
+    }
+
+    if (remainingMs <= halfwayRemainingMs && claimTimerSoundAlert(runKey, 'half')) {
+      playTimerSound('half', halfwayRemainingMs);
+    }
+  }, [isRunning, remainingMs, timer]);
+
+  useEffect(() => {
+    if (!timer.endsAt || remainingMs !== 0) {
+      return;
+    }
+
+    const runKey = getTimerSoundRunKey(timer);
+    if (runKey && claimTimerSoundAlert(runKey, 'done')) {
+      playTimerSound('done');
+    }
+
+    setTimer((current) =>
+      current.endsAt === null
+        ? current
+        : {
+            ...current,
+            endsAt: null,
+            pausedRemainingMs: 0,
+            lastCompletedAt: Date.now()
+          }
+    );
+  }, [remainingMs, setTimer, timer]);
+}
+
+function getCustomTimerDurationMs(customTimerMinutes: number) {
+  return Math.round(customTimerMinutes * 60) * 1000;
+}
+
+function getCustomTimerLabel(customTimerMinutes: number) {
+  const totalSeconds = Math.round(customTimerMinutes * 60);
+  if (totalSeconds <= 0) {
+    return '0';
+  }
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = totalSeconds / 60;
+  return Number.isInteger(minutes) ? `${minutes}` : `${minutes.toFixed(1)}m`;
+}
+
+function getCustomTimerAriaLabel(customTimerMinutes: number) {
+  const totalSeconds = Math.round(customTimerMinutes * 60);
+  if (totalSeconds <= 0) {
+    return 'Custom timer is not set';
+  }
+
+  if (totalSeconds < 60) {
+    return `Use ${totalSeconds} second custom timer`;
+  }
+
+  const minutes = totalSeconds / 60;
+  return `Use ${minutes} minute custom timer`;
+}
+
+function normalizeCustomTimerMinutes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  const totalSeconds = Math.round(value * 60);
+  if (totalSeconds < 60) {
+    const nearestShortSecond =
+      CUSTOM_TIMER_SHORT_SECONDS.find((seconds) => totalSeconds <= seconds) ??
+      CUSTOM_TIMER_SHORT_SECONDS[CUSTOM_TIMER_SHORT_SECONDS.length - 1];
+    return nearestShortSecond / 60;
+  }
+
+  return clampNumber(Math.round(totalSeconds / 60), 1, CUSTOM_TIMER_MAX_MINUTES);
+}
+
+function getNextCustomTimerMinutes(customTimerMinutes: number) {
+  const totalSeconds = Math.round(customTimerMinutes * 60);
+  if (totalSeconds <= 0) {
+    return CUSTOM_TIMER_SHORT_SECONDS[0] / 60;
+  }
+
+  if (totalSeconds < 60) {
+    const nextShortSecond = CUSTOM_TIMER_SHORT_SECONDS.find((seconds) => seconds > totalSeconds);
+    return nextShortSecond ? nextShortSecond / 60 : 1;
+  }
+
+  return clampNumber(Math.round(totalSeconds / 60) + 1, 1, CUSTOM_TIMER_MAX_MINUTES);
+}
+
+function getPreviousCustomTimerMinutes(customTimerMinutes: number) {
+  const totalSeconds = Math.round(customTimerMinutes * 60);
+  if (totalSeconds <= CUSTOM_TIMER_SHORT_SECONDS[0]) {
+    return 0;
+  }
+
+  if (totalSeconds <= 60) {
+    const previousShortSeconds = [...CUSTOM_TIMER_SHORT_SECONDS]
+      .reverse()
+      .find((seconds) => seconds < totalSeconds);
+    return previousShortSeconds ? previousShortSeconds / 60 : 0;
+  }
+
+  return Math.round(totalSeconds / 60) - 1;
+}
+
 const fallbackContext: DesktopWindowContext = {
   role: window.location.hash.includes('builder')
     ? 'builder'
@@ -1063,11 +1391,11 @@ function useStableButtonLift() {
     const getEventButton = (event: PointerEvent) => getLiftButton(event.target);
 
     const handlePointerOver = (event: PointerEvent) => {
-      if (activeButton && isPointInsideRect(event, activeZone)) {
+      const button = getLiftButton(event.target);
+
+      if (activeButton && isPointInsideRect(event, activeZone) && (!button || button === activeButton)) {
         return;
       }
-
-      const button = getLiftButton(event.target);
 
       if (!button || button === activeButton) {
         return;
@@ -1087,9 +1415,13 @@ function useStableButtonLift() {
         return;
       }
 
-      if (!isPointInsideRect(event, activeZone)) {
-        const button = getEventButton(event);
+      const button = getEventButton(event);
+      if (button && button !== activeButton) {
+        setActiveButton(button);
+        return;
+      }
 
+      if (!isPointInsideRect(event, activeZone)) {
         if (button) {
           setActiveButton(button);
         } else {
@@ -1147,14 +1479,57 @@ function useStableButtonLift() {
 
 function GlobalTooltipLayer() {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-  const [position, setPosition] = useState<{
-    arrowLeft: number;
-    left: number;
-    placement: TooltipPlacement;
-    top: number;
-  } | null>(null);
-  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<TooltipPosition | null>(null);
+  const tooltipMeasureRef = useRef<HTMLDivElement | null>(null);
   const activeElementRef = useRef<HTMLElement | null>(null);
+
+  const measureTooltipPosition = (nextTooltip: TooltipState) => {
+    const tooltipMeasureElement = tooltipMeasureRef.current;
+    if (!tooltipMeasureElement) {
+      return null;
+    }
+
+    tooltipMeasureElement.textContent = nextTooltip.text;
+    return getTooltipPosition(nextTooltip, tooltipMeasureElement);
+  };
+
+  const getTooltipPosition = (nextTooltip: TooltipState, tooltipElement: HTMLDivElement): TooltipPosition => {
+    const margin = 12;
+    const offset = 12;
+    const width = tooltipElement.offsetWidth;
+    const height = tooltipElement.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const preferredLeft =
+      nextTooltip.alignment === 'start'
+        ? nextTooltip.anchorRect.left
+        : nextTooltip.alignment === 'end'
+          ? nextTooltip.anchorRect.right - width
+          : nextTooltip.anchorRect.left + nextTooltip.anchorRect.width / 2 - width / 2;
+    const left = clampNumber(preferredLeft, margin, Math.max(margin, viewportWidth - width - margin));
+    const arrowLeft = clampNumber(
+      nextTooltip.anchorRect.left + nextTooltip.anchorRect.width / 2 - left,
+      14,
+      Math.max(14, width - 14)
+    );
+    const topPlacementTop = nextTooltip.anchorRect.top - height - offset;
+    const placement: TooltipPlacement = topPlacementTop >= margin ? 'top' : 'bottom';
+    const top =
+      placement === 'top'
+        ? topPlacementTop
+        : clampNumber(
+            nextTooltip.anchorRect.bottom + offset,
+            margin,
+            Math.max(margin, viewportHeight - height - margin)
+          );
+
+    return {
+      arrowLeft,
+      left,
+      placement,
+      top
+    };
+  };
 
   useEffect(() => {
     const getTooltipElement = (target: EventTarget | null) => {
@@ -1189,6 +1564,12 @@ function GlobalTooltipLayer() {
 
       return element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     };
+    const getTooltipAlignment = (element: HTMLElement): TooltipAlignment => {
+      const requestedAlignment = element.dataset.tooltipAlignment?.trim();
+      return requestedAlignment === 'start' || requestedAlignment === 'end'
+        ? requestedAlignment
+        : 'center';
+    };
 
     const hideTooltip = () => {
       activeElementRef.current = null;
@@ -1208,10 +1589,14 @@ function GlobalTooltipLayer() {
         return;
       }
 
-      setTooltip({
+      const nextTooltip = {
+        alignment: getTooltipAlignment(activeElement),
         anchorRect: activeElement.getBoundingClientRect(),
         text
-      });
+      };
+
+      setTooltip(nextTooltip);
+      setPosition(measureTooltipPosition(nextTooltip));
     };
 
     const showTooltip = (element: HTMLElement | null) => {
@@ -1231,10 +1616,14 @@ function GlobalTooltipLayer() {
       }
 
       activeElementRef.current = element;
-      setTooltip({
+      const nextTooltip = {
+        alignment: getTooltipAlignment(element),
         anchorRect: element.getBoundingClientRect(),
         text: title
-      });
+      };
+
+      setTooltip(nextTooltip);
+      setPosition(measureTooltipPosition(nextTooltip));
     };
 
     const handlePointerOver = (event: PointerEvent) => {
@@ -1306,48 +1695,23 @@ function GlobalTooltipLayer() {
   }, []);
 
   useLayoutEffect(() => {
-    const tooltipElement = tooltipRef.current;
-    if (!tooltip || !tooltipElement) {
+    if (!tooltip) {
       return;
     }
 
-    const margin = 12;
-    const offset = 12;
-    const width = tooltipElement.offsetWidth;
-    const height = tooltipElement.offsetHeight;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const preferredLeft = tooltip.anchorRect.left + tooltip.anchorRect.width / 2 - width / 2;
-    const nextLeft = clampNumber(preferredLeft, margin, Math.max(margin, viewportWidth - width - margin));
-    const arrowLeft = clampNumber(
-      tooltip.anchorRect.left + tooltip.anchorRect.width / 2 - nextLeft,
-      14,
-      Math.max(14, width - 14)
-    );
-    const topPlacementTop = tooltip.anchorRect.top - height - offset;
-    const placement: TooltipPlacement = topPlacementTop >= margin ? 'top' : 'bottom';
-    const nextTop =
-      placement === 'top'
-        ? topPlacementTop
-        : clampNumber(
-            tooltip.anchorRect.bottom + offset,
-            margin,
-            Math.max(margin, viewportHeight - height - margin)
-          );
+    const nextPosition = measureTooltipPosition(tooltip);
+    if (!nextPosition) {
+      return;
+    }
 
     setPosition((current) =>
       current &&
-      current.left === nextLeft &&
-      current.top === nextTop &&
-      current.arrowLeft === arrowLeft &&
-      current.placement === placement
+      current.left === nextPosition.left &&
+      current.top === nextPosition.top &&
+      current.arrowLeft === nextPosition.arrowLeft &&
+      current.placement === nextPosition.placement
         ? current
-        : {
-            arrowLeft,
-            left: nextLeft,
-            placement,
-            top: nextTop
-          }
+        : nextPosition
     );
   }, [tooltip]);
 
@@ -1356,22 +1720,29 @@ function GlobalTooltipLayer() {
   }
 
   return (
-    <div
-      className={`app-tooltip ${position ? `app-tooltip--${position.placement}` : 'app-tooltip--top'}`}
-      ref={tooltipRef}
-      role="tooltip"
-      style={
-        position
-          ? {
-              left: `${position.left}px`,
-              top: `${position.top}px`,
-              ['--tooltip-arrow-left' as string]: `${position.arrowLeft}px`
-            }
-          : undefined
-      }
-    >
-      {tooltip.text}
-    </div>
+    <>
+      <div
+        aria-hidden="true"
+        className="app-tooltip app-tooltip--top app-tooltip--measure"
+        ref={tooltipMeasureRef}
+      />
+      <div
+        className={`app-tooltip ${position ? `app-tooltip--${position.placement}` : 'app-tooltip--top'}`}
+        role="tooltip"
+        style={
+          position
+            ? {
+                left: `${position.left}px`,
+                opacity: 1,
+                top: `${position.top}px`,
+                ['--tooltip-arrow-left' as string]: `${position.arrowLeft}px`
+              }
+            : { opacity: 0 }
+        }
+      >
+        {tooltip.text}
+      </div>
+    </>
   );
 }
 
@@ -1397,6 +1768,7 @@ function OverlayDot() {
   const now = useNow(timer.endsAt);
   const remainingMs = timer.endsAt ? Math.max(timer.endsAt - now, 0) : timer.pausedRemainingMs;
   const isTimerAlertActive = hasUnacknowledgedTimerCompletion(timer);
+  useTimerSoundAlerts(timer, remainingMs, setTimer);
 
   useEffect(() => {
     window.electronAPI?.getOverlayBounds().then((bounds) => {
@@ -1409,21 +1781,6 @@ function OverlayDot() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (timer.endsAt && remainingMs === 0) {
-      setTimer((current) =>
-        current.endsAt === null
-          ? current
-          : {
-              ...current,
-              endsAt: null,
-              pausedRemainingMs: 0,
-              lastCompletedAt: Date.now()
-            }
-      );
-    }
-  }, [remainingMs, setTimer, timer.endsAt]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -2175,6 +2532,7 @@ function TeacherPopover() {
     timer.pausedRemainingMs < timer.baseDurationMs;
   const timerFinishedRecently = Boolean(timer.lastCompletedAt && now - timer.lastCompletedAt < 5000);
   const timerProgress = timer.baseDurationMs === 0 ? 0 : remainingMs / timer.baseDurationMs;
+  useTimerSoundAlerts(timer, remainingMs, setTimer);
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const selectedStudents = selectedList?.students ?? [];
   const seatingChart = useSeatingChartController(selectedList);
@@ -2229,6 +2587,11 @@ function TeacherPopover() {
     dashboardForceScroll;
   const effectiveDashboardFitScale = shouldAllowDashboardScroll ? 1 : dashboardFitScale;
   const rosterCount = selectedStudents.length;
+  const pickableStudents = getPickerSelectionPool(
+    selectedStudents,
+    picker.pool,
+    picker.removePickedStudents
+  );
   const timerLabel = formatDuration(remainingMs);
   const todayLabel = formatSchoolDateLabel(new Date(now));
   const appUpdateButtonLabel = getAppUpdateButtonLabel(appUpdate);
@@ -2240,7 +2603,7 @@ function TeacherPopover() {
     appUpdate.status === 'downloading' ||
     appUpdate.status === 'unsupported';
   const recentPicks = picker.recentPicks.slice(0, 4);
-  const customTimerMs = customTimerMinutes * 60 * 1000;
+  const customTimerMs = getCustomTimerDurationMs(customTimerMinutes);
   const customTimerActive = customTimerMinutes > 0 && timer.baseDurationMs === customTimerMs;
   const timerStatusLabel = timerFinishedRecently
     ? 'Done'
@@ -2251,8 +2614,9 @@ function TeacherPopover() {
         : 'Ready';
   const pickerSpinnerView = buildPickerSpinnerView({
     currentPick: picker.currentPick,
+    emptyLabel: selectedStudents.length ? 'No more names' : 'No list selected',
     isSpinning: isPickerSpinning,
-    names: selectedStudents,
+    names: pickableStudents,
     spinnerPosition
   });
   const activeGroups =
@@ -2620,21 +2984,6 @@ function TeacherPopover() {
     shouldPreferDashboardScroll,
     visibleWidgetIds.length
   ]);
-
-  useEffect(() => {
-    if (timer.endsAt && remainingMs === 0) {
-      setTimer((current) =>
-        current.endsAt === null
-          ? current
-          : {
-              ...current,
-              endsAt: null,
-              pausedRemainingMs: 0,
-              lastCompletedAt: Date.now()
-            }
-      );
-    }
-  }, [remainingMs, setTimer, timer.endsAt]);
 
   useEffect(() => {
     if (stickyNotes.length > 0) {
@@ -3027,6 +3376,13 @@ function TeacherPopover() {
       picker.pool,
       picker.removePickedStudents
     );
+    if (!readyPool.length) {
+      setPicker((current) =>
+        current.selectedListId === selectedList.id ? { ...current, currentPick: null } : current
+      );
+      return;
+    }
+
     const pickedName = readyPool[Math.floor(Math.random() * readyPool.length)];
     const remainingPool = getPickerRemainingPool(
       selectedStudents,
@@ -3034,12 +3390,12 @@ function TeacherPopover() {
       pickedName,
       picker.removePickedStudents
     );
-    const finalIndex = selectedStudents.indexOf(pickedName);
-    const normalizedSpinnerIndex = selectedStudents.length
-      ? getNormalizedPickerIndex(spinnerPosition, selectedStudents.length)
+    const finalIndex = readyPool.indexOf(pickedName);
+    const normalizedSpinnerIndex = readyPool.length
+      ? getNormalizedPickerIndex(spinnerPosition, readyPool.length)
       : 0;
     const totalSteps = getPickerSpinStepCount(
-      selectedStudents.length,
+      readyPool.length,
       normalizedSpinnerIndex,
       finalIndex
     );
@@ -3116,6 +3472,7 @@ function TeacherPopover() {
   };
 
   const startTimer = () => {
+    primeTimerAudio();
     setTimer((current) => ({
       ...current,
       endsAt: Date.now() + current.baseDurationMs,
@@ -3133,6 +3490,7 @@ function TeacherPopover() {
   };
 
   const resumeTimer = () => {
+    primeTimerAudio();
     setTimer((current) => ({
       ...current,
       endsAt: Date.now() + current.pausedRemainingMs,
@@ -3160,8 +3518,8 @@ function TeacherPopover() {
   };
 
   const updateCustomTimer = (nextMinutes: number) => {
-    const clampedMinutes = clampNumber(nextMinutes, 0, CUSTOM_TIMER_MAX_MINUTES);
-    const previousCustomTimerMs = customTimerMinutes * 60 * 1000;
+    const clampedMinutes = normalizeCustomTimerMinutes(nextMinutes);
+    const previousCustomTimerMs = getCustomTimerDurationMs(customTimerMinutes);
 
     setCustomTimerMinutes(clampedMinutes);
 
@@ -3370,6 +3728,7 @@ function TeacherPopover() {
             spinnerTrackRef={pickerSpinnerTrackRef}
             recentPicks={recentPicks}
             removePickedStudents={picker.removePickedStudents}
+            pickableStudentCount={pickableStudents.length}
             selectedStudentCount={selectedStudents.length}
           />
         </WidgetCard>
@@ -3685,6 +4044,7 @@ function TeacherPopover() {
                   <button
                     aria-label="Widgets"
                     className="toolbar-link window-spawn-button"
+                    data-tooltip-content="Widgets"
                     onClick={() => window.electronAPI?.toggleWidgetPicker()}
                     type="button"
                   >
@@ -3699,6 +4059,7 @@ function TeacherPopover() {
                   <button
                     aria-label="Classes"
                     className="toolbar-link window-spawn-button"
+                    data-tooltip-content="Classes"
                     onClick={() => window.electronAPI?.toggleClassListBuilder()}
                     type="button"
                   >
@@ -3715,6 +4076,7 @@ function TeacherPopover() {
                       aria-expanded={isSettingsOpen}
                       aria-label="Settings"
                       className={`icon-button button-tone--theme ${isSettingsOpen ? 'settings-button--active' : ''}`}
+                      data-tooltip-alignment="end"
                       data-tooltip-content="Settings"
                       onClick={() => {
                         setIsClassMenuOpen(false);
@@ -5104,6 +5466,10 @@ function TimerWidgetContent({
   timerLabel: string;
   timerProgress: number;
 }) {
+  const customTimerLabel = getCustomTimerLabel(customTimerMinutes);
+  const nextCustomTimerMinutes = getNextCustomTimerMinutes(customTimerMinutes);
+  const previousCustomTimerMinutes = getPreviousCustomTimerMinutes(customTimerMinutes);
+
   return (
     <>
       <div className="action-row widget-primary-actions">
@@ -5174,17 +5540,13 @@ function TimerWidgetContent({
             aria-label="Decrease custom timer"
             className="stepper__button"
             disabled={customTimerMinutes === 0}
-            onClick={() => onUpdateCustomTimer(customTimerMinutes - 1)}
+            onClick={() => onUpdateCustomTimer(previousCustomTimerMinutes)}
             type="button"
           >
             −
           </button>
           <button
-            aria-label={
-              customTimerMinutes > 0
-                ? `Use ${customTimerMinutes} minute custom timer`
-                : 'Custom timer is not set'
-            }
+            aria-label={getCustomTimerAriaLabel(customTimerMinutes)}
             aria-pressed={customTimerActive}
             className={`stepper__value timer-stepper__value ${
               customTimerActive ? 'timer-stepper__value--active' : ''
@@ -5197,13 +5559,13 @@ function TimerWidgetContent({
             }}
             type="button"
           >
-            {customTimerMinutes}
+            {customTimerLabel}
           </button>
           <button
             aria-label="Increase custom timer"
             className="stepper__button"
             disabled={customTimerMinutes === CUSTOM_TIMER_MAX_MINUTES}
-            onClick={() => onUpdateCustomTimer(customTimerMinutes + 1)}
+            onClick={() => onUpdateCustomTimer(nextCustomTimerMinutes)}
             type="button"
           >
             +
@@ -5229,6 +5591,7 @@ function PickerWidgetContent({
   spinnerTrackRef,
   recentPicks,
   removePickedStudents,
+  pickableStudentCount,
   selectedStudentCount
 }: {
   isPickerSpinning: boolean;
@@ -5239,6 +5602,7 @@ function PickerWidgetContent({
   spinnerTrackRef?: Ref<HTMLDivElement>;
   recentPicks: string[];
   removePickedStudents: boolean;
+  pickableStudentCount: number;
   selectedStudentCount: number;
 }) {
   const pickerModeLabel = removePickedStudents ? 'Remove after pick' : 'Keep in list';
@@ -5264,7 +5628,7 @@ function PickerWidgetContent({
             aria-label={isPickerSpinning ? 'Picking student' : 'Pick student'}
             className="primary-link"
             data-compact-icon="✦"
-            disabled={selectedStudentCount === 0 || isPickerSpinning}
+            disabled={pickableStudentCount === 0 || isPickerSpinning}
             onClick={onPick}
             type="button"
           >
@@ -8061,7 +8425,7 @@ function BellScheduleWidgetContent({
         {handlePrimaryAction ? (
           <button
             aria-label={primaryActionLabel}
-            className="secondary-link button-tone--utility"
+            className={`secondary-link button-tone--utility ${showEditor ? '' : 'window-spawn-button'}`}
             data-compact-icon={showEditor ? '✓' : '✎'}
             onClick={handlePrimaryAction}
             type="button"
@@ -8554,6 +8918,7 @@ function PickerWidgetPopoutCard({
         spinnerTrackRef={picker.spinnerTrackRef}
         recentPicks={picker.recentPicks}
         removePickedStudents={picker.picker.removePickedStudents}
+        pickableStudentCount={picker.pickableStudentCount}
         selectedStudentCount={picker.selectedStudents.length}
       />
     </WidgetCard>
@@ -9319,25 +9684,12 @@ function useTimerWidgetState() {
     timer.pausedRemainingMs < timer.baseDurationMs;
   const timerFinishedRecently = Boolean(timer.lastCompletedAt && now - timer.lastCompletedAt < 5000);
   const timerProgress = timer.baseDurationMs === 0 ? 0 : remainingMs / timer.baseDurationMs;
-  const customTimerMs = customTimerMinutes * 60 * 1000;
+  const customTimerMs = getCustomTimerDurationMs(customTimerMinutes);
   const customTimerActive = customTimerMinutes > 0 && timer.baseDurationMs === customTimerMs;
-
-  useEffect(() => {
-    if (timer.endsAt && remainingMs === 0) {
-      setTimer((current) =>
-        current.endsAt === null
-          ? current
-          : {
-              ...current,
-              endsAt: null,
-              pausedRemainingMs: 0,
-              lastCompletedAt: Date.now()
-            }
-      );
-    }
-  }, [remainingMs, setTimer, timer.endsAt]);
+  useTimerSoundAlerts(timer, remainingMs, setTimer);
 
   const startTimer = () => {
+    primeTimerAudio();
     setTimer((current) => ({
       ...current,
       endsAt: Date.now() + current.baseDurationMs,
@@ -9355,6 +9707,7 @@ function useTimerWidgetState() {
   };
 
   const resumeTimer = () => {
+    primeTimerAudio();
     setTimer((current) => ({
       ...current,
       endsAt: Date.now() + current.pausedRemainingMs,
@@ -9382,8 +9735,8 @@ function useTimerWidgetState() {
   };
 
   const updateCustomTimer = (nextMinutes: number) => {
-    const clampedMinutes = clampNumber(nextMinutes, 0, CUSTOM_TIMER_MAX_MINUTES);
-    const previousCustomTimerMs = customTimerMinutes * 60 * 1000;
+    const clampedMinutes = normalizeCustomTimerMinutes(nextMinutes);
+    const previousCustomTimerMs = getCustomTimerDurationMs(customTimerMinutes);
 
     setCustomTimerMinutes(clampedMinutes);
 
@@ -9432,6 +9785,11 @@ function usePickerWidgetState() {
   const [spinnerPosition, setSpinnerPosition] = useState(0);
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const selectedStudents = selectedList?.students ?? [];
+  const pickableStudents = getPickerSelectionPool(
+    selectedStudents,
+    picker.pool,
+    picker.removePickedStudents
+  );
 
   useEffect(() => {
     if (isPickerSpinning || !selectedStudents.length) {
@@ -9496,6 +9854,13 @@ function usePickerWidgetState() {
       picker.pool,
       picker.removePickedStudents
     );
+    if (!readyPool.length) {
+      setPicker((current) =>
+        current.selectedListId === selectedList.id ? { ...current, currentPick: null } : current
+      );
+      return;
+    }
+
     const pickedName = readyPool[Math.floor(Math.random() * readyPool.length)];
     const remainingPool = getPickerRemainingPool(
       selectedStudents,
@@ -9503,12 +9868,12 @@ function usePickerWidgetState() {
       pickedName,
       picker.removePickedStudents
     );
-    const finalIndex = selectedStudents.indexOf(pickedName);
-    const normalizedSpinnerIndex = selectedStudents.length
-      ? getNormalizedPickerIndex(spinnerPosition, selectedStudents.length)
+    const finalIndex = readyPool.indexOf(pickedName);
+    const normalizedSpinnerIndex = readyPool.length
+      ? getNormalizedPickerIndex(spinnerPosition, readyPool.length)
       : 0;
     const totalSteps = getPickerSpinStepCount(
-      selectedStudents.length,
+      readyPool.length,
       normalizedSpinnerIndex,
       finalIndex
     );
@@ -9589,10 +9954,12 @@ function usePickerWidgetState() {
     picker,
     pickerSpinnerView: buildPickerSpinnerView({
       currentPick: picker.currentPick,
+      emptyLabel: selectedStudents.length ? 'No more names' : 'No list selected',
       isSpinning: isPickerSpinning,
-      names: selectedStudents,
+      names: pickableStudents,
       spinnerPosition
     }),
+    pickableStudentCount: pickableStudents.length,
     recentPicks: picker.recentPicks.slice(0, 4),
     resetCurrentListCycle,
     rosterCount: selectedStudents.length,
@@ -13105,7 +13472,12 @@ function normalizePickerSnapshot(raw: unknown, initialValue: PickerSnapshot) {
         ? nextRaw.selectedListId
         : fallbackLists[0]?.id ?? null;
     const selectedList = fallbackLists.find((list) => list.id === selectedListId) ?? null;
-    const poolSource = Array.isArray(nextRaw.pool) ? nextRaw.pool.filter(isString) : [];
+    const savedPool = Array.isArray(nextRaw.pool) ? nextRaw.pool : null;
+    const poolSource = savedPool ? savedPool.filter(isString) : [];
+    const removePickedStudents =
+      typeof nextRaw.removePickedStudents === 'boolean'
+        ? nextRaw.removePickedStudents
+        : initialValue.removePickedStudents;
     const currentPick =
       typeof nextRaw.currentPick === 'string' && selectedList?.students.includes(nextRaw.currentPick)
         ? nextRaw.currentPick
@@ -13119,13 +13491,12 @@ function normalizePickerSnapshot(raw: unknown, initialValue: PickerSnapshot) {
     return {
       lists: fallbackLists,
       selectedListId,
-      pool: selectedList ? syncPoolWithRoster(selectedList.students, poolSource) : [],
+      pool: selectedList
+        ? syncPoolWithRoster(selectedList.students, poolSource, removePickedStudents && savedPool !== null)
+        : [],
       currentPick,
       recentPicks,
-      removePickedStudents:
-        typeof nextRaw.removePickedStudents === 'boolean'
-          ? nextRaw.removePickedStudents
-          : initialValue.removePickedStudents
+      removePickedStudents
     };
   }
 
@@ -13930,7 +14301,11 @@ function activateClassList(snapshot: PickerSnapshot, listId: string) {
   return {
     ...snapshot,
     selectedListId: listId,
-    pool: syncPoolWithRoster(nextList.students, isSameList ? snapshot.pool : []),
+    pool: syncPoolWithRoster(
+      nextList.students,
+      isSameList ? snapshot.pool : [],
+      isSameList && snapshot.removePickedStudents
+    ),
     currentPick:
       isSameList && snapshot.currentPick && nextList.students.includes(snapshot.currentPick)
         ? snapshot.currentPick
@@ -13989,7 +14364,11 @@ function removeClassListFromPicker(snapshot: PickerSnapshot, listId: string) {
       return {
         ...snapshot,
         lists: nextLists,
-        pool: syncPoolWithRoster(selectedList.students, snapshot.pool),
+        pool: syncPoolWithRoster(
+          selectedList.students,
+          snapshot.pool,
+          snapshot.removePickedStudents
+        ),
         currentPick:
           snapshot.currentPick && selectedList.students.includes(snapshot.currentPick)
             ? snapshot.currentPick
@@ -14030,11 +14409,13 @@ function createPredictableListId(name: string, existingIds: string[]) {
 
 function buildPickerSpinnerView({
   currentPick,
+  emptyLabel = 'No list selected',
   isSpinning,
   names,
   spinnerPosition
 }: {
   currentPick: string | null;
+  emptyLabel?: string;
   isSpinning: boolean;
   names: string[];
   spinnerPosition: number;
@@ -14049,7 +14430,7 @@ function buildPickerSpinnerView({
 
   if (!names.length) {
     return {
-      items: restingItems('No list selected'),
+      items: restingItems(emptyLabel),
       translatePercent: getPickerSpinnerTranslatePercent(0)
     };
   }
@@ -14193,13 +14574,17 @@ function shuffleNames(names: string[]) {
   return nextNames;
 }
 
-function syncPoolWithRoster(roster: string[], pool: string[]) {
+function syncPoolWithRoster(roster: string[], pool: string[], allowEmptyPool = false) {
   const nextPool = pool.filter((name) => roster.includes(name));
+  if (allowEmptyPool) {
+    return nextPool;
+  }
+
   return nextPool.length ? nextPool : [...roster];
 }
 
 function getPickerSelectionPool(roster: string[], pool: string[], removePickedStudents: boolean) {
-  return removePickedStudents ? syncPoolWithRoster(roster, pool) : [...roster];
+  return removePickedStudents ? syncPoolWithRoster(roster, pool, true) : [...roster];
 }
 
 function getPickerRemainingPool(

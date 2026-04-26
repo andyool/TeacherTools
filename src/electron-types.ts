@@ -90,6 +90,7 @@ export type ElectronBridge = {
   getAppSettings: () => Promise<AppSettings>;
   checkForAppUpdates: () => Promise<AppUpdateState>;
   installAppUpdate: () => Promise<boolean>;
+  speakTimerAlert: (text: string) => Promise<boolean>;
   onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
   setLaunchAtLogin: (enabled: boolean) => Promise<AppSettings>;
   onAppSettingsChanged: (listener: (settings: AppSettings) => void) => () => void;

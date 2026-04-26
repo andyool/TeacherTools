@@ -4,6 +4,7 @@ import electronUpdater, {
   type ProgressInfo,
   type UpdateInfo
 } from 'electron-updater';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -152,6 +153,7 @@ let pendingPopoverSize: Pick<Bounds, 'width' | 'height'> | null = null;
 let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let widgetPopoutBoundsCache: Partial<Record<WidgetPopoutId, Partial<Bounds>>> | null = null;
 let widgetPopoutBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let activeTimerSpeechProcess: ChildProcess | null = null;
 let appUpdateState: AppUpdateState = {
   availableVersion: null,
   currentVersion: app.getVersion(),
@@ -1253,6 +1255,40 @@ function getAppSettings(): AppSettings {
   };
 }
 
+function speakTimerText(text: unknown) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return false;
+  }
+
+  if (process.platform !== 'darwin') {
+    return false;
+  }
+
+  const spokenText = text.trim().slice(0, 160);
+
+  try {
+    if (activeTimerSpeechProcess) {
+      activeTimerSpeechProcess.kill();
+      activeTimerSpeechProcess = null;
+    }
+
+    const speechProcess = spawn('say', ['-r', '175', spokenText], {
+      stdio: 'ignore'
+    });
+    activeTimerSpeechProcess = speechProcess;
+    speechProcess.once('close', () => {
+      activeTimerSpeechProcess = null;
+    });
+    speechProcess.once('error', () => {
+      activeTimerSpeechProcess = null;
+    });
+    return true;
+  } catch {
+    activeTimerSpeechProcess = null;
+    return false;
+  }
+}
+
 function broadcastAppSettings() {
   const settings = getAppSettings();
   const targetWindows = [
@@ -1946,6 +1982,10 @@ ipcMain.handle('app-settings:get', () => {
 
 ipcMain.handle('app-settings:set-launch-at-login', (_event, enabled: unknown) => {
   return setLaunchAtLogin(enabled === true);
+});
+
+ipcMain.handle('timer:speak', (_event, text: unknown) => {
+  return speakTimerText(text);
 });
 
 ipcMain.on('storage:get', (event, key: unknown) => {
