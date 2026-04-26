@@ -6307,16 +6307,21 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .bell-schedule__upcoming-list {
+  flex-direction: row;
   gap: 4px;
+  min-width: 0;
 }
 
 .bell-schedule__upcoming-copy {
   flex-direction: row;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
 }
 
 .bell-schedule__upcoming-item {
+  flex: 1 1 0;
+  min-width: 0;
   padding: 5px 8px;
 }
 
