@@ -20,6 +20,8 @@ const shell = (electron as typeof electron & {
   shell: typeof import('electron').shell;
 }).shell;
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const shouldUseTray = process.platform === 'win32';
+const shouldUseDock = process.platform === 'darwin';
 const OVERLAY_SIZE = 86;
 const OVERLAY_MARGIN = 22;
 const POPOVER_MIN_WIDTH = 260;
@@ -2799,6 +2801,10 @@ function refreshTrayMenu() {
 }
 
 function createTray() {
+  if (!shouldUseTray) {
+    return;
+  }
+
   tray = new Tray(createTrayIcon());
   tray.setToolTip('TeacherTools Overlay');
   refreshTrayMenu();
@@ -2815,11 +2821,18 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  if (shouldUseDock) {
+    app.setActivationPolicy('regular');
+    app.dock.show();
+  }
+
   clearBlockedLaunchAtLogin();
   preferredPopoverSize = loadStoredPopoverSize();
   ensurePersistentStateCache();
   createOverlayWindow();
-  createTray();
+  if (shouldUseTray) {
+    createTray();
+  }
   initializeAppUpdater();
 
   app.on('activate', () => {
