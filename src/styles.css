@@ -2753,9 +2753,7 @@ textarea {
   padding-top: 5px;
 }
 
-.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
-.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
-.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming {
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
   display: none;
 }
 
@@ -3688,8 +3686,6 @@ textarea {
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .planner-widget__copy,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .planner-documents,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .planner-documents,
-:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
-:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .tracker-summary__empty,
@@ -3784,6 +3780,58 @@ textarea {
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='notes'] .widget-card__body {
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='bell-schedule'] .bell-schedule__upcoming {
+  display: flex;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming {
+  gap: 4px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-list,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-list {
+  gap: 3px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-item {
+  align-items: center;
+  flex-direction: row;
+  gap: 5px;
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-copy {
+  align-items: baseline;
+  flex-direction: row;
+  gap: 4px;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-class,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-class {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-period {
+  font-size: 0.7rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-class,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-time {
+  font-size: 0.66rem;
+  line-height: 1.2;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__upcoming-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-calendar--collapsed,
@@ -6307,8 +6355,7 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .bell-schedule__upcoming-list {
-  flex-direction: row;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -6320,9 +6367,10 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .bell-schedule__upcoming-item {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
-  padding: 5px 8px;
+  min-height: 26px;
+  padding: 4px 8px;
 }
 
 .bell-schedule__upcoming-period,
@@ -6332,12 +6380,21 @@ body[data-window-resizing='true'] .window-stage * {
   font-weight: 700;
 }
 
+.bell-schedule__upcoming-period {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .bell-schedule__upcoming-period,
 .bell-schedule__upcoming-time {
   flex: 0 0 auto;
 }
 
 .bell-schedule__upcoming-class {
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6459,20 +6516,66 @@ body[data-window-resizing='true'] .window-stage * {
   min-width: 0;
 }
 
+.bell-schedule-editor__slot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+}
+
 .bell-schedule-editor__slot {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  justify-content: space-between;
+  gap: 7px;
+  min-height: 104px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.bell-schedule-editor__slot-header {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bell-schedule-editor__slot .bell-schedule__status-pill {
+  padding: 2px 6px;
+  font-size: 0.56rem;
+  line-height: 1;
+}
+
+.bell-schedule-editor__slot-title {
+  font-size: 0.72rem;
+}
+
+.bell-schedule-editor__slot-time {
+  font-size: 0.62rem;
+}
+
+.bell-schedule-editor__slot .text-field {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  height: 26px;
+  padding-inline: 6px;
+  font-size: 0.62rem;
+}
+
+.bell-schedule-editor__slot .helper-text {
+  margin: 0;
+  font-size: 0.62rem;
+  line-height: 1.2;
 }
 
 .bell-schedule-editor__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   color: var(--text-primary);
-  font-size: 0.74rem;
+  font-size: 0.64rem;
   font-weight: 600;
+  line-height: 1.15;
 }
 
 .bell-schedule-editor__toggle input {

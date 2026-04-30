@@ -10184,48 +10184,66 @@ function useHomeworkAssessmentTrackerController(
   const [tracker, setTracker] = useHomeworkAssessmentTrackerState();
   const todayKey = getTodayDateKey();
   const defaultClassListId = getTrackerDefaultClassListId(selectedListId, classLists);
+  const activeClassList =
+    classLists.find((list) => list.id === defaultClassListId) ?? classLists[0] ?? null;
   const assessments = [...tracker.assessments].sort((left, right) =>
     compareTrackerEntries(left, right, todayKey)
   );
   const homework = [...tracker.homework].sort((left, right) =>
     compareTrackerEntries(left, right, todayKey)
   );
-  const upcomingAssessments = assessments
-    .filter((entry) => !isTrackerItemComplete(entry.status) && getDaysUntilDateKey(todayKey, entry.dueDate) >= 0)
+  const classAssessments = activeClassList
+    ? assessments.filter((entry) => entry.classListId === activeClassList.id)
+    : assessments;
+  const classHomework = activeClassList
+    ? homework.filter((entry) => entry.classListId === activeClassList.id)
+    : homework;
+  const upcomingAssessments = classAssessments
+    .filter(
+      (entry) =>
+        !isTrackerItemComplete(entry.status) &&
+        getDaysUntilDateKey(todayKey, entry.dueDate) >= 0
+    )
     .slice(0, 3);
-  const homeworkDueToday = homework.filter(
+  const homeworkDueToday = classHomework.filter(
     (entry) => !isTrackerItemComplete(entry.status) && entry.dueDate === todayKey
   );
-  const reminderItems = [...assessments, ...homework].filter(
+  const reminderItems = [...classAssessments, ...classHomework].filter(
     (entry) =>
       !isTrackerItemComplete(entry.status) &&
       isTrackerReminderDueToday(entry.dueDate, entry.reminderDaysBefore, todayKey)
   );
-  const overdueCount = [...assessments, ...homework].filter(
+  const overdueCount = [...classAssessments, ...classHomework].filter(
     (entry) =>
       !isTrackerItemComplete(entry.status) && isTrackerItemOverdue(entry.dueDate, todayKey)
   ).length;
   const dueTodayCount =
-    assessments.filter((entry) => !isTrackerItemComplete(entry.status) && entry.dueDate === todayKey)
-      .length + homeworkDueToday.length;
+    classAssessments.filter(
+      (entry) => !isTrackerItemComplete(entry.status) && entry.dueDate === todayKey
+    ).length + homeworkDueToday.length;
   const reminderCount = reminderItems.length;
-  const totalTrackedCount = assessments.length + homework.length;
+  const totalTrackedCount = classAssessments.length + classHomework.length;
+  const totalTrackedCountLabel =
+    totalTrackedCount === 1 ? '1 item' : `${totalTrackedCount} items`;
   const badgeLabel =
     overdueCount > 0
       ? `${overdueCount} overdue`
       : dueTodayCount > 0
-        ? `${dueTodayCount} today`
+        ? `${dueTodayCount} due`
         : reminderCount > 0
           ? `${reminderCount} reminder${reminderCount === 1 ? '' : 's'}`
           : totalTrackedCount > 0
-            ? `${totalTrackedCount} items`
+            ? totalTrackedCountLabel
             : null;
+  const classSummarySuffix = activeClassList ? ` for ${activeClassList.name}` : '';
   const summaryDescription =
     totalTrackedCount === 0
-      ? 'Track due dates, status, and reminders across classes.'
+      ? activeClassList
+        ? `No tracked homework or assessments for ${activeClassList.name}.`
+        : 'Track due dates, status, and reminders across classes.'
       : `${upcomingAssessments.length} assessment${upcomingAssessments.length === 1 ? '' : 's'} coming up, ${
           homeworkDueToday.length
-        } homework due today.`;
+        } homework due today${classSummarySuffix}.`;
 
   const addAssessment = (entry: Omit<AssessmentTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>) => {
     const normalizedEntry = createAssessmentTrackerEntry(entry, classLists);
@@ -10371,7 +10389,9 @@ function useHomeworkAssessmentTrackerController(
     badgeLabel,
     badgeTone:
       overdueCount > 0 || dueTodayCount > 0 ? ('alert' as const) : ('default' as const),
+    classAssessments,
     classLists,
+    classHomework,
     defaultClassListId,
     dueTodayCount,
     homework,
