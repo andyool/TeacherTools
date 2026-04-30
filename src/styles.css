@@ -4000,6 +4000,42 @@ textarea {
   }
 }
 
+:is(.dashboard-shell, .window-stage--widget-popout)
+  .widget-card[data-size-tier='1'][data-widget-id='planner']
+  .planner-widget__action-button {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  justify-self: stretch;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout)
+  .widget-card[data-size-tier='1'][data-widget-id='planner']
+  .planner-widget__action-button[data-compact-icon] {
+  min-width: 0;
+  height: auto;
+  padding: 5px 4px;
+  color: var(--button-ink);
+  font-size: 0.76rem;
+  letter-spacing: normal;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout)
+  .widget-card[data-size-tier='1'][data-widget-id='planner']
+  .planner-widget__action-button[data-compact-icon]::after {
+  content: none;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout)
+  .widget-card[data-size-tier='1'][data-widget-id='planner']
+  .planner-widget__action-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  text-align: center;
+}
+
 .window-stage--resizing .widget-card,
 .window-stage--resizing .widget-card__body-shell,
 .window-stage--resizing .widget-card__body,
