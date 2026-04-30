@@ -2257,7 +2257,7 @@ function createOverlayWindow() {
     movable: true,
     focusable: true,
     hasShadow: false,
-    skipTaskbar: true,
+    skipTaskbar: !shouldUseDock,
     fullscreenable: false,
     backgroundColor: '#00000000',
     webPreferences: {

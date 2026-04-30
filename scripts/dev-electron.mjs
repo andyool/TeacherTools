@@ -21,9 +21,12 @@ const requiredFiles =
 
 function createElectronEnv() {
   const nextEnv = {
-    ...process.env,
-    ELECTRON_RUN_AS_NODE: ''
+    ...process.env
   };
+
+  // Launch Electron as a normal desktop app. An empty env var still leaves the
+  // key present, which can interfere with macOS app behavior.
+  delete nextEnv.ELECTRON_RUN_AS_NODE;
 
   if (rendererMode === 'server') {
     nextEnv.VITE_DEV_SERVER_URL = rendererUrl;

@@ -13,7 +13,7 @@
     "dev:renderer:server": "vite --clearScreen false",
     "dev:electron": "node ./scripts/dev-electron.mjs",
     "dev:electron:server": "cross-env ELECTRON_RENDERER_MODE=server node ./scripts/dev-electron.mjs",
-    "start": "cross-env ELECTRON_RUN_AS_NODE= electron .",
+    "start": "node ./scripts/start-electron.mjs",
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "tsc -p tsconfig.json && vite build",
     "build:main": "tsc -p tsconfig.node.json",
