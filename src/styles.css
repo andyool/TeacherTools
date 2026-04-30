@@ -2233,6 +2233,27 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title-group {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title-copy {
+  flex: 1 1 auto;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__meta,
+.widget-card[data-widget-id='bell-schedule'] .widget-card__meta .badge {
+  flex: 0 0 auto;
+}
+
 .widget-card__title {
   color: var(--text-primary);
   font-size: 0.92rem;
@@ -6260,6 +6281,18 @@ body[data-window-resizing='true'] .window-stage * {
 
 .bell-schedule__summary-head {
   align-items: flex-start;
+}
+
+.bell-schedule__summary-head .card-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-schedule__status-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .bell-schedule__summary-main {
