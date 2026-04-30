@@ -6307,6 +6307,14 @@ body[data-window-resizing='true'] .window-stage * {
   transform-origin: left center;
 }
 
+.panel[data-theme='light'] .widget-card[data-widget-id='bell-schedule'] .bell-schedule__progress {
+  background: rgba(42, 92, 148, 0.16);
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='bell-schedule'] .bell-schedule__progress-fill {
+  background: linear-gradient(90deg, #1d4f82, #2a5c94);
+}
+
 .bell-schedule__metric-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
