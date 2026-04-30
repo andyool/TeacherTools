@@ -141,6 +141,7 @@ export type ElectronBridge = {
   setPersistentState: (key: string, value: unknown) => Promise<boolean>;
   onPersistentStateChanged: (listener: (change: PersistentStateChange) => void) => () => void;
   setOverlayPosition: (position: { x: number; y: number }) => void;
+  setOverlayInteractive: (interactive: boolean) => void;
   setCurrentWindowBounds: (bounds: WindowBounds) => void;
   togglePopover: () => void;
   returnToTeacherTools: () => void;

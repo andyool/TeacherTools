@@ -1870,15 +1870,23 @@ function OverlayDot() {
   const isTimerAlertActive = hasUnacknowledgedTimerCompletion(timer);
   useTimerSoundAlerts(timer, remainingMs, setTimer);
 
+  const setOverlayInteractive = (interactive: boolean) => {
+    window.electronAPI?.setOverlayInteractive(interactive);
+  };
+
   useEffect(() => {
     window.electronAPI?.getOverlayBounds().then((bounds) => {
       overlayBoundsRef.current = bounds;
     });
 
+    setOverlayInteractive(false);
+
     return () => {
       if (overlayDragAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(overlayDragAnimationFrameRef.current);
       }
+
+      setOverlayInteractive(false);
     };
   }, []);
 
@@ -1982,11 +1990,24 @@ function OverlayDot() {
   };
 
   return (
-    <main className="overlay-shell">
+    <main
+      className="overlay-shell"
+      onMouseLeave={() => {
+        if (!dragStateRef.current) {
+          setOverlayInteractive(false);
+        }
+      }}
+    >
       <div className="overlay-shell__dock">
         <button
           aria-label="Open teacher tools"
           className={`overlay-dot${isTimerAlertActive ? ' overlay-dot--timer-alert' : ''}`}
+          onMouseEnter={() => {
+            setOverlayInteractive(true);
+          }}
+          onMouseMove={() => {
+            setOverlayInteractive(true);
+          }}
           onPointerCancel={cancelPointerInteraction}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -2055,27 +2076,27 @@ function OverlayDot() {
               </radialGradient>
               <filter
                 id="overlay-dot-blur"
-                x="-40%"
-                y="-40%"
-                width="180%"
-                height="180%"
-              >
-                <feGaussianBlur stdDeviation="8" />
-              </filter>
-              <filter
-                id="overlay-dot-soft-blur"
                 x="-30%"
                 y="-30%"
                 width="160%"
                 height="160%"
               >
-                <feGaussianBlur stdDeviation="3.5" />
+                <feGaussianBlur stdDeviation="5.5" />
+              </filter>
+              <filter
+                id="overlay-dot-soft-blur"
+                x="-22%"
+                y="-22%"
+                width="144%"
+                height="144%"
+              >
+                <feGaussianBlur stdDeviation="2.6" />
               </filter>
             </defs>
             <circle
               cx="43"
               cy="43"
-              r="20"
+              r="28"
               fill="url(#overlay-dot-ambient)"
               filter="url(#overlay-dot-blur)"
               opacity="0.95"
@@ -2083,7 +2104,7 @@ function OverlayDot() {
             <circle
               cx="43"
               cy="43"
-              r="16"
+              r="24"
               fill="url(#overlay-dot-ambient)"
               filter="url(#overlay-dot-soft-blur)"
               opacity="0.82"
@@ -2091,13 +2112,13 @@ function OverlayDot() {
             <circle
               cx="43"
               cy="43"
-              r="14"
+              r="22"
               fill="url(#overlay-dot-core)"
             />
             <circle
-              cx="38"
-              cy="37"
-              r="6"
+              cx="35.5"
+              cy="35"
+              r="9"
               fill="url(#overlay-dot-highlight)"
               opacity="0.78"
             />
@@ -2107,13 +2128,13 @@ function OverlayDot() {
         <button
           aria-label="Exit TeacherTools"
           className="overlay-exit"
-        onClick={(event) => {
-          event.stopPropagation();
-          window.electronAPI?.quitApp();
-        }}
-        type="button"
-      >
-        ×
+          onClick={(event) => {
+            event.stopPropagation();
+            window.electronAPI?.quitApp();
+          }}
+          type="button"
+        >
+          ×
         </button>
       </div>
     </main>

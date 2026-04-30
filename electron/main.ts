@@ -2101,6 +2101,19 @@ function setWindowPresence(win: Electron.BrowserWindow) {
   win.setMenuBarVisibility(false);
 }
 
+function setOverlayInteractive(interactive: boolean) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+
+  if (interactive) {
+    overlayWindow.setIgnoreMouseEvents(false);
+    return;
+  }
+
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+}
+
 function focusWindowSoon(win: Electron.BrowserWindow | null) {
   setTimeout(() => {
     win?.focus();
@@ -2257,6 +2270,7 @@ function createOverlayWindow() {
   const overlayWindowContentsId = overlayWindow.webContents.id;
 
   setWindowPresence(overlayWindow);
+  setOverlayInteractive(false);
   windowContexts.set(overlayWindowContentsId, {
     role: 'overlay',
     anchor: null
@@ -2972,6 +2986,10 @@ ipcMain.on('widget-popout:toggle', (_event, widgetId: unknown) => {
 
 ipcMain.on('window:set-overlay-position', (_event, position: { x: number; y: number }) => {
   setOverlayPosition(position);
+});
+
+ipcMain.on('overlay:set-interactive', (_event, interactive: unknown) => {
+  setOverlayInteractive(interactive === true);
 });
 
 ipcMain.on('window:set-current-bounds', (event, bounds: Bounds) => {

@@ -1,0 +1,51 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="86"
+  height="86"
+  viewBox="0 0 86 86"
+  fill="none"
+>
+  <defs>
+    <radialGradient id="overlay-dot-ambient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#d7fff6" stop-opacity="0.95" />
+      <stop offset="18%" stop-color="#abffef" stop-opacity="0.82" />
+      <stop offset="44%" stop-color="#67f5e1" stop-opacity="0.46" />
+      <stop offset="68%" stop-color="#2caab4" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#2caab4" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="overlay-dot-core" cx="34%" cy="30%" r="58%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="28%" stop-color="#f1fffb" stop-opacity="0.98" />
+      <stop offset="60%" stop-color="#91f2df" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#48bbbf" stop-opacity="0.84" />
+    </radialGradient>
+    <radialGradient id="overlay-dot-highlight" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.94" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+    <filter id="overlay-dot-blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5.5" />
+    </filter>
+    <filter id="overlay-dot-soft-blur" x="-22%" y="-22%" width="144%" height="144%">
+      <feGaussianBlur stdDeviation="2.6" />
+    </filter>
+  </defs>
+  <circle
+    cx="43"
+    cy="43"
+    r="28"
+    fill="url(#overlay-dot-ambient)"
+    filter="url(#overlay-dot-blur)"
+    opacity="0.95"
+  />
+  <circle
+    cx="43"
+    cy="43"
+    r="24"
+    fill="url(#overlay-dot-ambient)"
+    filter="url(#overlay-dot-soft-blur)"
+    opacity="0.82"
+  />
+  <circle cx="43" cy="43" r="22" fill="url(#overlay-dot-core)" />
+  <circle cx="35.5" cy="35" r="9" fill="url(#overlay-dot-highlight)" opacity="0.78" />
+</svg>

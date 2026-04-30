@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   setOverlayPosition: (position: { x: number; y: number }) =>
     ipcRenderer.send('window:set-overlay-position', position),
+  setOverlayInteractive: (interactive: boolean) =>
+    ipcRenderer.send('overlay:set-interactive', interactive),
   setCurrentWindowBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.send('window:set-current-bounds', bounds),
   togglePopover: () => ipcRenderer.send('popover:toggle'),
