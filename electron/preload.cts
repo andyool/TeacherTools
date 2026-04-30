@@ -70,5 +70,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   selectLessonDocuments: () => ipcRenderer.invoke('lesson-documents:select'),
   openLessonDocument: (filePath: string) => ipcRenderer.invoke('lesson-documents:open', filePath),
+  exportLessonPlansPdf: (payload: unknown) => ipcRenderer.invoke('lesson-plans:export-pdf', payload),
   quitApp: () => ipcRenderer.send('app:quit')
 });

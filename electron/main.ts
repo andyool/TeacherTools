@@ -44,7 +44,7 @@ const WIDGET_POPOUT_DEFAULTS: Record<
   'homework-assessment': { width: 820, height: 860, minWidth: 520, minHeight: 520 },
   'qr-generator': { width: 420, height: 460, minWidth: 320, minHeight: 320 },
   notes: { width: 420, height: 420, minWidth: 300, minHeight: 244 },
-  planner: { width: 600, height: 720, minWidth: 360, minHeight: 420 }
+  planner: { width: 1180, height: 820, minWidth: 760, minHeight: 560 }
 };
 
 type WidgetPopoutId =
@@ -87,6 +87,45 @@ type PersistentStateSnapshot = {
 type PersistentStateChange = {
   key: string;
   value: unknown;
+};
+
+type LessonPlansPdfEntry = {
+  classListId: string | null;
+  className: string;
+  dateKey: string;
+  dateLabel: string;
+  documentNames: string[];
+  plan: string;
+  schoolTerm: number | null;
+  schoolWeek: number | null;
+  termLabel: string;
+  weekLabel: string;
+  year: number;
+};
+
+type LessonPlansPdfExportOptions = {
+  filterSummary: string;
+  groupBy: 'date' | 'class' | 'term' | 'week';
+  includeAttachedFiles: boolean;
+  includeClassName: boolean;
+  includePlanText: boolean;
+  pageBreak: 'none' | 'class' | 'term' | 'week' | 'lesson';
+  sortOrder: 'ascending' | 'descending';
+  title: string;
+};
+
+type LessonPlansPdfExportPayload = {
+  className: string;
+  entries: LessonPlansPdfEntry[];
+  exportedAtLabel: string;
+  options: LessonPlansPdfExportOptions;
+};
+
+type LessonPlansPdfExportResult = {
+  canceled: boolean;
+  errorMessage?: string;
+  filePath?: string;
+  ok: boolean;
 };
 
 type AppUpdateStatus =
@@ -454,10 +493,10 @@ function getPreferredWidgetPopoutBounds(
   storedBounds: Partial<Bounds> | null
 ) {
   if (
-    widgetId === 'bell-schedule' &&
     storedBounds &&
-    (typeof storedBounds.width !== 'number' || storedBounds.width <= 420) &&
-    (typeof storedBounds.height !== 'number' || storedBounds.height <= 380)
+    (widgetId === 'bell-schedule' || widgetId === 'planner') &&
+    (typeof storedBounds.width !== 'number' || storedBounds.width <= 760) &&
+    (typeof storedBounds.height !== 'number' || storedBounds.height <= 560)
   ) {
     const defaults = WIDGET_POPOUT_DEFAULTS[widgetId];
     return {
@@ -487,6 +526,855 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function sanitizeFileSegment(value: string) {
   const sanitized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
   return sanitized.replace(/^-+|-+$/g, '') || 'user';
+}
+
+function trimStringValue(value: unknown, maxLength: number) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function trimOptionalStringValue(value: unknown, maxLength: number) {
+  const trimmed = trimStringValue(value, maxLength);
+  return trimmed || null;
+}
+
+function normalizeOptionalPositiveInteger(value: unknown, maxValue: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const normalized = Math.round(value);
+  return normalized > 0 && normalized <= maxValue ? normalized : null;
+}
+
+function normalizeLessonPlansPdfGroupBy(value: unknown): LessonPlansPdfExportOptions['groupBy'] {
+  return value === 'class' || value === 'term' || value === 'week' ? value : 'date';
+}
+
+function normalizeLessonPlansPdfPageBreak(value: unknown): LessonPlansPdfExportOptions['pageBreak'] {
+  return value === 'class' || value === 'term' || value === 'week' || value === 'lesson'
+    ? value
+    : 'none';
+}
+
+function normalizeLessonPlansPdfSortOrder(value: unknown): LessonPlansPdfExportOptions['sortOrder'] {
+  return value === 'descending' ? 'descending' : 'ascending';
+}
+
+function normalizeLessonPlansPdfOptions(raw: unknown): LessonPlansPdfExportOptions {
+  const optionsRaw = isRecord(raw) ? raw : {};
+
+  return {
+    filterSummary: trimStringValue(optionsRaw.filterSummary, 300),
+    groupBy: normalizeLessonPlansPdfGroupBy(optionsRaw.groupBy),
+    includeAttachedFiles: optionsRaw.includeAttachedFiles !== false,
+    includeClassName: optionsRaw.includeClassName === true,
+    includePlanText: optionsRaw.includePlanText !== false,
+    pageBreak: normalizeLessonPlansPdfPageBreak(optionsRaw.pageBreak),
+    sortOrder: normalizeLessonPlansPdfSortOrder(optionsRaw.sortOrder),
+    title: trimStringValue(optionsRaw.title, 140) || 'Lesson Plans'
+  };
+}
+
+function normalizeLessonPlansPdfEntry(raw: unknown): LessonPlansPdfEntry | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const className = trimStringValue(raw.className, 120);
+  const dateKey = trimStringValue(raw.dateKey, 32);
+  const dateLabel = trimStringValue(raw.dateLabel, 80) || dateKey;
+  const year =
+    typeof raw.year === 'number' && Number.isFinite(raw.year)
+      ? Math.max(1900, Math.min(3000, Math.round(raw.year)))
+      : Number(dateKey.slice(0, 4)) || new Date().getFullYear();
+
+  if (!className || !dateKey || !dateLabel) {
+    return null;
+  }
+
+  const documentNames = Array.isArray(raw.documentNames)
+    ? Array.from(
+        new Set(
+          raw.documentNames
+            .map((documentName) => trimStringValue(documentName, 260))
+            .filter(Boolean)
+        )
+      ).slice(0, 200)
+    : [];
+
+  return {
+    classListId: trimOptionalStringValue(raw.classListId, 120),
+    className,
+    dateKey,
+    dateLabel,
+    documentNames,
+    plan: trimStringValue(raw.plan, 200_000),
+    schoolTerm: normalizeOptionalPositiveInteger(raw.schoolTerm, 4),
+    schoolWeek: normalizeOptionalPositiveInteger(raw.schoolWeek, 15),
+    termLabel: trimStringValue(raw.termLabel, 80) || 'School holidays',
+    weekLabel: trimStringValue(raw.weekLabel, 100) || 'School holidays',
+    year
+  };
+}
+
+function normalizeLessonPlansPdfPayload(raw: unknown): LessonPlansPdfExportPayload | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const className = trimStringValue(raw.className, 120);
+  const entries = Array.isArray(raw.entries)
+    ? raw.entries
+        .map((entry) => normalizeLessonPlansPdfEntry(entry))
+        .filter((entry): entry is LessonPlansPdfEntry => entry !== null)
+        .slice(0, 1000)
+    : [];
+
+  if (!className || entries.length === 0) {
+    return null;
+  }
+
+  return {
+    className,
+    entries,
+    exportedAtLabel: trimStringValue(raw.exportedAtLabel, 120),
+    options: normalizeLessonPlansPdfOptions(raw.options)
+  };
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return character;
+    }
+  });
+}
+
+function getLessonPlansPdfGroupLabel(
+  entry: LessonPlansPdfEntry,
+  groupBy: LessonPlansPdfExportOptions['groupBy']
+) {
+  if (groupBy === 'class') {
+    return entry.className;
+  }
+
+  if (groupBy === 'term') {
+    return entry.termLabel;
+  }
+
+  if (groupBy === 'week') {
+    return entry.weekLabel;
+  }
+
+  return '';
+}
+
+function groupLessonPlansPdfEntries(payload: LessonPlansPdfExportPayload) {
+  if (payload.options.groupBy === 'date') {
+    return [
+      {
+        key: 'all',
+        label: '',
+        entries: payload.entries
+      }
+    ];
+  }
+
+  const groups: Array<{ entries: LessonPlansPdfEntry[]; key: string; label: string }> = [];
+  const groupByKey = new Map<string, (typeof groups)[number]>();
+
+  for (const entry of payload.entries) {
+    const label = getLessonPlansPdfGroupLabel(entry, payload.options.groupBy) || 'Other';
+    const key = `${payload.options.groupBy}:${label}`;
+    const currentGroup = groupByKey.get(key);
+
+    if (currentGroup) {
+      currentGroup.entries.push(entry);
+      continue;
+    }
+
+    const nextGroup = {
+      entries: [entry],
+      key,
+      label
+    };
+    groups.push(nextGroup);
+    groupByKey.set(key, nextGroup);
+  }
+
+  return groups;
+}
+
+function shouldBreakBeforeGroup(
+  groupIndex: number,
+  groupBy: LessonPlansPdfExportOptions['groupBy'],
+  pageBreak: LessonPlansPdfExportOptions['pageBreak']
+) {
+  return groupIndex > 0 && pageBreak !== 'none' && pageBreak === groupBy;
+}
+
+function getLessonPlansPdfEntryHtml(
+  entry: LessonPlansPdfEntry,
+  options: LessonPlansPdfExportOptions,
+  index: number
+) {
+  const escapedDate = escapeHtml(entry.dateLabel);
+  const escapedDateKey = escapeHtml(entry.dateKey);
+  const escapedClassName = escapeHtml(entry.className);
+  const escapedWeekLabel = escapeHtml(entry.weekLabel);
+  const metaItems = [
+    escapedDateKey,
+    options.includeClassName ? escapedClassName : '',
+    entry.schoolTerm ? escapeHtml(entry.termLabel) : '',
+    entry.schoolWeek ? escapedWeekLabel : ''
+  ].filter(Boolean);
+  const planHtml =
+    options.includePlanText
+      ? `<div class="lesson-block">
+          <h3>Lesson plan</h3>
+          ${
+            entry.plan
+              ? `<div class="plan-text">${escapeHtml(entry.plan)}</div>`
+              : '<p class="muted">No written plan saved.</p>'
+          }
+        </div>`
+      : '';
+  const documentsHtml =
+    options.includeAttachedFiles
+      ? `<div class="lesson-block">
+          <h3>Attached files</h3>
+          ${
+            entry.documentNames.length > 0
+              ? `<ul>${entry.documentNames
+                  .map((documentName) => `<li>${escapeHtml(documentName)}</li>`)
+                  .join('')}</ul>`
+              : '<p class="muted">No files attached for this day.</p>'
+          }
+        </div>`
+      : '';
+  const breakClass = options.pageBreak === 'lesson' && index > 0 ? ' lesson--page-break' : '';
+
+  return `
+    <section class="lesson${breakClass}">
+      <div class="lesson-heading">
+        <span class="lesson-index">${index + 1}</span>
+        <div>
+          <h2>${escapedDate}</h2>
+          <p>${metaItems.join(' · ')}</p>
+        </div>
+      </div>
+      ${planHtml}
+      ${documentsHtml}
+    </section>
+  `;
+}
+
+function buildLessonPlansPdfHtml(payload: LessonPlansPdfExportPayload) {
+  const escapedClassName = escapeHtml(payload.className);
+  const escapedTitle = escapeHtml(payload.options.title);
+  const escapedGeneratedAt = escapeHtml(payload.exportedAtLabel || new Date().toLocaleString());
+  const escapedFilterSummary = escapeHtml(payload.options.filterSummary);
+  const lessonLabel = `${payload.entries.length} lesson${payload.entries.length === 1 ? '' : 's'}`;
+  let entryIndex = 0;
+  const entriesHtml = groupLessonPlansPdfEntries(payload)
+    .map((group, groupIndex) => {
+      const groupHeading = group.label
+        ? `<h2 class="group-heading">${escapeHtml(group.label)}</h2>`
+        : '';
+      const groupClass = shouldBreakBeforeGroup(
+        groupIndex,
+        payload.options.groupBy,
+        payload.options.pageBreak
+      )
+        ? 'lesson-group lesson-group--page-break'
+        : 'lesson-group';
+      const groupEntriesHtml = group.entries
+        .map((entry) => {
+          const entryHtml = getLessonPlansPdfEntryHtml(entry, payload.options, entryIndex);
+          entryIndex += 1;
+          return entryHtml;
+        })
+        .join('');
+
+      return `<div class="${groupClass}">${groupHeading}${groupEntriesHtml}</div>`;
+    })
+    .join('');
+
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${escapedTitle} - ${escapedClassName}</title>
+        <style>
+          @page {
+            size: A4;
+            margin: 18mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            background: #ffffff;
+            color: #172033;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          header {
+            padding-bottom: 18px;
+            border-bottom: 2px solid #d9e3ef;
+            margin-bottom: 20px;
+          }
+
+          h1,
+          h2,
+          h3,
+          p {
+            margin: 0;
+          }
+
+          h1 {
+            color: #0f172a;
+            font-size: 28px;
+            line-height: 1.1;
+          }
+
+          .subtitle {
+            margin-top: 7px;
+            color: #475569;
+            font-size: 13px;
+          }
+
+          .filter-summary {
+            margin-top: 8px;
+            color: #64748b;
+            font-size: 11px;
+          }
+
+          .meta {
+            margin-top: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          .meta span {
+            display: inline-flex;
+            padding: 4px 8px;
+            border-radius: 5px;
+            background: #eef4fb;
+            color: #334155;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+          }
+
+          .lesson {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            padding: 14px 0 18px;
+            border-bottom: 1px solid #e2e8f0;
+          }
+
+          .lesson:last-child {
+            border-bottom: 0;
+          }
+
+          .lesson--page-break,
+          .lesson-group--page-break {
+            break-before: page;
+            page-break-before: always;
+          }
+
+          .group-heading {
+            margin: 18px 0 4px;
+            color: #0f172a;
+            font-size: 15px;
+            line-height: 1.2;
+            border-bottom: 1px solid #d9e3ef;
+            padding-bottom: 5px;
+          }
+
+          .lesson-heading {
+            display: grid;
+            grid-template-columns: 30px 1fr;
+            gap: 10px;
+            align-items: start;
+            margin-bottom: 12px;
+          }
+
+          .lesson-index {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #0f766e;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 800;
+          }
+
+          h2 {
+            color: #0f172a;
+            font-size: 18px;
+            line-height: 1.2;
+          }
+
+          .lesson-heading p {
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 11px;
+          }
+
+          .lesson-block + .lesson-block {
+            margin-top: 11px;
+          }
+
+          h3 {
+            margin-bottom: 5px;
+            color: #334155;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          .plan-text {
+            white-space: pre-wrap;
+          }
+
+          ul {
+            margin: 0;
+            padding-left: 18px;
+          }
+
+          li + li {
+            margin-top: 2px;
+          }
+
+          .muted {
+            color: #64748b;
+          }
+        </style>
+      </head>
+      <body>
+        <header>
+          <h1>${escapedTitle}</h1>
+          <p class="subtitle">${escapedClassName}</p>
+          ${escapedFilterSummary ? `<p class="filter-summary">${escapedFilterSummary}</p>` : ''}
+          <div class="meta">
+            <span>${lessonLabel}</span>
+            <span>Generated ${escapedGeneratedAt}</span>
+          </div>
+        </header>
+        ${entriesHtml}
+      </body>
+    </html>`;
+}
+
+const PDF_PAGE_WIDTH = 595.28;
+const PDF_PAGE_HEIGHT = 841.89;
+const PDF_MARGIN = 54;
+const PDF_BOTTOM_MARGIN = 54;
+const PDF_CONTENT_WIDTH = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
+
+type LessonPlansPdfTextStyle = {
+  font: 'regular' | 'bold';
+  indent?: number;
+  lineHeight?: number;
+  size: number;
+};
+
+class LessonPlansPdfBuilder {
+  private pages: string[][] = [];
+  private currentPage: string[] = [];
+  private y = PDF_PAGE_HEIGHT - PDF_MARGIN;
+
+  constructor() {
+    this.startPage();
+  }
+
+  addSeparator() {
+    this.ensureSpace(14);
+    const y = this.y - 3;
+    this.currentPage.push(
+      `q 0.86 0.91 0.96 RG 0.8 w ${formatPdfNumber(PDF_MARGIN)} ${formatPdfNumber(y)} m ${formatPdfNumber(
+        PDF_PAGE_WIDTH - PDF_MARGIN
+      )} ${formatPdfNumber(y)} l S Q`
+    );
+    this.y -= 12;
+  }
+
+  addText(text: string, style: LessonPlansPdfTextStyle) {
+    const lineHeight = style.lineHeight ?? Math.round(style.size * 1.35);
+    const indent = style.indent ?? 0;
+    const x = PDF_MARGIN + indent;
+    const lines = wrapPdfText(text, PDF_CONTENT_WIDTH - indent, style.size, style.font);
+
+    if (lines.length === 0) {
+      this.ensureSpace(lineHeight);
+      this.y -= lineHeight;
+      return;
+    }
+
+    for (const line of lines) {
+      this.ensureSpace(lineHeight);
+      this.currentPage.push(
+        `BT /${style.font === 'bold' ? 'F2' : 'F1'} ${formatPdfNumber(style.size)} Tf ${formatPdfNumber(
+          x
+        )} ${formatPdfNumber(this.y)} Td (${escapePdfString(line)}) Tj ET`
+      );
+      this.y -= lineHeight;
+    }
+  }
+
+  addGap(size: number) {
+    this.ensureSpace(size);
+    this.y -= size;
+  }
+
+  ensureSpace(height: number) {
+    if (this.y - height >= PDF_BOTTOM_MARGIN) {
+      return;
+    }
+
+    this.startPage();
+  }
+
+  startPage() {
+    if (this.currentPage.length > 0) {
+      this.pages.push(this.currentPage);
+    }
+
+    this.currentPage = [];
+    this.y = PDF_PAGE_HEIGHT - PDF_MARGIN;
+  }
+
+  toBuffer() {
+    if (this.currentPage.length > 0) {
+      this.pages.push(this.currentPage);
+      this.currentPage = [];
+    }
+
+    return buildPdfBufferFromPageStreams(this.pages.map((page) => page.join('\n')));
+  }
+}
+
+function formatPdfNumber(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2);
+}
+
+function normalizePdfText(value: string) {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\t/g, '  ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/\u2026/g, '...')
+    .split('')
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      if (character === '\n') {
+        return character;
+      }
+
+      if (code < 32) {
+        return ' ';
+      }
+
+      return code <= 255 ? character : '?';
+    })
+    .join('');
+}
+
+function escapePdfString(value: string) {
+  return normalizePdfText(value).replace(/[\\()]/g, (character) => `\\${character}`);
+}
+
+function estimatePdfTextWidth(value: string, size: number, font: 'regular' | 'bold') {
+  const weight = font === 'bold' ? 0.56 : 0.52;
+  return normalizePdfText(value).length * size * weight;
+}
+
+function splitLongPdfWord(word: string, maxWidth: number, size: number, font: 'regular' | 'bold') {
+  const characters = Array.from(word);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const character of characters) {
+    const candidate = `${current}${character}`;
+    if (current && estimatePdfTextWidth(candidate, size, font) > maxWidth) {
+      chunks.push(current);
+      current = character;
+      continue;
+    }
+
+    current = candidate;
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function wrapPdfParagraph(paragraph: string, maxWidth: number, size: number, font: 'regular' | 'bold') {
+  const words = normalizePdfText(paragraph).trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const wordParts =
+      estimatePdfTextWidth(word, size, font) > maxWidth
+        ? splitLongPdfWord(word, maxWidth, size, font)
+        : [word];
+
+    for (const wordPart of wordParts) {
+      const candidate = currentLine ? `${currentLine} ${wordPart}` : wordPart;
+      if (currentLine && estimatePdfTextWidth(candidate, size, font) > maxWidth) {
+        lines.push(currentLine);
+        currentLine = wordPart;
+        continue;
+      }
+
+      currentLine = candidate;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+function wrapPdfText(text: string, maxWidth: number, size: number, font: 'regular' | 'bold') {
+  return normalizePdfText(text)
+    .split('\n')
+    .flatMap((paragraph) => {
+      if (!paragraph.trim()) {
+        return [''];
+      }
+
+      return wrapPdfParagraph(paragraph, maxWidth, size, font);
+    });
+}
+
+function buildPdfBufferFromPageStreams(pageStreams: string[]) {
+  const objects: string[] = [];
+  const pageObjectIds: number[] = [];
+  const contentObjectIds: number[] = [];
+  let nextObjectId = 1;
+
+  const catalogObjectId = nextObjectId++;
+  const pagesObjectId = nextObjectId++;
+  const regularFontObjectId = nextObjectId++;
+  const boldFontObjectId = nextObjectId++;
+
+  for (const _pageStream of pageStreams) {
+    pageObjectIds.push(nextObjectId++);
+    contentObjectIds.push(nextObjectId++);
+  }
+
+  objects[catalogObjectId] = `<< /Type /Catalog /Pages ${pagesObjectId} 0 R >>`;
+  objects[pagesObjectId] = `<< /Type /Pages /Kids [${pageObjectIds
+    .map((objectId) => `${objectId} 0 R`)
+    .join(' ')}] /Count ${pageObjectIds.length} >>`;
+  objects[regularFontObjectId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  objects[boldFontObjectId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+
+  pageStreams.forEach((stream, index) => {
+    const pageObjectId = pageObjectIds[index];
+    const contentObjectId = contentObjectIds[index];
+    const streamLength = Buffer.byteLength(stream, 'binary');
+
+    objects[pageObjectId] =
+      `<< /Type /Page /Parent ${pagesObjectId} 0 R /MediaBox [0 0 ${formatPdfNumber(PDF_PAGE_WIDTH)} ${formatPdfNumber(
+        PDF_PAGE_HEIGHT
+      )}] /Resources << /Font << /F1 ${regularFontObjectId} 0 R /F2 ${boldFontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
+    objects[contentObjectId] = `<< /Length ${streamLength} >>\nstream\n${stream}\nendstream`;
+  });
+
+  let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offsets = [0];
+
+  for (let objectId = 1; objectId < nextObjectId; objectId += 1) {
+    offsets[objectId] = Buffer.byteLength(pdf, 'binary');
+    pdf += `${objectId} 0 obj\n${objects[objectId]}\nendobj\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(pdf, 'binary');
+  pdf += `xref\n0 ${nextObjectId}\n0000000000 65535 f \n`;
+
+  for (let objectId = 1; objectId < nextObjectId; objectId += 1) {
+    pdf += `${`${offsets[objectId]}`.padStart(10, '0')} 00000 n \n`;
+  }
+
+  pdf += `trailer\n<< /Size ${nextObjectId} /Root ${catalogObjectId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(pdf, 'binary');
+}
+
+function addLessonPlansPdfLabel(builder: LessonPlansPdfBuilder, label: string) {
+  builder.addText(label, {
+    font: 'bold',
+    lineHeight: 12,
+    size: 8
+  });
+}
+
+function addLessonPlansPdfEntry(
+  builder: LessonPlansPdfBuilder,
+  entry: LessonPlansPdfEntry,
+  options: LessonPlansPdfExportOptions,
+  index: number
+) {
+  builder.ensureSpace(104);
+  builder.addText(`${index + 1}. ${entry.dateLabel}`, {
+    font: 'bold',
+    lineHeight: 19,
+    size: 14
+  });
+
+  const metaItems = [
+    entry.dateKey,
+    options.includeClassName ? entry.className : '',
+    entry.schoolTerm ? entry.termLabel : '',
+    entry.schoolWeek ? entry.weekLabel : ''
+  ].filter(Boolean);
+
+  if (metaItems.length > 0) {
+    builder.addText(metaItems.join(' | '), {
+      font: 'regular',
+      lineHeight: 13,
+      size: 9
+    });
+  }
+
+  if (options.includePlanText) {
+    builder.addGap(3);
+    addLessonPlansPdfLabel(builder, 'LESSON PLAN');
+    builder.addText(entry.plan || 'No written plan saved.', {
+      font: 'regular',
+      lineHeight: 13,
+      size: 10
+    });
+  }
+
+  if (options.includeAttachedFiles) {
+    builder.addGap(5);
+    addLessonPlansPdfLabel(builder, 'ATTACHED FILES');
+
+    if (entry.documentNames.length > 0) {
+      entry.documentNames.forEach((documentName) =>
+        builder.addText(`- ${documentName}`, {
+          font: 'regular',
+          indent: 12,
+          lineHeight: 12,
+          size: 9
+        })
+      );
+    } else {
+      builder.addText('No files attached for this day.', {
+        font: 'regular',
+        lineHeight: 12,
+        size: 9
+      });
+    }
+  }
+
+  builder.addSeparator();
+}
+
+async function renderLessonPlansPdf(payload: LessonPlansPdfExportPayload) {
+  const builder = new LessonPlansPdfBuilder();
+  const groups = groupLessonPlansPdfEntries(payload);
+  let entryIndex = 0;
+
+  builder.addText(payload.options.title, {
+    font: 'bold',
+    lineHeight: 30,
+    size: 23
+  });
+  builder.addText(payload.className, {
+    font: 'regular',
+    lineHeight: 17,
+    size: 12
+  });
+
+  if (payload.options.filterSummary) {
+    builder.addText(payload.options.filterSummary, {
+      font: 'regular',
+      lineHeight: 14,
+      size: 9
+    });
+  }
+
+  builder.addGap(4);
+  builder.addText(
+    `${payload.entries.length} lesson${payload.entries.length === 1 ? '' : 's'} | Generated ${
+      payload.exportedAtLabel || new Date().toLocaleString()
+    }`,
+    {
+      font: 'bold',
+      lineHeight: 15,
+      size: 9
+    }
+  );
+  builder.addSeparator();
+
+  groups.forEach((group, groupIndex) => {
+    if (shouldBreakBeforeGroup(groupIndex, payload.options.groupBy, payload.options.pageBreak)) {
+      builder.startPage();
+    }
+
+    if (group.label) {
+      builder.addText(group.label, {
+        font: 'bold',
+        lineHeight: 20,
+        size: 15
+      });
+      builder.addGap(2);
+    }
+
+    group.entries.forEach((entry) => {
+      if (payload.options.pageBreak === 'lesson' && entryIndex > 0) {
+        builder.startPage();
+      }
+
+      addLessonPlansPdfEntry(builder, entry, payload.options, entryIndex);
+      entryIndex += 1;
+    });
+  });
+
+  return builder.toBuffer();
+}
+
+function getLessonPlansPdfExportErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return 'The lesson plan PDF could not be generated.';
 }
 
 function getCurrentUsername() {
@@ -2131,6 +3019,76 @@ ipcMain.handle('lesson-documents:open', async (_event, filePath: unknown) => {
   }
 
   return shell.openPath(filePath);
+});
+
+ipcMain.handle('lesson-plans:export-pdf', async (event, payloadRaw: unknown): Promise<LessonPlansPdfExportResult> => {
+  const payload = normalizeLessonPlansPdfPayload(payloadRaw);
+
+  if (!payload) {
+    return {
+      canceled: false,
+      errorMessage: 'No previous lesson plans were available to export.',
+      ok: false
+    };
+  }
+
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  const focusedWindow =
+    senderWindow ??
+    BrowserWindow.getFocusedWindow() ??
+    popoverWindow ??
+    builderWindow ??
+    widgetPickerWindow ??
+    overlayWindow ??
+    null;
+  const todaySegment = new Date().toISOString().slice(0, 10);
+  const defaultFileName = `lesson-plans-${sanitizeFileSegment(payload.className)}-${todaySegment}.pdf`;
+  const dialogOptions: Electron.SaveDialogOptions = {
+    buttonLabel: 'Export PDF',
+    defaultPath: path.join(app.getPath('documents'), defaultFileName),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    title: `Export ${payload.className} lesson plans`
+  };
+  if (focusedWindow && !focusedWindow.isDestroyed()) {
+    if (focusedWindow.isMinimized()) {
+      focusedWindow.restore();
+    }
+
+    focusedWindow.show();
+    focusedWindow.focus();
+  }
+
+  const result = focusedWindow
+    ? await dialog.showSaveDialog(focusedWindow, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions);
+
+  if (result.canceled || !result.filePath) {
+    return {
+      canceled: true,
+      ok: false
+    };
+  }
+
+  const targetPath = result.filePath.toLowerCase().endsWith('.pdf')
+    ? result.filePath
+    : `${result.filePath}.pdf`;
+
+  try {
+    const pdfBuffer = await renderLessonPlansPdf(payload);
+    fs.writeFileSync(targetPath, pdfBuffer);
+
+    return {
+      canceled: false,
+      filePath: targetPath,
+      ok: true
+    };
+  } catch (error) {
+    return {
+      canceled: false,
+      errorMessage: getLessonPlansPdfExportErrorMessage(error),
+      ok: false
+    };
+  }
 });
 
 ipcMain.on('app:quit', () => {

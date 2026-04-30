@@ -49,6 +49,45 @@ export type LessonDocumentSelection = {
   path: string;
 };
 
+export type LessonPlansPdfEntry = {
+  classListId: string | null;
+  className: string;
+  dateKey: string;
+  dateLabel: string;
+  documentNames: string[];
+  plan: string;
+  schoolTerm: number | null;
+  schoolWeek: number | null;
+  termLabel: string;
+  weekLabel: string;
+  year: number;
+};
+
+export type LessonPlansPdfExportOptions = {
+  filterSummary: string;
+  groupBy: 'date' | 'class' | 'term' | 'week';
+  includeAttachedFiles: boolean;
+  includeClassName: boolean;
+  includePlanText: boolean;
+  pageBreak: 'none' | 'class' | 'term' | 'week' | 'lesson';
+  sortOrder: 'ascending' | 'descending';
+  title: string;
+};
+
+export type LessonPlansPdfExportPayload = {
+  className: string;
+  entries: LessonPlansPdfEntry[];
+  exportedAtLabel: string;
+  options: LessonPlansPdfExportOptions;
+};
+
+export type LessonPlansPdfExportResult = {
+  canceled: boolean;
+  errorMessage?: string;
+  filePath?: string;
+  ok: boolean;
+};
+
 export type PersistentStateSnapshot = {
   found: boolean;
   value: unknown;
@@ -114,5 +153,8 @@ export type ElectronBridge = {
   onWidgetPopoutsChanged: (listener: (widgetIds: WidgetPopoutId[]) => void) => () => void;
   selectLessonDocuments: () => Promise<LessonDocumentSelection[]>;
   openLessonDocument: (filePath: string) => Promise<string>;
+  exportLessonPlansPdf: (
+    payload: LessonPlansPdfExportPayload
+  ) => Promise<LessonPlansPdfExportResult>;
   quitApp: () => void;
 };

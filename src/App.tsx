@@ -16,6 +16,8 @@ import type {
   AppUpdateState,
   DesktopWindowContext,
   LessonDocumentSelection,
+  LessonPlansPdfEntry,
+  LessonPlansPdfExportOptions,
   TimerSpeechVoice,
   WidgetPopoutId,
   WindowBounds
@@ -105,9 +107,55 @@ type LessonPlanEntry = {
   updatedAt: number;
 };
 
+type DeletedLessonPlanEntry = LessonPlanEntry & {
+  classListId: string;
+  className: string;
+  dateKey: string;
+  deletedAt: number;
+  id: string;
+  reason: 'deleted' | 'replaced';
+};
+
+type LessonPlanExportRangeMode =
+  | 'all-previous'
+  | 'this-week'
+  | 'last-week'
+  | 'this-term'
+  | 'term'
+  | 'exclude-term'
+  | 'term-week'
+  | 'custom';
+
 type PlannerSnapshot = {
   activeDateByListId: Record<string, string>;
+  confirmLessonPlanMoves: boolean;
+  deletedEntries: DeletedLessonPlanEntry[];
   entriesByListId: Record<string, Record<string, LessonPlanEntry>>;
+};
+
+type PlannerPopoutMode = 'editor' | 'week';
+
+type PlannerLessonMoveRequest = {
+  classListId: string;
+  sourceDateKey: string;
+  sourceSlotLabel: string;
+  targetDateKey: string;
+  targetSlotLabel: string;
+};
+
+type PlannerWeekLessonBlock = {
+  classListId: string;
+  className: string;
+  dateKey: string;
+  dayKey: BellScheduleDayKey;
+  documentCount: number;
+  endMinutes: number;
+  hasContent: boolean;
+  id: string;
+  plan: string;
+  slotLabel: string;
+  slotShortLabel: string;
+  startMinutes: number;
 };
 
 type AssessmentTrackerStatus = 'planned' | 'set' | 'marking' | 'complete';
@@ -381,6 +429,7 @@ const DASHBOARD_FIT_SCALE_MIN = 0.72;
 const WIDGET_SIZE_MIN: WidgetSizeTier = 1;
 const WIDGET_SIZE_MAX: WidgetSizeTier = 5;
 const DEFAULT_INTERFACE_SCALE = 1;
+const INTERFACE_SCALE_STORAGE_KEY = 'teacher-tools.interface-scale';
 const INTERFACE_SCALE_STEP = 0.1;
 const INTERFACE_SCALE_MIN = 0.5;
 const INTERFACE_SCALE_MAX = 2;
@@ -475,7 +524,7 @@ const WIDGET_POPOUT_MIN_SIZES: Record<WidgetId, { minHeight: number; minWidth: n
   'homework-assessment': { minWidth: 520, minHeight: 520 },
   'qr-generator': { minWidth: 320, minHeight: 320 },
   notes: { minWidth: 300, minHeight: 244 },
-  planner: { minWidth: 360, minHeight: 420 }
+  planner: { minWidth: 760, minHeight: 560 }
 };
 const WIDGET_POPOUT_DEFAULT_SIZES: Record<WidgetId, { height: number; width: number }> = {
   timer: { width: 352, height: 304 },
@@ -486,7 +535,7 @@ const WIDGET_POPOUT_DEFAULT_SIZES: Record<WidgetId, { height: number; width: num
   'homework-assessment': { width: 820, height: 860 },
   'qr-generator': { width: 420, height: 460 },
   notes: { width: 420, height: 420 },
-  planner: { width: 600, height: 720 }
+  planner: { width: 1180, height: 820 }
 };
 const THEME_CYCLE_ORDER: ThemePreference[] = ['system', 'light', 'dark', 'color'];
 const COLOR_MODE_SWATCHES: ColorModeSwatch[] = [
@@ -717,6 +766,8 @@ const DEFAULT_DASHBOARD_LAYOUTS: DashboardLayoutsSnapshot = {
 
 const DEFAULT_PLANNER: PlannerSnapshot = {
   activeDateByListId: {},
+  confirmLessonPlanMoves: true,
+  deletedEntries: [],
   entriesByListId: {}
 };
 
@@ -1211,36 +1262,83 @@ function getPreviousCustomTimerMinutes(customTimerMinutes: number) {
   return Math.round(totalSeconds / 60) - 1;
 }
 
-const fallbackContext: DesktopWindowContext = {
-  role: window.location.hash.includes('builder')
-    ? 'builder'
-    : window.location.hash.includes('widget-picker')
-      ? 'widget-picker'
-      : window.location.hash.includes('widget-popout')
-        ? 'widget-popout'
-      : window.location.hash.includes('popover')
-        ? 'popover'
-        : 'overlay',
-  anchor: {
-    x: 1100,
-    y: 32,
-    width: 86,
-    height: 86,
-    display: {
-      x: 0,
-      y: 0,
-      width: 1440,
-      height: 900
-    }
-  },
-  platform: 'unknown',
-  autoSizeToContent: false,
-  widgetId:
-    window.location.hash.match(/widget-popout\/([^/?]+)/)?.[1] &&
-    isWidgetId(window.location.hash.match(/widget-popout\/([^/?]+)/)?.[1] ?? '')
-      ? (window.location.hash.match(/widget-popout\/([^/?]+)/)?.[1] as WidgetId)
-      : null
-};
+function getWindowRoleFromLocationHash(locationHash: string): DesktopWindowContext['role'] {
+  if (locationHash.includes('builder')) {
+    return 'builder';
+  }
+
+  if (locationHash.includes('widget-picker')) {
+    return 'widget-picker';
+  }
+
+  if (locationHash.includes('widget-popout')) {
+    return 'widget-popout';
+  }
+
+  if (locationHash.includes('popover')) {
+    return 'popover';
+  }
+
+  return 'overlay';
+}
+
+function getWidgetIdFromLocationHash(locationHash: string): WidgetId | null {
+  const widgetId = locationHash.match(/widget-popout\/([^/?]+)/)?.[1] ?? '';
+  return isWidgetId(widgetId) ? widgetId : null;
+}
+
+function getFallbackWindowContext(locationHash = window.location.hash): DesktopWindowContext {
+  return {
+    role: getWindowRoleFromLocationHash(locationHash),
+    anchor: {
+      x: 1100,
+      y: 32,
+      width: 86,
+      height: 86,
+      display: {
+        x: 0,
+        y: 0,
+        width: 1440,
+        height: 900
+      }
+    },
+    platform: 'unknown',
+    autoSizeToContent: false,
+    widgetId: getWidgetIdFromLocationHash(locationHash)
+  };
+}
+
+// Keep the main dashboard zoom key stable while giving each zoomable popout its own saved level.
+function getInterfaceScaleStorageKey(locationHash = window.location.hash) {
+  const role = getWindowRoleFromLocationHash(locationHash);
+
+  if (role === 'widget-popout') {
+    const widgetId = getWidgetIdFromLocationHash(locationHash);
+    return widgetId
+      ? `${INTERFACE_SCALE_STORAGE_KEY}.widget-popout.${widgetId}`
+      : `${INTERFACE_SCALE_STORAGE_KEY}.widget-popout`;
+  }
+
+  if (role === 'builder' || role === 'widget-picker') {
+    return `${INTERFACE_SCALE_STORAGE_KEY}.${role}`;
+  }
+
+  return INTERFACE_SCALE_STORAGE_KEY;
+}
+
+function getInitialInterfaceScaleValue(storageKey: string) {
+  if (storageKey === INTERFACE_SCALE_STORAGE_KEY) {
+    return DEFAULT_INTERFACE_SCALE;
+  }
+
+  return getInitialPersistentState<number>(
+    INTERFACE_SCALE_STORAGE_KEY,
+    DEFAULT_INTERFACE_SCALE,
+    normalizeInterfaceScale
+  ).value;
+}
+
+const fallbackContext: DesktopWindowContext = getFallbackWindowContext();
 const fallbackAppUpdateState: AppUpdateState = {
   availableVersion: null,
   currentVersion: 'dev',
@@ -2477,7 +2575,8 @@ function TeacherPopover() {
     }
   );
   const [dashboardLayouts, setDashboardLayouts] = useDashboardLayoutsState();
-  const planner = useLessonPlannerController(picker.selectedListId);
+  const planner = useLessonPlannerController(picker.selectedListId, picker.lists);
+  const [, setPlannerPopoutMode] = usePlannerPopoutModeState();
   const homeworkAssessmentTracker = useHomeworkAssessmentTrackerController(
     picker.selectedListId,
     picker.lists
@@ -3624,6 +3723,14 @@ function TeacherPopover() {
     window.electronAPI?.toggleWidgetPopout(widgetId);
   };
 
+  const openWeeklyPlannerPopout = () => {
+    setPlannerPopoutMode('week');
+
+    if (!openWidgetPopouts.includes('planner')) {
+      toggleWidgetPopout('planner');
+    }
+  };
+
   const renderWidget = (widgetId: WidgetId) => {
     const collapsed = selectedLayout.collapsed.includes(widgetId);
     const isDragging = draggedWidgetId === widgetId;
@@ -3673,6 +3780,15 @@ function TeacherPopover() {
             isActive={isPopoutOpen}
             onClick={() => {
               setHomeworkAssessmentPopoutMode('editor');
+              toggleWidgetPopout(widgetId);
+            }}
+            title={WIDGET_DETAILS[widgetId].title}
+          />
+        ) : widgetId === 'planner' ? (
+          <WidgetPopoutButton
+            isActive={isPopoutOpen}
+            onClick={() => {
+              setPlannerPopoutMode('editor');
               toggleWidgetPopout(widgetId);
             }}
             title={WIDGET_DETAILS[widgetId].title}
@@ -3853,10 +3969,16 @@ function TeacherPopover() {
           {...dragProps}
         >
           <PlannerWidgetContent
+            classLists={picker.lists}
+            deletedLessonPlans={planner.deletedLessonPlans}
             documents={planner.documents}
+            lessonPlanHistory={planner.lessonPlanHistory}
             onAttachDocuments={planner.attachDocuments}
+            onDeleteDeletedLessonPlans={planner.permanentlyDeleteLessonPlans}
+            onOpenWeeklyPlanner={openWeeklyPlannerPopout}
             onOpenDocument={planner.openDocument}
             onRemoveDocument={planner.removeDocument}
+            onRestoreDeletedLessonPlan={planner.restoreDeletedLessonPlan}
             onSelectDate={planner.setSelectedDate}
             onUpdatePlan={planner.updatePlan}
             planText={planner.plan}
@@ -4424,7 +4546,7 @@ function WidgetPickerWindow() {
   const stageRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const lastRequestedHeightRef = useRef(0);
-  const [picker] = usePickerState();
+  const [picker, setPicker] = usePickerState();
   const [dashboardLayouts, setDashboardLayouts] = useDashboardLayoutsState();
   const [themePreference] = useThemePreferenceState();
   const {
@@ -6030,29 +6152,57 @@ function QrGeneratorWidgetContent({
 }
 
 function PlannerWidgetContent({
+  classLists,
+  deletedLessonPlans,
   documents,
+  lessonPlanHistory,
   onAttachDocuments,
+  onDeleteDeletedLessonPlans,
+  onOpenWeeklyPlanner,
   onOpenDocument,
   onRemoveDocument,
+  onRestoreDeletedLessonPlan,
   onSelectDate,
   onUpdatePlan,
   planText,
   selectedDate,
   selectedList,
-  statusMessage
+  statusMessage,
+  weeklyPlannerActionAriaLabel = 'Open weekly lesson planner',
+  weeklyPlannerActionCompactIcon = 'Wk',
+  weeklyPlannerActionLabel = 'Week view',
+  weeklyPlannerActionPlacement = 'toolbar'
 }: {
+  classLists: ClassList[];
+  deletedLessonPlans: DeletedLessonPlanEntry[];
   documents: PlannerDocument[];
+  lessonPlanHistory: LessonPlansPdfEntry[];
   onAttachDocuments: () => Promise<void> | void;
+  onDeleteDeletedLessonPlans: (ids: string[]) => void;
+  onOpenWeeklyPlanner?: () => void;
   onOpenDocument: (document: PlannerDocument) => Promise<void> | void;
   onRemoveDocument: (id: string) => void;
+  onRestoreDeletedLessonPlan: (id: string, dateKey: string) => void;
   onSelectDate: (dateKey: string) => void;
   onUpdatePlan: (plan: string) => void;
   planText: string;
   selectedDate: string;
   selectedList: ClassList | null;
   statusMessage: string | null;
+  weeklyPlannerActionAriaLabel?: string;
+  weeklyPlannerActionCompactIcon?: string;
+  weeklyPlannerActionLabel?: string;
+  weeklyPlannerActionPlacement?: 'toolbar' | 'top-left';
 }) {
   const planTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isDeletedDialogOpen, setIsDeletedDialogOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!selectedList) {
+      setIsExportDialogOpen(false);
+    }
+  }, [selectedList]);
 
   useLayoutEffect(() => {
     const textarea = planTextareaRef.current;
@@ -6069,101 +6219,1510 @@ function PlannerWidgetContent({
     : planText.trim() || documents.length > 0
       ? `Saved plan for ${selectedList.name} on ${formatLongDate(selectedDate)}.`
       : `Select a date and start planning ${selectedList.name}.`;
+  const showWeeklyPlannerActionInToolbar = weeklyPlannerActionPlacement === 'toolbar';
 
   return (
-    <div className="planner-widget">
-      <div className="planner-widget__toolbar widget-top-controls">
-        <div className="planner-widget__meta">
-          <TrackerDateField
+    <>
+      <div className="planner-widget">
+        {weeklyPlannerActionPlacement === 'top-left' ? (
+          <div className="planner-widget__back-row">
+            <button
+              aria-label={weeklyPlannerActionAriaLabel}
+              className="secondary-link button-tone--utility planner-widget__back-button"
+              onClick={onOpenWeeklyPlanner}
+              type="button"
+            >
+              {weeklyPlannerActionLabel}
+            </button>
+          </div>
+        ) : null}
+        <div className="planner-widget__toolbar widget-top-controls">
+          <div className="planner-widget__meta">
+            <TrackerDateField
+              disabled={!selectedList}
+              id="lesson-plan-date"
+              label="Lesson date"
+              onChange={onSelectDate}
+              value={selectedDate}
+            />
+          </div>
+          <div className="planner-widget__action-row">
+            <button
+              aria-label="Select today"
+              className="secondary-link button-tone--utility planner-widget__action-button planner-widget__today"
+              disabled={!selectedList}
+              onClick={() => onSelectDate(getTodayDateKey())}
+              type="button"
+            >
+              <span className="planner-widget__action-label">Today</span>
+            </button>
+            {showWeeklyPlannerActionInToolbar ? (
+              <button
+                aria-label={weeklyPlannerActionAriaLabel}
+                className="secondary-link button-tone--action planner-widget__action-button planner-widget__week"
+                data-compact-icon={weeklyPlannerActionCompactIcon}
+                onClick={onOpenWeeklyPlanner}
+                type="button"
+              >
+                <span className="planner-widget__action-label">{weeklyPlannerActionLabel}</span>
+              </button>
+            ) : null}
+            <button
+              aria-haspopup="dialog"
+              aria-label="Open deleted lesson plans"
+              className="secondary-link button-tone--utility planner-widget__action-button planner-widget__deleted"
+              data-compact-icon="Del"
+              onClick={() => setIsDeletedDialogOpen(true)}
+              type="button"
+            >
+              <span className="planner-widget__action-label">
+                Deleted{deletedLessonPlans.length > 0 ? ` (${deletedLessonPlans.length})` : ''}
+              </span>
+            </button>
+            <button
+              aria-haspopup="dialog"
+              aria-label="Export previous lesson plans as PDF"
+              className="secondary-link button-tone--selection planner-widget__action-button planner-widget__export"
+              data-compact-icon="PDF"
+              disabled={!selectedList}
+              onClick={() => setIsExportDialogOpen(true)}
+              type="button"
+            >
+              <span className="planner-widget__action-label">Export PDF</span>
+            </button>
+            <button
+              aria-label="Attach lesson files"
+              className="primary-link window-spawn-button planner-widget__action-button planner-widget__attach"
+              disabled={!selectedList}
+              onClick={() => void onAttachDocuments()}
+              type="button"
+            >
+              <span className="planner-widget__action-label">Attach files</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="planner-widget__copy">
+          <p className="helper-text">{helperCopy}</p>
+          {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
+        </div>
+
+        <div className="field-stack field-stack--fill planner-widget__plan">
+          <label className="field-label" htmlFor="lesson-plan-text">
+            Lesson plan
+          </label>
+          <textarea
+            className="text-area text-area--planner"
             disabled={!selectedList}
-            id="lesson-plan-date"
-            label="Lesson date"
-            onChange={onSelectDate}
-            value={selectedDate}
+            id="lesson-plan-text"
+            onChange={(event) => onUpdatePlan(event.target.value)}
+            placeholder="Outline your lesson, activities, reminders, and follow-up."
+            ref={planTextareaRef}
+            value={planText}
           />
         </div>
-        <div className="planner-widget__action-row">
-          <button
-            aria-label="Select today"
-            className="secondary-link button-tone--utility planner-widget__action-button planner-widget__today"
-            disabled={!selectedList}
-            onClick={() => onSelectDate(getTodayDateKey())}
-            type="button"
-          >
-            <span className="planner-widget__action-label">Today</span>
-          </button>
-          <button
-            aria-label="Attach lesson files"
-            className="primary-link window-spawn-button planner-widget__action-button planner-widget__attach"
-            disabled={!selectedList}
-            onClick={() => void onAttachDocuments()}
-            type="button"
-          >
-            <span className="planner-widget__action-label">Attach files</span>
-          </button>
+
+        <div className="planner-documents">
+          <div className="planner-documents__header">
+            <div>
+              <span className="field-label">Documents</span>
+              <p className="helper-text">Attach files from your computer and reopen them from here.</p>
+            </div>
+          </div>
+
+          {documents.length > 0 ? (
+            <div className="planner-documents__list">
+              {documents.map((document) => (
+                <article className="planner-document" key={document.id}>
+                  <button
+                    className="planner-document__open"
+                    onClick={() => void onOpenDocument(document)}
+                    type="button"
+                  >
+                    <span className="planner-document__name">{document.name}</span>
+                    <span className="planner-document__path">
+                      {document.path}
+                    </span>
+                  </button>
+                  <button
+                    aria-label={`Remove ${document.name}`}
+                    className="note-row__delete"
+                    onClick={() => onRemoveDocument(document.id)}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="group-maker__empty">
+              <p className="empty-copy">No lesson documents attached for this date yet.</p>
+            </div>
+          )}
         </div>
       </div>
-
-      <div className="planner-widget__copy">
-        <p className="helper-text">{helperCopy}</p>
-        {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
-      </div>
-
-      <div className="field-stack field-stack--fill planner-widget__plan">
-        <label className="field-label" htmlFor="lesson-plan-text">
-          Lesson plan
-        </label>
-        <textarea
-          className="text-area text-area--planner"
-          disabled={!selectedList}
-          id="lesson-plan-text"
-          onChange={(event) => onUpdatePlan(event.target.value)}
-          placeholder="Outline your lesson, activities, reminders, and follow-up."
-          ref={planTextareaRef}
-          value={planText}
+      {isExportDialogOpen && selectedList ? (
+        <LessonPlanPdfExportDialog
+          classLists={classLists}
+          classListName={selectedList.name}
+          currentClassListId={selectedList.id}
+          entries={lessonPlanHistory}
+          onClose={() => setIsExportDialogOpen(false)}
         />
-      </div>
+      ) : null}
+      {isDeletedDialogOpen ? (
+        <DeletedLessonPlansDialog
+          classLists={classLists}
+          deletedLessonPlans={deletedLessonPlans}
+          onClose={() => setIsDeletedDialogOpen(false)}
+          onDeleteSelected={onDeleteDeletedLessonPlans}
+          onRestore={onRestoreDeletedLessonPlan}
+        />
+      ) : null}
+    </>
+  );
+}
 
-      <div className="planner-documents">
-        <div className="planner-documents__header">
-          <div>
-            <span className="field-label">Documents</span>
-            <p className="helper-text">Attach files from your computer and reopen them from here.</p>
+function LessonPlanPdfExportDialog({
+  classLists,
+  classListName,
+  currentClassListId,
+  entries,
+  onClose
+}: {
+  classLists: ClassList[];
+  classListName: string;
+  currentClassListId: string;
+  entries: LessonPlansPdfEntry[];
+  onClose: () => void;
+}) {
+  const { theme } = useColorModeAppearance();
+  const currentTermSelection = useMemo(
+    () => getLessonPlanExportSchoolTermSelection(getTodayDateKey()),
+    []
+  );
+  const availableYears = useMemo(() => getLessonPlanExportYears(entries), [entries]);
+  const [selectedClassScope, setSelectedClassScope] = useState<string>(currentClassListId);
+  const [rangeMode, setRangeMode] = useState<LessonPlanExportRangeMode>('all-previous');
+  const [selectedYear, setSelectedYear] = useState(
+    currentTermSelection?.year ?? new Date().getFullYear()
+  );
+  const [selectedTerm, setSelectedTerm] = useState<number>(currentTermSelection?.term ?? 1);
+  const [selectedWeek, setSelectedWeek] = useState<number>(currentTermSelection?.week ?? 1);
+  const [customStartDate, setCustomStartDate] = useState(() => entries[0]?.dateKey ?? getTodayDateKey());
+  const [customEndDate, setCustomEndDate] = useState(getTodayDateKey());
+  const [includeFuturePlans, setIncludeFuturePlans] = useState(false);
+  const [includePlanText, setIncludePlanText] = useState(true);
+  const [includeAttachedFiles, setIncludeAttachedFiles] = useState(true);
+  const [showClassName, setShowClassName] = useState(false);
+  const [groupBy, setGroupBy] = useState<LessonPlansPdfExportOptions['groupBy']>('date');
+  const [sortOrder, setSortOrder] = useState<LessonPlansPdfExportOptions['sortOrder']>('ascending');
+  const [pageBreak, setPageBreak] = useState<LessonPlansPdfExportOptions['pageBreak']>('none');
+  const [pdfTitle, setPdfTitle] = useState(`${classListName} Lesson Plans`);
+  const [exportStatus, setExportStatus] = useState<{
+    kind: 'idle' | 'saving' | 'saved' | 'error';
+    message: string | null;
+  }>({
+    kind: 'idle',
+    message: null
+  });
+  const isSaving = exportStatus.kind === 'saving';
+  const selectedClassLabel = getLessonPlanExportClassScopeLabel(
+    selectedClassScope,
+    classLists,
+    classListName
+  );
+  const filteredEntries = useMemo(
+    () =>
+      sortLessonPlanExportEntries(
+        filterLessonPlanExportEntries(entries, {
+          customEndDate,
+          customStartDate,
+          includeFuturePlans,
+          rangeMode,
+          selectedClassScope,
+          selectedTerm,
+          selectedWeek,
+          selectedYear
+        }),
+        groupBy,
+        sortOrder
+      ),
+    [
+      customEndDate,
+      customStartDate,
+      entries,
+      groupBy,
+      includeFuturePlans,
+      rangeMode,
+      selectedClassScope,
+      selectedTerm,
+      selectedWeek,
+      selectedYear,
+      sortOrder
+    ]
+  );
+  const totalDocumentCount = filteredEntries.reduce(
+    (total, entry) => total + entry.documentNames.length,
+    0
+  );
+  const dateRangeLabel = formatLessonPlanExportDateRange(filteredEntries);
+  const lessonCountLabel = `${filteredEntries.length} lesson${filteredEntries.length === 1 ? '' : 's'}`;
+  const fileCountLabel = `${totalDocumentCount} file${totalDocumentCount === 1 ? '' : 's'}`;
+  const filterSummary = buildLessonPlanExportFilterSummary({
+    classLabel: selectedClassLabel,
+    customEndDate,
+    customStartDate,
+    includeFuturePlans,
+    rangeMode,
+    selectedTerm,
+    selectedWeek,
+    selectedYear
+  });
+  const contentSelectionIsEmpty = !includePlanText && !includeAttachedFiles;
+  const canGenerate = filteredEntries.length > 0 && !contentSelectionIsEmpty;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSaving) {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSaving, onClose]);
+
+  const exportPdf = async () => {
+    if (filteredEntries.length === 0) {
+      setExportStatus({
+        kind: 'error',
+        message: 'No lesson plans match these export options.'
+      });
+      return;
+    }
+
+    if (contentSelectionIsEmpty) {
+      setExportStatus({
+        kind: 'error',
+        message: 'Choose at least one thing to include in the PDF.'
+      });
+      return;
+    }
+
+    if (!window.electronAPI?.exportLessonPlansPdf) {
+      setExportStatus({
+        kind: 'error',
+        message: 'PDF export is available in the desktop app only.'
+      });
+      return;
+    }
+
+    setExportStatus({
+      kind: 'saving',
+      message: 'Choose where to save the PDF...'
+    });
+
+    try {
+      const result = await window.electronAPI.exportLessonPlansPdf({
+        className: selectedClassLabel,
+        entries: filteredEntries,
+        exportedAtLabel: formatLessonPlanExportGeneratedAtLabel(),
+        options: {
+          filterSummary,
+          groupBy,
+          includeAttachedFiles,
+          includeClassName: showClassName || selectedClassScope === 'all',
+          includePlanText,
+          pageBreak,
+          sortOrder,
+          title: pdfTitle.trim() || 'Lesson Plans'
+        }
+      });
+
+      if (result.ok) {
+        setExportStatus({
+          kind: 'saved',
+          message: result.filePath ? `Saved PDF to ${result.filePath}.` : 'Saved lesson plan PDF.'
+        });
+        return;
+      }
+
+      if (result.canceled) {
+        setExportStatus({
+          kind: 'idle',
+          message: null
+        });
+        return;
+      }
+
+      setExportStatus({
+        kind: 'error',
+        message: result.errorMessage ?? 'The lesson plan PDF could not be generated.'
+      });
+    } catch (error) {
+      setExportStatus({
+        kind: 'error',
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : 'The lesson plan PDF could not be generated.'
+      });
+    }
+  };
+
+  return createPortal(
+    <div
+      className="lesson-plan-export-dialog__backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-labelledby="lesson-plan-export-title"
+        aria-modal="true"
+        className="panel lesson-plan-export-dialog"
+        data-theme={theme}
+        role="dialog"
+      >
+        <div aria-hidden="true" className="panel__glass" />
+        <div aria-hidden="true" className="panel__gloss" />
+        <div className="panel__content lesson-plan-export-dialog__content">
+          <header className="lesson-plan-export-dialog__header">
+            <div>
+              <span className="panel-kicker">PDF generator</span>
+              <h2 className="lesson-plan-export-dialog__title" id="lesson-plan-export-title">
+                Previous lesson plans
+              </h2>
+              <p className="helper-text">{filterSummary}</p>
+            </div>
+            <button
+              aria-label="Close PDF generator"
+              className="widget-icon-button widget-icon-button--close"
+              disabled={isSaving}
+              onClick={onClose}
+              type="button"
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="lesson-plan-export-dialog__options">
+            <div className="field-stack lesson-plan-export-dialog__title-field">
+              <label className="field-label" htmlFor="lesson-plan-export-title-field">
+                PDF title
+              </label>
+              <input
+                className="text-field"
+                id="lesson-plan-export-title-field"
+                onChange={(event) => setPdfTitle(event.target.value)}
+                type="text"
+                value={pdfTitle}
+              />
+            </div>
+
+            <div className="lesson-plan-export-dialog__option-grid">
+              <label className="field-stack">
+                <span className="field-label">Class</span>
+                <select
+                  className="text-field"
+                  onChange={(event) => setSelectedClassScope(event.target.value)}
+                  value={selectedClassScope}
+                >
+                  <option value={currentClassListId}>{classListName}</option>
+                  <option value="all">All classes</option>
+                  {classLists
+                    .filter((classList) => classList.id !== currentClassListId)
+                    .map((classList) => (
+                      <option key={classList.id} value={classList.id}>
+                        {classList.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label className="field-stack">
+                <span className="field-label">Dates</span>
+                <select
+                  className="text-field"
+                  onChange={(event) => setRangeMode(event.target.value as LessonPlanExportRangeMode)}
+                  value={rangeMode}
+                >
+                  <option value="all-previous">All previous dates</option>
+                  <option value="this-week">This week</option>
+                  <option value="last-week">Last week</option>
+                  <option value="this-term">This term</option>
+                  <option value="term">Only one term</option>
+                  <option value="exclude-term">Everything except one term</option>
+                  <option value="term-week">A term week</option>
+                  <option value="custom">Custom date range</option>
+                </select>
+              </label>
+
+              {rangeMode === 'term' || rangeMode === 'exclude-term' || rangeMode === 'term-week' ? (
+                <>
+                  <label className="field-stack">
+                    <span className="field-label">Year</span>
+                    <select
+                      className="text-field"
+                      onChange={(event) => setSelectedYear(Number(event.target.value))}
+                      value={selectedYear}
+                    >
+                      {availableYears.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field-stack">
+                    <span className="field-label">Term</span>
+                    <select
+                      className="text-field"
+                      onChange={(event) => setSelectedTerm(Number(event.target.value))}
+                      value={selectedTerm}
+                    >
+                      {[1, 2, 3, 4].map((term) => (
+                        <option key={term} value={term}>
+                          Term {term}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+
+              {rangeMode === 'term-week' ? (
+                <label className="field-stack">
+                  <span className="field-label">Week</span>
+                  <select
+                    className="text-field"
+                    onChange={(event) => setSelectedWeek(Number(event.target.value))}
+                    value={selectedWeek}
+                  >
+                    {Array.from({ length: 12 }, (_value, index) => index + 1).map((week) => (
+                      <option key={week} value={week}>
+                        Week {week}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {rangeMode === 'custom' ? (
+                <>
+                  <label className="field-stack">
+                    <span className="field-label">From</span>
+                    <input
+                      className="text-field"
+                      onChange={(event) => setCustomStartDate(event.target.value)}
+                      type="date"
+                      value={customStartDate}
+                    />
+                  </label>
+
+                  <label className="field-stack">
+                    <span className="field-label">To</span>
+                    <input
+                      className="text-field"
+                      onChange={(event) => setCustomEndDate(event.target.value)}
+                      type="date"
+                      value={customEndDate}
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              <label className="field-stack">
+                <span className="field-label">Group by</span>
+                <select
+                  className="text-field"
+                  onChange={(event) =>
+                    setGroupBy(event.target.value as LessonPlansPdfExportOptions['groupBy'])
+                  }
+                  value={groupBy}
+                >
+                  <option value="date">Date</option>
+                  <option value="class">Class</option>
+                  <option value="term">Term</option>
+                  <option value="week">School week</option>
+                </select>
+              </label>
+
+              <label className="field-stack">
+                <span className="field-label">Order</span>
+                <select
+                  className="text-field"
+                  onChange={(event) =>
+                    setSortOrder(event.target.value as LessonPlansPdfExportOptions['sortOrder'])
+                  }
+                  value={sortOrder}
+                >
+                  <option value="ascending">Oldest first</option>
+                  <option value="descending">Newest first</option>
+                </select>
+              </label>
+
+              <label className="field-stack">
+                <span className="field-label">Page breaks</span>
+                <select
+                  className="text-field"
+                  onChange={(event) => {
+                    const nextPageBreak = event.target.value as LessonPlansPdfExportOptions['pageBreak'];
+                    setPageBreak(nextPageBreak);
+                    if (
+                      nextPageBreak === 'class' ||
+                      nextPageBreak === 'term' ||
+                      nextPageBreak === 'week'
+                    ) {
+                      setGroupBy(nextPageBreak);
+                    }
+                  }}
+                  value={pageBreak}
+                >
+                  <option value="none">Flow continuously</option>
+                  <option value="class">New page per class</option>
+                  <option value="term">New page per term</option>
+                  <option value="week">New page per week</option>
+                  <option value="lesson">New page per lesson</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="lesson-plan-export-dialog__toggle-grid">
+              <label className="lesson-plan-export-dialog__toggle">
+                <input
+                  checked={includePlanText}
+                  onChange={(event) => setIncludePlanText(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>Lesson text</span>
+              </label>
+              <label className="lesson-plan-export-dialog__toggle">
+                <input
+                  checked={includeAttachedFiles}
+                  onChange={(event) => setIncludeAttachedFiles(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>Attached filenames</span>
+              </label>
+              <label className="lesson-plan-export-dialog__toggle">
+                <input
+                  checked={showClassName || selectedClassScope === 'all'}
+                  disabled={selectedClassScope === 'all'}
+                  onChange={(event) => setShowClassName(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>Class name on each lesson</span>
+              </label>
+              <label className="lesson-plan-export-dialog__toggle">
+                <input
+                  checked={includeFuturePlans}
+                  onChange={(event) => setIncludeFuturePlans(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>Include future dates</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="lesson-plan-export-dialog__summary" aria-label="Export summary">
+            <span>
+              <strong>{lessonCountLabel}</strong>
+              <small>{dateRangeLabel}</small>
+            </span>
+            <span>
+              <strong>{fileCountLabel}</strong>
+              <small>Attached filenames</small>
+            </span>
+          </div>
+
+          <div className="lesson-plan-export-dialog__preview" role="list">
+            {filteredEntries.length > 0 ? (
+              filteredEntries.map((entry) => (
+                <article className="lesson-plan-export-dialog__entry" key={`${entry.classListId}-${entry.dateKey}`} role="listitem">
+                  <div className="lesson-plan-export-dialog__entry-header">
+                    <strong>{entry.dateLabel}</strong>
+                    <span>
+                      {entry.documentNames.length} file{entry.documentNames.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  {selectedClassScope === 'all' ? (
+                    <span className="lesson-plan-export-dialog__entry-class">{entry.className}</span>
+                  ) : null}
+                  <p>{summarizeLessonPlanForPreview(entry.plan)}</p>
+                  {entry.documentNames.length > 0 ? (
+                    <div className="lesson-plan-export-dialog__files">
+                      {entry.documentNames.map((documentName) => (
+                        <span key={`${entry.classListId}-${entry.dateKey}-${documentName}`}>{documentName}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <div className="group-maker__empty lesson-plan-export-dialog__empty">
+                <p className="empty-copy">No lesson plans match these export options.</p>
+              </div>
+            )}
+          </div>
+
+          <footer className="lesson-plan-export-dialog__footer">
+            {exportStatus.message ? (
+              <p className={`helper-text lesson-plan-export-dialog__status lesson-plan-export-dialog__status--${exportStatus.kind}`}>
+                {exportStatus.message}
+              </p>
+            ) : contentSelectionIsEmpty ? (
+              <p className="helper-text lesson-plan-export-dialog__status lesson-plan-export-dialog__status--error">
+                Choose lesson text, attached filenames, or both.
+              </p>
+            ) : (
+              <p className="helper-text">{filterSummary}</p>
+            )}
+            <div className="lesson-plan-export-dialog__actions">
+              <button
+                className="secondary-link button-tone--utility"
+                disabled={isSaving}
+                onClick={onClose}
+                type="button"
+              >
+                Close
+              </button>
+              <button
+                className="primary-link"
+                disabled={isSaving || !canGenerate}
+                onClick={() => void exportPdf()}
+                type="button"
+              >
+                {isSaving ? 'Generating...' : 'Generate PDF'}
+              </button>
+            </div>
+          </footer>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function WeeklyLessonPlannerContent({
+  bellSchedule,
+  classLists,
+  onOpenDayPlanner,
+  onOpenLesson,
+  planner
+}: {
+  bellSchedule: ReturnType<typeof useBellScheduleController>;
+  classLists: ClassList[];
+  onOpenDayPlanner: () => void;
+  onOpenLesson: (classListId: string, dateKey: string) => void;
+  planner: ReturnType<typeof useLessonPlannerController>;
+}) {
+  const [weekStartDate, setWeekStartDate] = useState(() =>
+    getPlannerWeekStartDateKey(planner.selectedDate)
+  );
+  const [weekYear, setWeekYear] = useState(() => getPlannerWeekYear(weekStartDate));
+  const [draggedBlock, setDraggedBlock] = useState<PlannerWeekLessonBlock | null>(null);
+  const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    clientX: number;
+    clientY: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+  } | null>(null);
+  const [pendingMove, setPendingMove] = useState<
+    (PlannerLessonMoveRequest & { className: string }) | null
+  >(null);
+  const [isDeletedDialogOpen, setIsDeletedDialogOpen] = useState(false);
+  const plannerWeekDragStateRef = useRef<{
+    draggedBlock: PlannerWeekLessonBlock;
+    hasMoved: boolean;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+    pointerId: number;
+    startPointerX: number;
+    startPointerY: number;
+    width: number;
+  } | null>(null);
+  const plannerWeekDragPointerRef = useRef<{
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+  const plannerWeekDragAnimationFrameRef = useRef<number | null>(null);
+  const weekDatesByDay = useMemo(() => getPlannerWeekDatesByDay(weekStartDate), [weekStartDate]);
+  const weekOptions = useMemo(
+    () => buildPlannerWeekSelectorOptions(weekYear, weekStartDate),
+    [weekStartDate, weekYear]
+  );
+  const weekYears = useMemo(
+    () => getPlannerWeekSelectorYears(weekStartDate, planner.lessonPlanHistory, planner.deletedLessonPlans),
+    [planner.deletedLessonPlans, planner.lessonPlanHistory, weekStartDate]
+  );
+  const lessonBlocks = useMemo(
+    () =>
+      buildPlannerWeekLessonBlocks({
+        getEntryForClassDate: planner.getEntryForClassDate,
+        weekDatesByDay,
+        weekTimelineByDay: bellSchedule.weekTimelineByDay
+      }),
+    [bellSchedule.weekTimelineByDay, planner.getEntryForClassDate, weekDatesByDay]
+  );
+  const lessonBlocksById = useMemo(
+    () => new Map(lessonBlocks.map((block) => [block.id, block])),
+    [lessonBlocks]
+  );
+  const timeRange = useMemo(
+    () => getPlannerWeekTimeRange(bellSchedule.weekTimelineByDay),
+    [bellSchedule.weekTimelineByDay]
+  );
+  const timeMarks = useMemo(
+    () => getPlannerWeekTimeMarks(timeRange, bellSchedule.weekTimelineByDay),
+    [bellSchedule.weekTimelineByDay, timeRange]
+  );
+  const plannedLessonCount = lessonBlocks.filter((block) => block.hasContent).length;
+  const weekSummary =
+    lessonBlocks.length > 0
+      ? `${plannedLessonCount}/${lessonBlocks.length} scheduled lesson${lessonBlocks.length === 1 ? '' : 's'} planned`
+      : 'No scheduled lessons in this bell schedule profile';
+
+  const updateWeekStartDate = (nextDateKey: string) => {
+    const normalizedDate = normalizeDateKey(nextDateKey) ?? getTodayDateKey();
+    const nextWeekStart = getPlannerWeekStartDateKey(normalizedDate);
+    setWeekStartDate(nextWeekStart);
+    setWeekYear(getPlannerWeekYear(nextWeekStart));
+  };
+
+  const performMove = (request: PlannerLessonMoveRequest) => {
+    planner.moveLessonPlan(request);
+    setPendingMove(null);
+  };
+
+  const handleBlockDrop = (
+    sourceBlock: PlannerWeekLessonBlock,
+    targetBlock: PlannerWeekLessonBlock
+  ) => {
+    if (
+      sourceBlock.classListId !== targetBlock.classListId ||
+      sourceBlock.id === targetBlock.id
+    ) {
+      return;
+    }
+
+    const moveRequest = {
+      classListId: sourceBlock.classListId,
+      sourceDateKey: sourceBlock.dateKey,
+      sourceSlotLabel: `${sourceBlock.slotLabel}, ${formatLongDate(sourceBlock.dateKey)}`,
+      targetDateKey: targetBlock.dateKey,
+      targetSlotLabel: `${targetBlock.slotLabel}, ${formatLongDate(targetBlock.dateKey)}`
+    };
+
+    if (planner.confirmLessonPlanMoves) {
+      setPendingMove({
+        ...moveRequest,
+        className: sourceBlock.className
+      });
+      return;
+    }
+
+    performMove(moveRequest);
+  };
+
+  const clearPlannerWeekDragState = () => {
+    plannerWeekDragStateRef.current = null;
+    plannerWeekDragPointerRef.current = null;
+    if (plannerWeekDragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(plannerWeekDragAnimationFrameRef.current);
+      plannerWeekDragAnimationFrameRef.current = null;
+    }
+    setDraggedBlock(null);
+    setDragOverBlockId(null);
+    setDragPreview(null);
+  };
+
+  const getPlannerWeekBlockUnderPointer = (clientX: number, clientY: number) => {
+    const target = document.elementFromPoint(clientX, clientY);
+    const blockElement = target?.closest<HTMLElement>('[data-planner-week-block-id]') ?? null;
+    const blockId = blockElement?.dataset.plannerWeekBlockId;
+    return blockId ? lessonBlocksById.get(blockId) ?? null : null;
+  };
+
+  const updatePlannerWeekDragPresentation = () => {
+    plannerWeekDragAnimationFrameRef.current = null;
+    const dragState = plannerWeekDragStateRef.current;
+    const pointer = plannerWeekDragPointerRef.current;
+
+    if (!dragState || !pointer || !dragState.hasMoved) {
+      return;
+    }
+
+    setDragPreview({
+      clientX: pointer.clientX,
+      clientY: pointer.clientY,
+      height: dragState.height,
+      offsetX: dragState.offsetX,
+      offsetY: dragState.offsetY,
+      width: dragState.width
+    });
+
+    const hoveredBlock = getPlannerWeekBlockUnderPointer(pointer.clientX, pointer.clientY);
+    const canDrop =
+      hoveredBlock &&
+      hoveredBlock.classListId === dragState.draggedBlock.classListId &&
+      hoveredBlock.id !== dragState.draggedBlock.id;
+
+    setDragOverBlockId(canDrop ? hoveredBlock.id : null);
+  };
+
+  const beginPlannerWeekDrag = (
+    block: PlannerWeekLessonBlock,
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (event.button !== 0 || !block.hasContent) {
+      return;
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    plannerWeekDragStateRef.current = {
+      draggedBlock: block,
+      hasMoved: false,
+      height: bounds.height,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+      pointerId: event.pointerId,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      width: bounds.width
+    };
+    plannerWeekDragPointerRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+  };
+
+  const continuePlannerWeekDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const dragState = plannerWeekDragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const distance = Math.hypot(
+      event.clientX - dragState.startPointerX,
+      event.clientY - dragState.startPointerY
+    );
+
+    if (!dragState.hasMoved && distance < 6) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!dragState.hasMoved) {
+      dragState.hasMoved = true;
+      setDraggedBlock(dragState.draggedBlock);
+    }
+
+    plannerWeekDragPointerRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+
+    if (plannerWeekDragAnimationFrameRef.current === null) {
+      plannerWeekDragAnimationFrameRef.current = window.requestAnimationFrame(
+        updatePlannerWeekDragPresentation
+      );
+    }
+  };
+
+  const finishPlannerWeekDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const dragState = plannerWeekDragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const hoveredBlock = getPlannerWeekBlockUnderPointer(event.clientX, event.clientY);
+    const canDrop =
+      dragState.hasMoved &&
+      hoveredBlock &&
+      hoveredBlock.classListId === dragState.draggedBlock.classListId &&
+      hoveredBlock.id !== dragState.draggedBlock.id;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    clearPlannerWeekDragState();
+
+    if (canDrop && hoveredBlock) {
+      handleBlockDrop(dragState.draggedBlock, hoveredBlock);
+    }
+  };
+
+  const cancelPlannerWeekDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const dragState = plannerWeekDragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    clearPlannerWeekDragState();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (plannerWeekDragAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(plannerWeekDragAnimationFrameRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <>
+      <div className="planner-week">
+        <div className="planner-week__toolbar widget-top-controls">
+          <div className="planner-week__nav">
+            <button
+              aria-label="Previous week"
+              className="widget-icon-button button-tone--utility planner-week__week-arrow"
+              onClick={() => updateWeekStartDate(shiftDateKey(weekStartDate, -7))}
+              type="button"
+            >
+              &lt;
+            </button>
+            <label className="field-stack planner-week__year-field">
+              <span className="field-label">Year</span>
+              <select
+                className="text-field"
+                onChange={(event) => {
+                  const nextYear = Number(event.target.value);
+                  const nextWeek = buildPlannerWeekSelectorOptions(nextYear, weekStartDate)[0]?.options[0];
+                  setWeekYear(nextYear);
+                  if (nextWeek) {
+                    setWeekStartDate(nextWeek.value);
+                  }
+                }}
+                value={weekYear}
+              >
+                {weekYears.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack planner-week__week-field">
+              <span className="field-label">Term week</span>
+              <select
+                className="text-field"
+                onChange={(event) => updateWeekStartDate(event.target.value)}
+                value={weekStartDate}
+              >
+                {weekOptions.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <button
+              aria-label="Next week"
+              className="widget-icon-button button-tone--utility planner-week__week-arrow"
+              onClick={() => updateWeekStartDate(shiftDateKey(weekStartDate, 7))}
+              type="button"
+            >
+              &gt;
+            </button>
+          </div>
+
+          <div className="planner-week__actions">
+            <button
+              className="secondary-link button-tone--selection"
+              onClick={() => setIsDeletedDialogOpen(true)}
+              type="button"
+            >
+              Deleted plans
+              {planner.deletedLessonPlans.length > 0 ? ` (${planner.deletedLessonPlans.length})` : ''}
+            </button>
+            <label className="planner-week__confirm-toggle">
+              <input
+                checked={planner.confirmLessonPlanMoves}
+                onChange={(event) => planner.setConfirmLessonPlanMoves(event.currentTarget.checked)}
+                type="checkbox"
+              />
+              <span>Confirm moves</span>
+            </label>
+            <button
+              className="secondary-link button-tone--utility"
+              onClick={() => {
+                planner.setSelectedDate(weekStartDate);
+                onOpenDayPlanner();
+              }}
+              type="button"
+            >
+              Day planner
+            </button>
           </div>
         </div>
 
-        {documents.length > 0 ? (
-          <div className="planner-documents__list">
-            {documents.map((document) => (
-              <article className="planner-document" key={document.id}>
-                <button
-                  className="planner-document__open"
-                  onClick={() => void onOpenDocument(document)}
-                  type="button"
-                >
-                  <span className="planner-document__name">{document.name}</span>
-                  <span className="planner-document__path">
-                    {document.path}
+        <div className="planner-week__summary">
+          <div>
+            <span className="planner-week__eyebrow">{bellSchedule.activeProfileDisplayName}</span>
+            <h3>{formatPlannerWeekRangeLabel(weekStartDate)}</h3>
+          </div>
+          <p className="helper-text">{planner.statusMessage ?? weekSummary}</p>
+        </div>
+
+        {lessonBlocks.length > 0 ? (
+          <div className="planner-week__grid">
+            <div className="planner-week__axis" aria-hidden="true">
+              <div className="planner-week__axis-heading">Time</div>
+              <div className="planner-week__axis-track">
+                {timeMarks.map((mark) => (
+                  <span
+                    className="planner-week__time-label"
+                    key={`planner-week-time-${mark}`}
+                    style={getPlannerWeekTimeMarkStyle(mark, timeRange)}
+                  >
+                    {formatBellTime(mark)}
                   </span>
-                </button>
-                <button
-                  aria-label={`Remove ${document.name}`}
-                  className="note-row__delete"
-                  onClick={() => onRemoveDocument(document.id)}
-                  type="button"
-                >
-                  ×
-                </button>
-              </article>
-            ))}
+                ))}
+              </div>
+            </div>
+
+            {BELL_SCHEDULE_DAY_KEYS.map((dayKey) => {
+              const dayBlocks = lessonBlocks.filter((block) => block.dayKey === dayKey);
+
+              return (
+                <section className="planner-week__day" key={dayKey}>
+                  <header className="planner-week__day-header">
+                    <span>{BELL_SCHEDULE_DAY_LABELS[dayKey].slice(0, 3)}</span>
+                    <strong>{formatPlannerWeekDayLabel(weekDatesByDay[dayKey])}</strong>
+                  </header>
+                  <div className="planner-week__day-track">
+                    {timeMarks.map((mark) => (
+                      <span
+                        aria-hidden="true"
+                        className="planner-week__time-line"
+                        key={`planner-week-line-${dayKey}-${mark}`}
+                        style={getPlannerWeekTimeMarkStyle(mark, timeRange)}
+                      />
+                    ))}
+                    {dayBlocks.map((block) => {
+                      const isOtherClassDragging =
+                        Boolean(draggedBlock) && draggedBlock?.classListId !== block.classListId;
+                      const isSameClassDragging =
+                        Boolean(draggedBlock) && draggedBlock?.classListId === block.classListId;
+
+                      return (
+                        <article
+                          className={`planner-week-lesson ${
+                            block.hasContent ? '' : 'planner-week-lesson--empty'
+                          } ${isOtherClassDragging ? 'planner-week-lesson--faded' : ''} ${
+                            isSameClassDragging ? 'planner-week-lesson--highlighted' : ''
+                          } ${draggedBlock?.id === block.id ? 'planner-week-lesson--dragging' : ''} ${
+                            dragOverBlockId === block.id ? 'planner-week-lesson--drop-target' : ''
+                          }`}
+                          data-planner-week-block-id={block.id}
+                          key={block.id}
+                          onDoubleClick={() => onOpenLesson(block.classListId, block.dateKey)}
+                          onPointerCancel={cancelPlannerWeekDrag}
+                          onPointerDown={(event) => beginPlannerWeekDrag(block, event)}
+                          onPointerMove={continuePlannerWeekDrag}
+                          onPointerUp={finishPlannerWeekDrag}
+                          style={getPlannerWeekLessonBlockStyle(block, timeRange)}
+                        >
+                          <div className="planner-week-lesson__header">
+                            <span>{block.slotShortLabel}</span>
+                            <strong>{block.className}</strong>
+                            <button
+                              aria-label={`${
+                                block.hasContent ? 'Edit' : 'Add'
+                              } ${block.className} lesson for ${formatLongDate(block.dateKey)}`}
+                              className={`planner-week-lesson__open ${
+                                block.hasContent ? '' : 'planner-week-lesson__open--empty'
+                              }`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenLesson(block.classListId, block.dateKey);
+                              }}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                              onDragStart={(event) => event.preventDefault()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              title={block.hasContent ? 'Edit lesson' : 'Add lesson'}
+                              type="button"
+                            >
+                              {block.hasContent ? 'Edit' : 'Add lesson'}
+                            </button>
+                            {block.hasContent ? (
+                              <button
+                                aria-label={`Move ${block.className} plan for ${formatLongDate(block.dateKey)} to deleted plans`}
+                                className="planner-week-lesson__delete"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  planner.deleteLessonPlan(block.classListId, block.dateKey);
+                                }}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                                onDragStart={(event) => event.preventDefault()}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                type="button"
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </div>
+                          <p>{block.hasContent ? summarizeLessonPlanForPreview(block.plan) : 'No plan saved'}</p>
+                          <div className="planner-week-lesson__meta">
+                            <span>{formatBellTimeRange(block)}</span>
+                            {block.documentCount > 0 ? (
+                              <span>
+                                {block.documentCount} file{block.documentCount === 1 ? '' : 's'}
+                              </span>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : (
-          <div className="group-maker__empty">
-            <p className="empty-copy">No lesson documents attached for this date yet.</p>
+          <div className="widget-empty-state planner-week__empty">
+            <p className="empty-copy">
+              Assign classes to teaching blocks in Bell Schedule and they will appear here.
+            </p>
           </div>
         )}
       </div>
-    </div>
+
+      {draggedBlock && dragPreview
+        ? createPortal(
+            <article
+              aria-hidden="true"
+              className="planner-week-lesson planner-week__drag-preview"
+              style={{
+                height: `${dragPreview.height}px`,
+                transform: `translate(${dragPreview.clientX - dragPreview.offsetX}px, ${
+                  dragPreview.clientY - dragPreview.offsetY
+                }px)`,
+                width: `${dragPreview.width}px`
+              }}
+            >
+              <div className="planner-week-lesson__header">
+                <span>{draggedBlock.slotShortLabel}</span>
+                <strong>{draggedBlock.className}</strong>
+              </div>
+              <p>{summarizeLessonPlanForPreview(draggedBlock.plan)}</p>
+              <div className="planner-week-lesson__meta">
+                <span>{formatBellTimeRange(draggedBlock)}</span>
+                {draggedBlock.documentCount > 0 ? (
+                  <span>
+                    {draggedBlock.documentCount} file{draggedBlock.documentCount === 1 ? '' : 's'}
+                  </span>
+                ) : null}
+              </div>
+            </article>,
+            document.body
+          )
+        : null}
+
+      {pendingMove ? (
+        <LessonPlanMoveConfirmationDialog
+          moveRequest={pendingMove}
+          onCancel={() => setPendingMove(null)}
+          onConfirm={(turnOffFutureConfirmations) => {
+            if (turnOffFutureConfirmations) {
+              planner.setConfirmLessonPlanMoves(false);
+            }
+            performMove(pendingMove);
+          }}
+        />
+      ) : null}
+
+      {isDeletedDialogOpen ? (
+        <DeletedLessonPlansDialog
+          classLists={classLists}
+          deletedLessonPlans={planner.deletedLessonPlans}
+          onClose={() => setIsDeletedDialogOpen(false)}
+          onDeleteSelected={planner.permanentlyDeleteLessonPlans}
+          onRestore={planner.restoreDeletedLessonPlan}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function LessonPlanMoveConfirmationDialog({
+  moveRequest,
+  onCancel,
+  onConfirm
+}: {
+  moveRequest: PlannerLessonMoveRequest & { className: string };
+  onCancel: () => void;
+  onConfirm: (turnOffFutureConfirmations: boolean) => void;
+}) {
+  const { theme } = useColorModeAppearance();
+  const [turnOffFutureConfirmations, setTurnOffFutureConfirmations] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="lesson-plan-export-dialog__backdrop planner-week-dialog__backdrop">
+      <section
+        aria-labelledby="planner-week-move-title"
+        aria-modal="true"
+        className="panel planner-week-dialog"
+        data-theme={theme}
+        role="dialog"
+      >
+        <div aria-hidden="true" className="panel__glass" />
+        <div aria-hidden="true" className="panel__gloss" />
+        <div className="panel__content planner-week-dialog__content">
+          <header className="planner-week-dialog__header">
+            <div>
+              <span className="panel-kicker">Move lesson</span>
+              <h2 id="planner-week-move-title">Confirm replacement</h2>
+            </div>
+            <button
+              aria-label="Close move confirmation"
+              className="widget-icon-button widget-icon-button--close"
+              onClick={onCancel}
+              type="button"
+            >
+              ×
+            </button>
+          </header>
+          <p className="helper-text">
+            Move {moveRequest.className} from {moveRequest.sourceSlotLabel} to{' '}
+            {moveRequest.targetSlotLabel}. If a plan is already saved there, it will move to Deleted plans.
+          </p>
+          <label className="lesson-plan-export-dialog__toggle planner-week-dialog__toggle">
+            <input
+              checked={turnOffFutureConfirmations}
+              onChange={(event) => setTurnOffFutureConfirmations(event.currentTarget.checked)}
+              type="checkbox"
+            />
+            <span>Do not ask me again for lesson moves</span>
+          </label>
+          <footer className="planner-week-dialog__actions">
+            <button className="secondary-link button-tone--utility" onClick={onCancel} type="button">
+              Cancel
+            </button>
+            <button
+              className="primary-link"
+              onClick={() => onConfirm(turnOffFutureConfirmations)}
+              type="button"
+            >
+              Move lesson
+            </button>
+          </footer>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function DeletedLessonPlansDialog({
+  classLists,
+  deletedLessonPlans,
+  onClose,
+  onDeleteSelected,
+  onRestore
+}: {
+  classLists: ClassList[];
+  deletedLessonPlans: DeletedLessonPlanEntry[];
+  onClose: () => void;
+  onDeleteSelected: (ids: string[]) => void;
+  onRestore: (id: string, dateKey: string) => void;
+}) {
+  const { theme } = useColorModeAppearance();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [restoreDatesById, setRestoreDatesById] = useState<Record<string, string>>({});
+  const sortedEntries = useMemo(
+    () => [...deletedLessonPlans].sort((left, right) => right.deletedAt - left.deletedAt),
+    [deletedLessonPlans]
+  );
+  const allSelected = sortedEntries.length > 0 && selectedIds.length === sortedEntries.length;
+
+  useEffect(() => {
+    const liveIds = new Set(deletedLessonPlans.map((entry) => entry.id));
+    setSelectedIds((current) => current.filter((id) => liveIds.has(id)));
+  }, [deletedLessonPlans]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const toggleSelectedId = (entryId: string, selected: boolean) => {
+    setSelectedIds((current) => {
+      if (selected) {
+        return current.includes(entryId) ? current : [...current, entryId];
+      }
+
+      return current.filter((id) => id !== entryId);
+    });
+  };
+
+  return createPortal(
+    <div className="lesson-plan-export-dialog__backdrop planner-week-dialog__backdrop">
+      <section
+        aria-labelledby="deleted-lesson-plans-title"
+        aria-modal="true"
+        className="panel deleted-lessons-dialog"
+        data-theme={theme}
+        role="dialog"
+      >
+        <div aria-hidden="true" className="panel__glass" />
+        <div aria-hidden="true" className="panel__gloss" />
+        <div className="panel__content deleted-lessons-dialog__content">
+          <header className="planner-week-dialog__header">
+            <div>
+              <span className="panel-kicker">Deleted plans</span>
+              <h2 id="deleted-lesson-plans-title">Lesson plan history</h2>
+              <p className="helper-text">
+                Restore a plan by choosing a date, or select plans to permanently delete.
+              </p>
+            </div>
+            <button
+              aria-label="Close deleted lesson plans"
+              className="widget-icon-button widget-icon-button--close"
+              onClick={onClose}
+              type="button"
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="deleted-lessons-dialog__toolbar">
+            <label className="deleted-lessons-dialog__check-all">
+              <input
+                checked={allSelected}
+                disabled={sortedEntries.length === 0}
+                onChange={(event) =>
+                  setSelectedIds(event.currentTarget.checked ? sortedEntries.map((entry) => entry.id) : [])
+                }
+                type="checkbox"
+              />
+              <span>Check all</span>
+            </label>
+            <button
+              className="danger-link"
+              disabled={selectedIds.length === 0}
+              onClick={() => {
+                onDeleteSelected(selectedIds);
+                setSelectedIds([]);
+              }}
+              type="button"
+            >
+              Permanently delete
+              {selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+            </button>
+          </div>
+
+          {sortedEntries.length > 0 ? (
+            <div className="deleted-lessons-dialog__list">
+              {sortedEntries.map((entry) => {
+                const restoreDate = restoreDatesById[entry.id] ?? '';
+                const className = getPlannerClassName(entry.classListId, classLists, entry.className);
+
+                return (
+                  <article className="deleted-lesson" key={entry.id}>
+                    <label className="deleted-lesson__select">
+                      <input
+                        checked={selectedIds.includes(entry.id)}
+                        onChange={(event) => toggleSelectedId(entry.id, event.currentTarget.checked)}
+                        type="checkbox"
+                      />
+                      <span className="sr-only">Select {className}</span>
+                    </label>
+                    <div className="deleted-lesson__copy">
+                      <div className="deleted-lesson__heading">
+                        <strong>{className}</strong>
+                        <span>{entry.reason === 'replaced' ? 'Replaced' : 'Deleted'}</span>
+                      </div>
+                      <p>{summarizeLessonPlanForPreview(entry.plan)}</p>
+                      <div className="deleted-lesson__meta">
+                        <span>Original date: {formatLongDate(entry.dateKey)}</span>
+                        <span>Deleted: {formatDeletedLessonPlanTimestamp(entry.deletedAt)}</span>
+                        {entry.documents.length > 0 ? (
+                          <span>
+                            {entry.documents.length} file{entry.documents.length === 1 ? '' : 's'}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="deleted-lesson__restore">
+                      <label className="field-stack">
+                        <span className="field-label">Restore date</span>
+                        <input
+                          className="text-field"
+                          onChange={(event) =>
+                            setRestoreDatesById((current) => ({
+                              ...current,
+                              [entry.id]: event.target.value
+                            }))
+                          }
+                          type="date"
+                          value={restoreDate}
+                        />
+                      </label>
+                      <button
+                        className="primary-link"
+                        disabled={!normalizeDateKey(restoreDate)}
+                        onClick={() => onRestore(entry.id, restoreDate)}
+                        type="button"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="widget-empty-state deleted-lessons-dialog__empty">
+              <p className="empty-copy">No deleted lesson plans yet.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -9075,15 +10634,24 @@ function PlannerWidgetPopoutCard({
   interfaceScaleControls: InterfaceScaleControlsState;
   sizeTier: WidgetSizeTier;
 }) {
-  const [picker] = usePickerState();
+  const [picker, setPicker] = usePickerState();
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
-  const planner = useLessonPlannerController(picker.selectedListId);
+  const planner = useLessonPlannerController(picker.selectedListId, picker.lists);
+  const bellSchedule = useBellScheduleController(picker.lists);
+  const [popoutMode, setPopoutMode] = usePlannerPopoutModeState();
+  const showWeekPlanner = popoutMode === 'week';
 
   return (
     <WidgetCard
       badge={planner.documents.length > 0 ? `${planner.documents.length}` : null}
       collapsed={false}
-      description={selectedList ? `Planning ${selectedList.name}` : 'Choose a class from the main dashboard.'}
+      description={
+        showWeekPlanner
+          ? `Weekly planner using ${bellSchedule.activeProfileDisplayName}`
+          : selectedList
+            ? `Planning ${selectedList.name}`
+            : 'Choose a class from the main dashboard.'
+      }
       headerActions={
         <PopoutWidgetActions
           interfaceScaleControls={interfaceScaleControls}
@@ -9099,18 +10667,41 @@ function PlannerWidgetPopoutCard({
       title={WIDGET_DETAILS.planner.title}
       widgetId="planner"
     >
-      <PlannerWidgetContent
-        documents={planner.documents}
-        onAttachDocuments={planner.attachDocuments}
-        onOpenDocument={planner.openDocument}
-        onRemoveDocument={planner.removeDocument}
-        onSelectDate={planner.setSelectedDate}
-        onUpdatePlan={planner.updatePlan}
-        planText={planner.plan}
-        selectedDate={planner.selectedDate}
-        selectedList={selectedList}
-        statusMessage={planner.statusMessage}
-      />
+      {showWeekPlanner ? (
+        <WeeklyLessonPlannerContent
+          bellSchedule={bellSchedule}
+          classLists={picker.lists}
+          onOpenDayPlanner={() => setPopoutMode('editor')}
+          onOpenLesson={(classListId, dateKey) => {
+            planner.setSelectedDateForClass(classListId, dateKey);
+            setPicker((current) => activateClassList(current, classListId));
+            setPopoutMode('editor');
+          }}
+          planner={planner}
+        />
+      ) : (
+        <PlannerWidgetContent
+          classLists={picker.lists}
+          deletedLessonPlans={planner.deletedLessonPlans}
+          documents={planner.documents}
+          lessonPlanHistory={planner.lessonPlanHistory}
+          onAttachDocuments={planner.attachDocuments}
+          onDeleteDeletedLessonPlans={planner.permanentlyDeleteLessonPlans}
+          onOpenWeeklyPlanner={() => setPopoutMode('week')}
+          onOpenDocument={planner.openDocument}
+          onRemoveDocument={planner.removeDocument}
+          onRestoreDeletedLessonPlan={planner.restoreDeletedLessonPlan}
+          onSelectDate={planner.setSelectedDate}
+          onUpdatePlan={planner.updatePlan}
+          planText={planner.plan}
+          selectedDate={planner.selectedDate}
+          selectedList={selectedList}
+          statusMessage={planner.statusMessage}
+          weeklyPlannerActionAriaLabel="Back to weekly lesson planner"
+          weeklyPlannerActionLabel="Back"
+          weeklyPlannerActionPlacement="top-left"
+        />
+      )}
     </WidgetCard>
   );
 }
@@ -9257,7 +10848,10 @@ function useColorModePreferencesState() {
 }
 
 function useInterfaceScaleState() {
-  return usePersistentState<number>('teacher-tools.interface-scale', DEFAULT_INTERFACE_SCALE, {
+  const storageKey = useMemo(() => getInterfaceScaleStorageKey(), []);
+  const initialValue = useMemo(() => getInitialInterfaceScaleValue(storageKey), [storageKey]);
+
+  return usePersistentState<number>(storageKey, initialValue, {
     normalize: normalizeInterfaceScale
   });
 }
@@ -9298,6 +10892,16 @@ function usePlannerState() {
   return usePersistentState<PlannerSnapshot>('teacher-tools.planner', DEFAULT_PLANNER, {
     normalize: normalizePlannerSnapshot
   });
+}
+
+function usePlannerPopoutModeState() {
+  return usePersistentState<PlannerPopoutMode>(
+    'teacher-tools.planner-popout-mode',
+    'week',
+    {
+      normalize: normalizePlannerPopoutMode
+    }
+  );
 }
 
 function useHomeworkAssessmentTrackerState() {
@@ -10413,7 +12017,7 @@ function useHomeworkAssessmentTrackerController(
   };
 }
 
-function useLessonPlannerController(selectedListId: string | null) {
+function useLessonPlannerController(selectedListId: string | null, classLists: ClassList[]) {
   const [planner, setPlanner] = usePlannerState();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const selectedDate = getPlannerSelectedDate(planner, selectedListId);
@@ -10421,6 +12025,12 @@ function useLessonPlannerController(selectedListId: string | null) {
   const documents = entry?.documents ?? [];
   const plan = entry?.plan ?? '';
   const entryDates = Object.keys(planner.entriesByListId[getDashboardLayoutKey(selectedListId)] ?? {});
+  const deletedLessonPlans = planner.deletedEntries;
+  const confirmLessonPlanMoves = planner.confirmLessonPlanMoves;
+  const lessonPlanHistory = useMemo(
+    () => getPlannerEntriesForClassLists(planner, classLists),
+    [classLists, planner]
+  );
 
   useEffect(() => {
     setStatusMessage(null);
@@ -10430,6 +12040,12 @@ function useLessonPlannerController(selectedListId: string | null) {
     const normalizedDate = normalizeDateKey(dateKey) ?? getTodayDateKey();
 
     setPlanner((current) => setPlannerDateForList(current, selectedListId, normalizedDate));
+  };
+
+  const setSelectedDateForClass = (classListId: string, dateKey: string) => {
+    const normalizedDate = normalizeDateKey(dateKey) ?? getTodayDateKey();
+
+    setPlanner((current) => setPlannerDateForList(current, classListId, normalizedDate));
   };
 
   const updatePlan = (nextPlan: string) => {
@@ -10490,16 +12106,107 @@ function useLessonPlannerController(selectedListId: string | null) {
     setStatusMessage(`Opened ${document.name}.`);
   };
 
+  const moveLessonPlan = (request: PlannerLessonMoveRequest) => {
+    const sourceEntry = getPlannerEntry(planner, request.classListId, request.sourceDateKey);
+    const className = getPlannerClassName(request.classListId, classLists);
+
+    if (!sourceEntry) {
+      setStatusMessage(`No saved lesson plan to move from ${formatLongDate(request.sourceDateKey)}.`);
+      return;
+    }
+
+    if (request.sourceDateKey === request.targetDateKey) {
+      setStatusMessage(`${className} is already planned for ${formatLongDate(request.targetDateKey)}.`);
+      return;
+    }
+
+    const targetEntry = getPlannerEntry(planner, request.classListId, request.targetDateKey);
+
+    setPlanner((current) => movePlannerLessonEntry(current, request, classLists));
+    setStatusMessage(
+      targetEntry
+        ? `Moved ${className} to ${formatLongDate(request.targetDateKey)}. The replaced plan is in Deleted plans.`
+        : `Moved ${className} to ${formatLongDate(request.targetDateKey)}.`
+    );
+  };
+
+  const deleteLessonPlan = (classListId: string, dateKey: string) => {
+    const entryToDelete = getPlannerEntry(planner, classListId, dateKey);
+    const className = getPlannerClassName(classListId, classLists);
+
+    if (!entryToDelete) {
+      setStatusMessage(`No saved ${className} plan to delete for ${formatLongDate(dateKey)}.`);
+      return;
+    }
+
+    setPlanner((current) => deletePlannerLessonEntry(current, classListId, dateKey, classLists));
+    setStatusMessage(`Moved ${className}'s ${formatLongDate(dateKey)} plan to Deleted plans.`);
+  };
+
+  const restoreDeletedLessonPlan = (deletedEntryId: string, dateKey: string) => {
+    const normalizedDate = normalizeDateKey(dateKey);
+    const deletedEntry = planner.deletedEntries.find((candidate) => candidate.id === deletedEntryId);
+
+    if (!normalizedDate || !deletedEntry) {
+      return;
+    }
+
+    const existingEntry = getPlannerEntry(planner, deletedEntry.classListId, normalizedDate);
+
+    setPlanner((current) =>
+      restoreDeletedPlannerLessonEntry(current, deletedEntryId, normalizedDate, classLists)
+    );
+    setStatusMessage(
+      existingEntry
+        ? `Restored ${deletedEntry.className} to ${formatLongDate(normalizedDate)}. The replaced plan is still in Deleted plans.`
+        : `Restored ${deletedEntry.className} to ${formatLongDate(normalizedDate)}.`
+    );
+  };
+
+  const permanentlyDeleteLessonPlans = (deletedEntryIds: string[]) => {
+    const selectedIds = new Set(deletedEntryIds);
+
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    setPlanner((current) => ({
+      ...current,
+      deletedEntries: current.deletedEntries.filter((entry) => !selectedIds.has(entry.id))
+    }));
+    setStatusMessage(
+      `Permanently deleted ${selectedIds.size} lesson plan${selectedIds.size === 1 ? '' : 's'}.`
+    );
+  };
+
+  const setConfirmLessonPlanMoves = (confirmLessonMoves: boolean) => {
+    setPlanner((current) => ({
+      ...current,
+      confirmLessonPlanMoves: confirmLessonMoves
+    }));
+  };
+
   return {
     attachDocuments,
+    confirmLessonPlanMoves,
+    deleteLessonPlan,
+    deletedLessonPlans,
     documents,
     entryDates,
+    getEntryForClassDate: (classListId: string, dateKey: string) =>
+      getPlannerEntry(planner, classListId, dateKey),
     hasContent: Boolean(plan.trim() || documents.length > 0),
+    lessonPlanHistory,
+    moveLessonPlan,
     openDocument,
+    permanentlyDeleteLessonPlans,
     plan,
     removeDocument,
+    restoreDeletedLessonPlan,
     selectedDate,
     setSelectedDate,
+    setSelectedDateForClass,
+    setConfirmLessonPlanMoves,
     statusMessage,
     updatePlan
   };
@@ -11071,6 +12778,13 @@ function normalizeBellSchedulePopoutMode(
   initialValue: BellSchedulePopoutMode
 ) {
   return raw === 'editor' || raw === 'summary' ? raw : initialValue;
+}
+
+function normalizePlannerPopoutMode(
+  raw: unknown,
+  initialValue: PlannerPopoutMode
+) {
+  return raw === 'editor' || raw === 'week' ? raw : initialValue;
 }
 
 function normalizeHomeworkAssessmentPopoutMode(
@@ -11729,6 +13443,699 @@ function formatLongDate(dateKey: string) {
   }).format(new Date(parsed.year, parsed.monthIndex, parsed.day));
 }
 
+function formatLessonPlanExportDate(dateKey: string) {
+  const parsed = parseDateKey(dateKey);
+  if (!parsed) {
+    return dateKey;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    weekday: 'short',
+    year: 'numeric'
+  }).format(new Date(parsed.year, parsed.monthIndex, parsed.day));
+}
+
+function formatLessonPlanExportGeneratedAtLabel() {
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(new Date());
+}
+
+function getLessonPlanExportSchoolTermSelection(dateKey: string) {
+  const parsed = parseDateKey(dateKey);
+  if (!parsed) {
+    return null;
+  }
+
+  const schoolTermWeek = getSchoolTermWeek(new Date(parsed.year, parsed.monthIndex, parsed.day));
+  if (!schoolTermWeek) {
+    return null;
+  }
+
+  return {
+    term: schoolTermWeek.term,
+    week: schoolTermWeek.week,
+    year: parsed.year
+  };
+}
+
+function getLessonPlanExportWeekRange(dateKey: string, weekOffset = 0) {
+  const parsed = parseDateKey(dateKey) ?? parseDateKey(getTodayDateKey());
+  if (!parsed) {
+    return {
+      end: getTodayDateKey(),
+      start: getTodayDateKey()
+    };
+  }
+
+  const date = new Date(parsed.year, parsed.monthIndex, parsed.day + weekOffset * 7);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - mondayOffset);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+
+  return {
+    end: formatDateKey(sunday.getFullYear(), sunday.getMonth(), sunday.getDate()),
+    start: formatDateKey(monday.getFullYear(), monday.getMonth(), monday.getDate())
+  };
+}
+
+function getLessonPlanExportYears(entries: LessonPlansPdfEntry[]) {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from(new Set([currentYear, ...entries.map((entry) => entry.year)]))
+    .filter((year) => Number.isInteger(year))
+    .sort((left, right) => right - left);
+
+  return years.length > 0 ? years : [currentYear];
+}
+
+function getLessonPlanExportClassScopeLabel(
+  selectedClassScope: string,
+  classLists: ClassList[],
+  fallbackClassName: string
+) {
+  if (selectedClassScope === 'all') {
+    return 'All classes';
+  }
+
+  return classLists.find((classList) => classList.id === selectedClassScope)?.name ?? fallbackClassName;
+}
+
+function formatLessonPlanExportRangeLabel({
+  customEndDate,
+  customStartDate,
+  rangeMode,
+  selectedTerm,
+  selectedWeek,
+  selectedYear
+}: {
+  customEndDate: string;
+  customStartDate: string;
+  rangeMode: LessonPlanExportRangeMode;
+  selectedTerm: number;
+  selectedWeek: number;
+  selectedYear: number;
+}) {
+  if (rangeMode === 'this-week' || rangeMode === 'last-week') {
+    const range = getLessonPlanExportWeekRange(getTodayDateKey(), rangeMode === 'last-week' ? -1 : 0);
+    return `${rangeMode === 'last-week' ? 'Last week' : 'This week'} (${formatLessonPlanExportDate(range.start)} - ${formatLessonPlanExportDate(range.end)})`;
+  }
+
+  if (rangeMode === 'this-term') {
+    const currentTerm = getLessonPlanExportSchoolTermSelection(getTodayDateKey());
+    return currentTerm ? `This term (Term ${currentTerm.term}, ${currentTerm.year})` : 'This term';
+  }
+
+  if (rangeMode === 'term') {
+    return `Only Term ${selectedTerm}, ${selectedYear}`;
+  }
+
+  if (rangeMode === 'exclude-term') {
+    return `Everything except Term ${selectedTerm}, ${selectedYear}`;
+  }
+
+  if (rangeMode === 'term-week') {
+    return `Term ${selectedTerm}, Week ${selectedWeek}, ${selectedYear}`;
+  }
+
+  if (rangeMode === 'custom') {
+    return `${formatLessonPlanExportDate(customStartDate)} - ${formatLessonPlanExportDate(customEndDate)}`;
+  }
+
+  return 'All previous dates';
+}
+
+function buildLessonPlanExportFilterSummary({
+  classLabel,
+  customEndDate,
+  customStartDate,
+  includeFuturePlans,
+  rangeMode,
+  selectedTerm,
+  selectedWeek,
+  selectedYear
+}: {
+  classLabel: string;
+  customEndDate: string;
+  customStartDate: string;
+  includeFuturePlans: boolean;
+  rangeMode: LessonPlanExportRangeMode;
+  selectedTerm: number;
+  selectedWeek: number;
+  selectedYear: number;
+}) {
+  const rangeLabel = formatLessonPlanExportRangeLabel({
+    customEndDate,
+    customStartDate,
+    rangeMode,
+    selectedTerm,
+    selectedWeek,
+    selectedYear
+  });
+
+  return `${classLabel}; ${rangeLabel}; ${includeFuturePlans ? 'future dates included' : 'saved through today'}`;
+}
+
+function filterLessonPlanExportEntries(
+  entries: LessonPlansPdfEntry[],
+  options: {
+    customEndDate: string;
+    customStartDate: string;
+    includeFuturePlans: boolean;
+    rangeMode: LessonPlanExportRangeMode;
+    selectedClassScope: string;
+    selectedTerm: number;
+    selectedWeek: number;
+    selectedYear: number;
+  }
+) {
+  const todayKey = getTodayDateKey();
+  const currentTerm = getLessonPlanExportSchoolTermSelection(todayKey);
+  const thisWeekRange = getLessonPlanExportWeekRange(todayKey);
+  const lastWeekRange = getLessonPlanExportWeekRange(todayKey, -1);
+  const customStart = normalizeDateKey(options.customStartDate) ?? todayKey;
+  const customEnd = normalizeDateKey(options.customEndDate) ?? todayKey;
+  const customRangeStart = customStart <= customEnd ? customStart : customEnd;
+  const customRangeEnd = customStart <= customEnd ? customEnd : customStart;
+
+  return entries.filter((entry) => {
+    if (options.selectedClassScope !== 'all' && entry.classListId !== options.selectedClassScope) {
+      return false;
+    }
+
+    if (!options.includeFuturePlans && entry.dateKey > todayKey) {
+      return false;
+    }
+
+    if (options.rangeMode === 'this-week') {
+      return entry.dateKey >= thisWeekRange.start && entry.dateKey <= thisWeekRange.end;
+    }
+
+    if (options.rangeMode === 'last-week') {
+      return entry.dateKey >= lastWeekRange.start && entry.dateKey <= lastWeekRange.end;
+    }
+
+    if (options.rangeMode === 'this-term') {
+      return Boolean(
+        currentTerm &&
+          entry.year === currentTerm.year &&
+          entry.schoolTerm === currentTerm.term
+      );
+    }
+
+    if (options.rangeMode === 'term') {
+      return entry.year === options.selectedYear && entry.schoolTerm === options.selectedTerm;
+    }
+
+    if (options.rangeMode === 'exclude-term') {
+      return !(entry.year === options.selectedYear && entry.schoolTerm === options.selectedTerm);
+    }
+
+    if (options.rangeMode === 'term-week') {
+      return (
+        entry.year === options.selectedYear &&
+        entry.schoolTerm === options.selectedTerm &&
+        entry.schoolWeek === options.selectedWeek
+      );
+    }
+
+    if (options.rangeMode === 'custom') {
+      return entry.dateKey >= customRangeStart && entry.dateKey <= customRangeEnd;
+    }
+
+    return true;
+  });
+}
+
+function getLessonPlanExportGroupSortValue(
+  entry: LessonPlansPdfEntry,
+  groupBy: LessonPlansPdfExportOptions['groupBy']
+) {
+  if (groupBy === 'class') {
+    return entry.className;
+  }
+
+  if (groupBy === 'term') {
+    return `${entry.year}-${`${entry.schoolTerm ?? 99}`.padStart(2, '0')}`;
+  }
+
+  if (groupBy === 'week') {
+    return `${entry.year}-${`${entry.schoolTerm ?? 99}`.padStart(2, '0')}-${`${entry.schoolWeek ?? 99}`.padStart(2, '0')}`;
+  }
+
+  return '';
+}
+
+function sortLessonPlanExportEntries(
+  entries: LessonPlansPdfEntry[],
+  groupBy: LessonPlansPdfExportOptions['groupBy'],
+  sortOrder: LessonPlansPdfExportOptions['sortOrder']
+) {
+  return [...entries].sort((left, right) => {
+    const leftGroup = getLessonPlanExportGroupSortValue(left, groupBy);
+    const rightGroup = getLessonPlanExportGroupSortValue(right, groupBy);
+    const groupComparison = leftGroup.localeCompare(rightGroup);
+
+    if (groupComparison !== 0) {
+      return sortOrder === 'descending' ? -groupComparison : groupComparison;
+    }
+
+    const dateComparison = left.dateKey.localeCompare(right.dateKey);
+    if (dateComparison !== 0) {
+      return sortOrder === 'descending' ? -dateComparison : dateComparison;
+    }
+
+    return left.className.localeCompare(right.className);
+  });
+}
+
+function formatLessonPlanExportDateRange(entries: LessonPlansPdfEntry[]) {
+  if (entries.length === 0) {
+    return 'No previous dates';
+  }
+
+  const sortedDates = entries.map((entry) => entry.dateKey).sort();
+  const firstDate = sortedDates[0];
+  const lastDate = sortedDates.at(-1) ?? firstDate;
+
+  if (firstDate === lastDate) {
+    return formatLessonPlanExportDate(firstDate);
+  }
+
+  return `${formatLessonPlanExportDate(firstDate)} - ${formatLessonPlanExportDate(lastDate)}`;
+}
+
+function summarizeLessonPlanForPreview(plan: string) {
+  const normalizedPlan = plan.trim().replace(/\s+/g, ' ');
+
+  if (!normalizedPlan) {
+    return 'No written plan saved.';
+  }
+
+  return normalizedPlan.length > 140 ? `${normalizedPlan.slice(0, 137)}...` : normalizedPlan;
+}
+
+function getPlannerClassName(
+  classListId: string,
+  classLists: ClassList[],
+  fallback = 'Class not set'
+) {
+  return classLists.find((classList) => classList.id === classListId)?.name ?? fallback;
+}
+
+function copyLessonPlanEntry(entry: LessonPlanEntry): LessonPlanEntry {
+  return {
+    documents: entry.documents.map((document) => ({ ...document })),
+    plan: entry.plan,
+    updatedAt: Date.now()
+  };
+}
+
+function createDeletedLessonPlanEntry(
+  entry: LessonPlanEntry,
+  classListId: string,
+  dateKey: string,
+  classLists: ClassList[],
+  reason: DeletedLessonPlanEntry['reason']
+): DeletedLessonPlanEntry {
+  return {
+    ...copyLessonPlanEntry(entry),
+    classListId,
+    className: getPlannerClassName(classListId, classLists),
+    dateKey,
+    deletedAt: Date.now(),
+    id: `deleted-lesson-plan-${createStickyNoteId()}`,
+    reason
+  };
+}
+
+function setPlannerEntryForClassDate(
+  snapshot: PlannerSnapshot,
+  classListId: string,
+  dateKey: string,
+  entry: LessonPlanEntry | null
+) {
+  const normalizedDate = normalizeDateKey(dateKey) ?? getTodayDateKey();
+  const listKey = getDashboardLayoutKey(classListId);
+  const nextEntriesByListId = { ...snapshot.entriesByListId };
+  const nextEntriesForList = { ...(nextEntriesByListId[listKey] ?? {}) };
+
+  if (entry) {
+    nextEntriesForList[normalizedDate] = normalizeLessonPlanEntry(entry) ?? copyLessonPlanEntry(entry);
+  } else {
+    delete nextEntriesForList[normalizedDate];
+  }
+
+  if (Object.keys(nextEntriesForList).length > 0) {
+    nextEntriesByListId[listKey] = nextEntriesForList;
+  } else {
+    delete nextEntriesByListId[listKey];
+  }
+
+  return {
+    ...snapshot,
+    entriesByListId: nextEntriesByListId
+  };
+}
+
+function movePlannerLessonEntry(
+  snapshot: PlannerSnapshot,
+  request: PlannerLessonMoveRequest,
+  classLists: ClassList[]
+) {
+  const sourceDate = normalizeDateKey(request.sourceDateKey);
+  const targetDate = normalizeDateKey(request.targetDateKey);
+
+  if (!sourceDate || !targetDate || sourceDate === targetDate) {
+    return snapshot;
+  }
+
+  const sourceEntry = getPlannerEntry(snapshot, request.classListId, sourceDate);
+  if (!sourceEntry) {
+    return snapshot;
+  }
+
+  const targetEntry = getPlannerEntry(snapshot, request.classListId, targetDate);
+  const deletedEntries = targetEntry
+    ? [
+        ...snapshot.deletedEntries,
+        createDeletedLessonPlanEntry(targetEntry, request.classListId, targetDate, classLists, 'replaced')
+      ]
+    : snapshot.deletedEntries;
+  const withoutSource = setPlannerEntryForClassDate(snapshot, request.classListId, sourceDate, null);
+  const withTarget = setPlannerEntryForClassDate(
+    withoutSource,
+    request.classListId,
+    targetDate,
+    copyLessonPlanEntry(sourceEntry)
+  );
+
+  return {
+    ...setPlannerDateForList(withTarget, request.classListId, targetDate),
+    deletedEntries
+  };
+}
+
+function deletePlannerLessonEntry(
+  snapshot: PlannerSnapshot,
+  classListId: string,
+  dateKey: string,
+  classLists: ClassList[]
+) {
+  const normalizedDate = normalizeDateKey(dateKey);
+
+  if (!normalizedDate) {
+    return snapshot;
+  }
+
+  const entry = getPlannerEntry(snapshot, classListId, normalizedDate);
+  if (!entry) {
+    return snapshot;
+  }
+
+  return {
+    ...setPlannerEntryForClassDate(snapshot, classListId, normalizedDate, null),
+    deletedEntries: [
+      ...snapshot.deletedEntries,
+      createDeletedLessonPlanEntry(entry, classListId, normalizedDate, classLists, 'deleted')
+    ]
+  };
+}
+
+function restoreDeletedPlannerLessonEntry(
+  snapshot: PlannerSnapshot,
+  deletedEntryId: string,
+  restoreDateKey: string,
+  classLists: ClassList[]
+) {
+  const restoreDate = normalizeDateKey(restoreDateKey);
+  const deletedEntry = snapshot.deletedEntries.find((entry) => entry.id === deletedEntryId);
+
+  if (!restoreDate || !deletedEntry) {
+    return snapshot;
+  }
+
+  const existingEntry = getPlannerEntry(snapshot, deletedEntry.classListId, restoreDate);
+  const deletedEntries = snapshot.deletedEntries.filter((entry) => entry.id !== deletedEntryId);
+  const nextDeletedEntries = existingEntry
+    ? [
+        ...deletedEntries,
+        createDeletedLessonPlanEntry(
+          existingEntry,
+          deletedEntry.classListId,
+          restoreDate,
+          classLists,
+          'replaced'
+        )
+      ]
+    : deletedEntries;
+  const withRestoredEntry = setPlannerEntryForClassDate(
+    snapshot,
+    deletedEntry.classListId,
+    restoreDate,
+    copyLessonPlanEntry(deletedEntry)
+  );
+
+  return {
+    ...setPlannerDateForList(withRestoredEntry, deletedEntry.classListId, restoreDate),
+    deletedEntries: nextDeletedEntries
+  };
+}
+
+function getPlannerWeekStartDateKey(dateKey: string) {
+  return getLessonPlanExportWeekRange(dateKey).start;
+}
+
+function getPlannerWeekYear(weekStartDate: string) {
+  return parseDateKey(weekStartDate)?.year ?? new Date().getFullYear();
+}
+
+function getPlannerWeekDatesByDay(weekStartDate: string): Record<BellScheduleDayKey, string> {
+  return BELL_SCHEDULE_DAY_KEYS.reduce(
+    (result, dayKey, index) => ({
+      ...result,
+      [dayKey]: shiftDateKey(weekStartDate, index)
+    }),
+    {} as Record<BellScheduleDayKey, string>
+  );
+}
+
+function formatPlannerWeekDayLabel(dateKey: string) {
+  const parsed = parseDateKey(dateKey);
+  if (!parsed) {
+    return dateKey;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short'
+  }).format(new Date(parsed.year, parsed.monthIndex, parsed.day));
+}
+
+function formatPlannerWeekRangeLabel(weekStartDate: string) {
+  const weekEndDate = shiftDateKey(weekStartDate, 4);
+  const startParsed = parseDateKey(weekStartDate);
+  const endParsed = parseDateKey(weekEndDate);
+
+  if (!startParsed || !endParsed) {
+    return `${weekStartDate} - ${weekEndDate}`;
+  }
+
+  const startDate = new Date(startParsed.year, startParsed.monthIndex, startParsed.day);
+  const endDate = new Date(endParsed.year, endParsed.monthIndex, endParsed.day);
+  const startLabel = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short'
+  }).format(startDate);
+  const endLabel = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }).format(endDate);
+
+  return `${startLabel} - ${endLabel}`;
+}
+
+function formatPlannerWeekSelectorRange(weekStartDate: string) {
+  return formatPlannerWeekRangeLabel(weekStartDate).replace(/\s+/g, ' ');
+}
+
+function getPlannerWeekSelectorYears(
+  weekStartDate: string,
+  entries: LessonPlansPdfEntry[],
+  deletedEntries: DeletedLessonPlanEntry[]
+) {
+  const currentYear = new Date().getFullYear();
+  const years = new Set<number>([
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+    getPlannerWeekYear(weekStartDate),
+    ...entries.map((entry) => entry.year),
+    ...deletedEntries
+      .map((entry) => parseDateKey(entry.dateKey)?.year)
+      .filter((year): year is number => typeof year === 'number')
+  ]);
+
+  return Array.from(years).sort((left, right) => left - right);
+}
+
+function buildPlannerWeekSelectorOptions(year: number, selectedWeekStart: string) {
+  const groups = SCHOOL_TERMS.map((schoolTerm) => {
+    const termStart = formatDateKey(year, schoolTerm.start.monthIndex, schoolTerm.start.day);
+    const termEnd = formatDateKey(year, schoolTerm.end.monthIndex, schoolTerm.end.day);
+    const termDays = Math.max(getDaysUntilDateKey(termStart, termEnd) + 1, 1);
+    const weekCount = Math.ceil(termDays / 7);
+
+    return {
+      label: `Term ${schoolTerm.term}`,
+      options: Array.from({ length: weekCount }, (_value, index) => {
+        const weekStartDate = getPlannerWeekStartDateKey(shiftDateKey(termStart, index * 7));
+
+        return {
+          label: `Week ${index + 1}: ${formatPlannerWeekSelectorRange(weekStartDate)}`,
+          value: weekStartDate
+        };
+      })
+    };
+  });
+  const optionValues = new Set(groups.flatMap((group) => group.options.map((option) => option.value)));
+
+  if (getPlannerWeekYear(selectedWeekStart) === year && !optionValues.has(selectedWeekStart)) {
+    return [
+      {
+        label: 'Selected week',
+        options: [
+          {
+            label: `Week of ${formatPlannerWeekSelectorRange(selectedWeekStart)}`,
+            value: selectedWeekStart
+          }
+        ]
+      },
+      ...groups
+    ];
+  }
+
+  return groups;
+}
+
+function buildPlannerWeekLessonBlocks({
+  getEntryForClassDate,
+  weekDatesByDay,
+  weekTimelineByDay
+}: {
+  getEntryForClassDate: (classListId: string, dateKey: string) => LessonPlanEntry | null;
+  weekDatesByDay: Record<BellScheduleDayKey, string>;
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>;
+}) {
+  return BELL_SCHEDULE_DAY_KEYS.flatMap((dayKey) => {
+    const dateKey = weekDatesByDay[dayKey];
+
+    return weekTimelineByDay[dayKey]
+      .filter((entry) => entry.status === 'teaching' && entry.classList)
+      .map((entry) => {
+        const classList = entry.classList as ClassList;
+        const plannerEntry = getEntryForClassDate(classList.id, dateKey);
+
+        return {
+          classListId: classList.id,
+          className: classList.name,
+          dateKey,
+          dayKey,
+          documentCount: plannerEntry?.documents.length ?? 0,
+          endMinutes: entry.definition.endMinutes,
+          hasContent: Boolean(plannerEntry?.plan.trim() || plannerEntry?.documents.length),
+          id: `${dayKey}-${entry.definition.id}-${classList.id}`,
+          plan: plannerEntry?.plan ?? '',
+          slotLabel: entry.definition.label,
+          slotShortLabel: entry.definition.shortLabel,
+          startMinutes: entry.definition.startMinutes
+        } satisfies PlannerWeekLessonBlock;
+      });
+  });
+}
+
+function getPlannerWeekTimeRange(weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>) {
+  const definitions = BELL_SCHEDULE_DAY_KEYS.flatMap((dayKey) =>
+    weekTimelineByDay[dayKey].map((entry) => entry.definition)
+  );
+  const fallbackStart = BELL_SCHEDULE_SLOT_DEFINITIONS[0]?.startMinutes ?? 8 * 60;
+  const fallbackEnd = BELL_SCHEDULE_SLOT_DEFINITIONS.at(-1)?.endMinutes ?? 15 * 60;
+  const startMinutes = definitions.length
+    ? Math.min(...definitions.map((definition) => definition.startMinutes))
+    : fallbackStart;
+  const endMinutes = definitions.length
+    ? Math.max(...definitions.map((definition) => definition.endMinutes))
+    : fallbackEnd;
+
+  return {
+    endMinutes: Math.max(endMinutes, startMinutes + 60),
+    startMinutes
+  };
+}
+
+function getPlannerWeekTimeMarks(
+  timeRange: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>,
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>
+) {
+  const boundaryMarks = new Set<number>([timeRange.startMinutes, timeRange.endMinutes]);
+
+  BELL_SCHEDULE_DAY_KEYS.forEach((dayKey) => {
+    weekTimelineByDay[dayKey].forEach((entry) => {
+      boundaryMarks.add(entry.definition.startMinutes);
+      boundaryMarks.add(entry.definition.endMinutes);
+    });
+  });
+
+  return Array.from(boundaryMarks)
+    .filter((mark) => mark >= timeRange.startMinutes && mark <= timeRange.endMinutes)
+    .sort((left, right) => left - right);
+}
+
+function getPlannerWeekOffsetPercent(
+  minutes: number,
+  timeRange: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>
+) {
+  const duration = Math.max(timeRange.endMinutes - timeRange.startMinutes, 1);
+  return clampNumber(((minutes - timeRange.startMinutes) / duration) * 100, 0, 100);
+}
+
+function getPlannerWeekTimeMarkStyle(
+  minutes: number,
+  timeRange: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>
+) {
+  return {
+    '--planner-week-line-top': `${getPlannerWeekOffsetPercent(minutes, timeRange)}%`
+  } as CSSProperties;
+}
+
+function getPlannerWeekLessonBlockStyle(
+  block: PlannerWeekLessonBlock,
+  timeRange: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>
+) {
+  const top = getPlannerWeekOffsetPercent(block.startMinutes, timeRange);
+  const bottom = getPlannerWeekOffsetPercent(block.endMinutes, timeRange);
+
+  return {
+    '--planner-week-block-height': `${Math.max(bottom - top, 3.5)}%`,
+    '--planner-week-block-top': `${top}%`
+  } as CSSProperties;
+}
+
+function formatDeletedLessonPlanTimestamp(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short'
+  }).format(new Date(timestamp));
+}
+
 function createAssessmentTrackerDraft(defaultClassListId: string): AssessmentTrackerDraft {
   return {
     classListId: defaultClassListId,
@@ -12100,6 +14507,41 @@ function getPlannerEntry(snapshot: PlannerSnapshot, listId: string | null, dateK
   return snapshot.entriesByListId[getDashboardLayoutKey(listId)]?.[normalizedDate] ?? null;
 }
 
+function getPlannerEntriesForClassLists(snapshot: PlannerSnapshot, classLists: ClassList[]): LessonPlansPdfEntry[] {
+  return classLists
+    .flatMap((classList) => {
+      const entriesForList = snapshot.entriesByListId[getDashboardLayoutKey(classList.id)] ?? {};
+
+      return Object.entries(entriesForList).map(([dateKey, entry]) => {
+        const parsed = parseDateKey(dateKey);
+        const termSelection = getLessonPlanExportSchoolTermSelection(dateKey);
+        const termLabel = termSelection
+          ? `Term ${termSelection.term}, ${termSelection.year}`
+          : parsed
+            ? `School holidays, ${parsed.year}`
+            : 'School holidays';
+        const weekLabel = termSelection
+          ? `Term ${termSelection.term}, Week ${termSelection.week}, ${termSelection.year}`
+          : termLabel;
+
+        return {
+          classListId: classList.id,
+          className: classList.name,
+          dateKey,
+          dateLabel: formatLessonPlanExportDate(dateKey),
+          documentNames: entry.documents.map((document) => document.name),
+          plan: entry.plan,
+          schoolTerm: termSelection?.term ?? null,
+          schoolWeek: termSelection?.week ?? null,
+          termLabel,
+          weekLabel,
+          year: parsed?.year ?? new Date().getFullYear()
+        } satisfies LessonPlansPdfEntry;
+      });
+    })
+    .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+}
+
 function setPlannerDateForList(snapshot: PlannerSnapshot, listId: string | null, dateKey: string) {
   const normalizedDate = normalizeDateKey(dateKey) ?? getTodayDateKey();
 
@@ -12154,10 +14596,17 @@ function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnapshot) {
 
   const nextRaw = raw as {
     activeDateByListId?: Record<string, unknown>;
+    confirmLessonPlanMoves?: unknown;
+    deletedEntries?: unknown[];
     entriesByListId?: Record<string, Record<string, unknown>>;
   };
   const activeDateByListId: Record<string, string> = {};
   const entriesByListId: Record<string, Record<string, LessonPlanEntry>> = {};
+  const deletedEntries = Array.isArray(nextRaw.deletedEntries)
+    ? nextRaw.deletedEntries
+        .map((entry) => normalizeDeletedLessonPlanEntry(entry))
+        .filter((entry): entry is DeletedLessonPlanEntry => entry !== null)
+    : [];
 
   if (nextRaw.activeDateByListId && typeof nextRaw.activeDateByListId === 'object') {
     for (const [listId, dateValue] of Object.entries(nextRaw.activeDateByListId)) {
@@ -12197,6 +14646,11 @@ function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnapshot) {
 
   return {
     activeDateByListId,
+    confirmLessonPlanMoves:
+      typeof nextRaw.confirmLessonPlanMoves === 'boolean'
+        ? nextRaw.confirmLessonPlanMoves
+        : initialValue.confirmLessonPlanMoves,
+    deletedEntries,
     entriesByListId
   };
 }
@@ -12373,6 +14827,44 @@ function normalizeLessonPlanEntry(raw: unknown): LessonPlanEntry | null {
     documents,
     plan,
     updatedAt
+  };
+}
+
+function normalizeDeletedLessonPlanEntry(raw: unknown): DeletedLessonPlanEntry | null {
+  const entry = normalizeLessonPlanEntry(raw);
+
+  if (!entry || !raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const nextRaw = raw as {
+    classListId?: unknown;
+    className?: unknown;
+    dateKey?: unknown;
+    deletedAt?: unknown;
+    id?: unknown;
+    reason?: unknown;
+  };
+  const classListId = typeof nextRaw.classListId === 'string' ? nextRaw.classListId.trim() : '';
+  const className = typeof nextRaw.className === 'string' ? nextRaw.className.trim() : '';
+  const dateKey = typeof nextRaw.dateKey === 'string' ? normalizeDateKey(nextRaw.dateKey) : null;
+  const id = typeof nextRaw.id === 'string' ? nextRaw.id.trim() : '';
+
+  if (!classListId || !dateKey || !id) {
+    return null;
+  }
+
+  return {
+    ...entry,
+    classListId,
+    className: className || 'Class not set',
+    dateKey,
+    deletedAt:
+      typeof nextRaw.deletedAt === 'number' && Number.isFinite(nextRaw.deletedAt)
+        ? nextRaw.deletedAt
+        : Date.now(),
+    id,
+    reason: nextRaw.reason === 'replaced' ? 'replaced' : 'deleted'
   };
 }
 
