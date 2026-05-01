@@ -32,6 +32,7 @@ type TimerSnapshot = {
   lastCompletedAt: number | null;
 };
 type TimerSoundAlertKind = 'done' | 'half' | 'ten-percent';
+type TimerAlertPreferences = Pick<AppSettings, 'timerChimeEnabled' | 'timerVoiceEnabled'>;
 
 type ClassList = {
   id: string;
@@ -1057,11 +1058,15 @@ function speakTimerAlertWithBrowserVoice(message: string, kind: TimerSoundAlertK
     window.speechSynthesis.cancel();
     window.setTimeout(() => window.speechSynthesis.speak(utterance), 0);
   } catch {
-    // Speech is a bonus cue; the timer sound still carries the alert.
+    // Speech is optional and shouldn't block the visual timer state.
   }
 }
 
 function speakTimerAlert(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
+  if (!getInitialTimerAlertEnabled(TIMER_VOICE_ENABLED_SETTINGS_KEY)) {
+    return;
+  }
+
   const message = getTimerSpeechMessage(kind, alertRemainingMs);
   const speakWithBrowserVoice = () => speakTimerAlertWithBrowserVoice(message, kind);
   const speakTimerAlertWithNativeVoice = window.electronAPI?.speakTimerAlert;
@@ -1082,7 +1087,7 @@ function speakTimerAlert(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
     });
 }
 
-function playTimerSound(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
+function playTimerChime(kind: TimerSoundAlertKind) {
   try {
     const audioContext = getTimerAudioContext();
     void audioContext.resume();
@@ -1127,8 +1132,23 @@ function playTimerSound(kind: TimerSoundAlertKind, alertRemainingMs?: number) {
   } catch {
     // The visual timer state still completes even if sound playback is blocked.
   }
+}
 
-  window.setTimeout(() => speakTimerAlert(kind, alertRemainingMs), kind === 'done' ? 1050 : 700);
+function triggerTimerAlert(
+  kind: TimerSoundAlertKind,
+  alertPreferences: TimerAlertPreferences,
+  alertRemainingMs?: number
+) {
+  if (alertPreferences.timerChimeEnabled) {
+    playTimerChime(kind);
+  }
+
+  if (!alertPreferences.timerVoiceEnabled) {
+    return;
+  }
+
+  const speechDelayMs = alertPreferences.timerChimeEnabled ? (kind === 'done' ? 1050 : 700) : 0;
+  window.setTimeout(() => speakTimerAlert(kind, alertRemainingMs), speechDelayMs);
 }
 
 function useTimerSoundAlerts(
@@ -1136,7 +1156,17 @@ function useTimerSoundAlerts(
   remainingMs: number,
   setTimer: ReturnType<typeof usePersistentState<TimerSnapshot>>[1]
 ) {
+  const [appSettings] = useAppSettingsState();
   const isRunning = timer.endsAt !== null && remainingMs > 0;
+
+  useEffect(() => {
+    if (appSettings.timerVoiceEnabled || !('speechSynthesis' in window)) {
+      return;
+    }
+
+    activeTimerSpeechUtterance = null;
+    window.speechSynthesis.cancel();
+  }, [appSettings.timerVoiceEnabled]);
 
   useEffect(() => {
     if (!isRunning || timer.baseDurationMs <= 0) {
@@ -1152,14 +1182,14 @@ function useTimerSoundAlerts(
     const halfwayRemainingMs = timer.baseDurationMs * 0.5;
 
     if (remainingMs <= tenPercentRemainingMs && claimTimerSoundAlert(runKey, 'ten-percent')) {
-      playTimerSound('ten-percent', tenPercentRemainingMs);
+      triggerTimerAlert('ten-percent', appSettings, tenPercentRemainingMs);
       return;
     }
 
     if (remainingMs <= halfwayRemainingMs && claimTimerSoundAlert(runKey, 'half')) {
-      playTimerSound('half', halfwayRemainingMs);
+      triggerTimerAlert('half', appSettings, halfwayRemainingMs);
     }
-  }, [isRunning, remainingMs, timer]);
+  }, [appSettings, isRunning, remainingMs, timer]);
 
   useEffect(() => {
     if (!timer.endsAt || remainingMs !== 0) {
@@ -1168,7 +1198,7 @@ function useTimerSoundAlerts(
 
     const runKey = getTimerSoundRunKey(timer);
     if (runKey && claimTimerSoundAlert(runKey, 'done')) {
-      playTimerSound('done');
+      triggerTimerAlert('done', appSettings);
     }
 
     setTimer((current) =>
@@ -1181,7 +1211,7 @@ function useTimerSoundAlerts(
             lastCompletedAt: Date.now()
           }
     );
-  }, [remainingMs, setTimer, timer]);
+  }, [appSettings, remainingMs, setTimer, timer]);
 }
 
 function getCustomTimerDurationMs(customTimerMinutes: number) {
@@ -1346,9 +1376,31 @@ const fallbackAppUpdateState: AppUpdateState = {
   progressPercent: null,
   status: 'unsupported'
 };
+const TIMER_CHIME_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-chime-enabled';
+const TIMER_SPEECH_VOICE_SETTINGS_KEY = 'teacher-tools.timer-speech-voice';
+const TIMER_VOICE_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-voice-enabled';
+
+function getInitialAppSettingValue(key: string) {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return window.electronAPI?.getPersistentState?.(key)?.value;
+}
+
+function getInitialTimerSpeechVoice(): TimerSpeechVoice {
+  return getInitialAppSettingValue(TIMER_SPEECH_VOICE_SETTINGS_KEY) === 'female' ? 'female' : 'male';
+}
+
+function getInitialTimerAlertEnabled(key: string) {
+  return getInitialAppSettingValue(key) !== false;
+}
+
 const fallbackAppSettings: AppSettings = {
   launchAtLogin: false,
-  timerSpeechVoice: 'male'
+  timerChimeEnabled: getInitialTimerAlertEnabled(TIMER_CHIME_ENABLED_SETTINGS_KEY),
+  timerSpeechVoice: getInitialTimerSpeechVoice(),
+  timerVoiceEnabled: getInitialTimerAlertEnabled(TIMER_VOICE_ENABLED_SETTINGS_KEY)
 };
 
 const STABLE_BUTTON_LIFT_SELECTOR = [
@@ -2899,6 +2951,54 @@ function TeacherPopover() {
       });
   };
 
+  const handleTimerVoiceEnabledChange = (enabled: boolean) => {
+    const setTimerVoiceEnabled = window.electronAPI?.setTimerVoiceEnabled;
+
+    setAppSettings((current) => ({
+      ...current,
+      timerVoiceEnabled: enabled
+    }));
+
+    if (!setTimerVoiceEnabled) {
+      return;
+    }
+
+    void setTimerVoiceEnabled(enabled)
+      .then((settings) => {
+        setAppSettings(settings);
+      })
+      .catch(() => {
+        setAppSettings((current) => ({
+          ...current,
+          timerVoiceEnabled: !enabled
+        }));
+      });
+  };
+
+  const handleTimerChimeEnabledChange = (enabled: boolean) => {
+    const setTimerChimeEnabled = window.electronAPI?.setTimerChimeEnabled;
+
+    setAppSettings((current) => ({
+      ...current,
+      timerChimeEnabled: enabled
+    }));
+
+    if (!setTimerChimeEnabled) {
+      return;
+    }
+
+    void setTimerChimeEnabled(enabled)
+      .then((settings) => {
+        setAppSettings(settings);
+      })
+      .catch(() => {
+        setAppSettings((current) => ({
+          ...current,
+          timerChimeEnabled: !enabled
+        }));
+      });
+  };
+
   const closeColorModePalette = () => {
     setColorModePaletteTarget(null);
   };
@@ -4274,9 +4374,11 @@ function TeacherPopover() {
                         launchAtLogin={appSettings.launchAtLogin}
                         nextThemePreference={nextThemePreference}
                         onAppUpdateAction={handleAppUpdateAction}
+                        onTimerChimeEnabledChange={handleTimerChimeEnabledChange}
                         onLaunchAtLoginChange={handleLaunchAtLoginChange}
                         onThemePreferenceChange={() => setThemePreference(nextThemePreference)}
                         onTimerSpeechVoiceChange={handleTimerSpeechVoiceChange}
+                        onTimerVoiceEnabledChange={handleTimerVoiceEnabledChange}
                         onToggleBackgroundColor={(anchorRect) =>
                           toggleColorModePalette({
                             anchorRect,
@@ -4285,6 +4387,8 @@ function TeacherPopover() {
                         }
                         resolvedTheme={resolvedTheme}
                         themePreference={themePreference}
+                        timerChimeEnabled={appSettings.timerChimeEnabled}
+                        timerVoiceEnabled={appSettings.timerVoiceEnabled}
                         timerSpeechVoice={appSettings.timerSpeechVoice}
                       />
                     ) : null}
@@ -5278,12 +5382,16 @@ function SettingsPopover({
   launchAtLogin,
   nextThemePreference,
   onAppUpdateAction,
+  onTimerChimeEnabledChange,
   onLaunchAtLoginChange,
   onThemePreferenceChange,
   onTimerSpeechVoiceChange,
+  onTimerVoiceEnabledChange,
   onToggleBackgroundColor,
   resolvedTheme,
   themePreference,
+  timerChimeEnabled,
+  timerVoiceEnabled,
   timerSpeechVoice
 }: {
   appUpdate: AppUpdateState;
@@ -5302,12 +5410,16 @@ function SettingsPopover({
   launchAtLogin: boolean;
   nextThemePreference: ThemePreference;
   onAppUpdateAction: () => void;
+  onTimerChimeEnabledChange: (enabled: boolean) => void;
   onLaunchAtLoginChange: (enabled: boolean) => void;
   onThemePreferenceChange: () => void;
   onTimerSpeechVoiceChange: (voice: TimerSpeechVoice) => void;
+  onTimerVoiceEnabledChange: (enabled: boolean) => void;
   onToggleBackgroundColor: (anchorRect: DOMRect) => void;
   resolvedTheme: ThemeMode;
   themePreference: ThemePreference;
+  timerChimeEnabled: boolean;
+  timerVoiceEnabled: boolean;
   timerSpeechVoice: TimerSpeechVoice;
 }) {
   return (
@@ -5337,6 +5449,32 @@ function SettingsPopover({
           />
           <span aria-hidden="true" className="settings-toggle__switch" />
         </label>
+        <label className="settings-toggle">
+          <span className="settings-toggle__text">
+            <span className="settings-toggle__title">Timer voice alerts</span>
+            <span className="settings-toggle__copy">Speak halfway, 10% remaining, and time&apos;s up.</span>
+          </span>
+          <input
+            checked={timerVoiceEnabled}
+            disabled={!window.electronAPI?.setTimerVoiceEnabled}
+            onChange={(event) => onTimerVoiceEnabledChange(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span aria-hidden="true" className="settings-toggle__switch" />
+        </label>
+        <label className="settings-toggle">
+          <span className="settings-toggle__text">
+            <span className="settings-toggle__title">Timer chime alerts</span>
+            <span className="settings-toggle__copy">Play countdown chimes without stopping the timer.</span>
+          </span>
+          <input
+            checked={timerChimeEnabled}
+            disabled={!window.electronAPI?.setTimerChimeEnabled}
+            onChange={(event) => onTimerChimeEnabledChange(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span aria-hidden="true" className="settings-toggle__switch" />
+        </label>
         <div className="settings-row">
           <span className="settings-row__label">Timer voice</span>
           <div className="settings-row__cluster">
@@ -5346,7 +5484,7 @@ function SettingsPopover({
                 className={`text-toggle settings-voice-toggle ${
                   timerSpeechVoice === voice ? 'text-toggle--active' : ''
                 }`}
-                disabled={!window.electronAPI?.setTimerSpeechVoice}
+                disabled={!timerVoiceEnabled || !window.electronAPI?.setTimerSpeechVoice}
                 key={voice}
                 onClick={() => onTimerSpeechVoiceChange(voice)}
                 type="button"

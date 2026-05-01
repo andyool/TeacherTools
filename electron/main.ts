@@ -150,7 +150,9 @@ type AppUpdateState = {
 
 type AppSettings = {
   launchAtLogin: boolean;
+  timerChimeEnabled: boolean;
   timerSpeechVoice: TimerSpeechVoice;
+  timerVoiceEnabled: boolean;
 };
 
 type TimerSpeechVoice = 'female' | 'male';
@@ -214,7 +216,9 @@ const APP_ICON_SOURCE_FILENAME = 'overlay-dot.svg';
 const MAC_APP_ICON_FILENAME = 'icon.icns';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
+const TIMER_CHIME_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-chime-enabled';
 const TIMER_SPEECH_VOICE_SETTINGS_KEY = 'teacher-tools.timer-speech-voice';
+const TIMER_VOICE_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-voice-enabled';
 const WINDOW_STATE_SAVE_DELAY_MS = 350;
 const MAC_ICONSET_ENTRIES: Array<[filename: string, size: number]> = [
   ['icon_16x16.png', 16],
@@ -1973,14 +1977,49 @@ function normalizeTimerSpeechVoice(value: unknown): TimerSpeechVoice {
   return value === 'female' ? 'female' : 'male';
 }
 
+function normalizeTimerAlertEnabled(value: unknown) {
+  return value !== false;
+}
+
+function getTimerChimeEnabled() {
+  return normalizeTimerAlertEnabled(
+    ensurePersistentStateCache().valuesByKey[TIMER_CHIME_ENABLED_SETTINGS_KEY]
+  );
+}
+
 function getTimerSpeechVoice() {
   return normalizeTimerSpeechVoice(
     ensurePersistentStateCache().valuesByKey[TIMER_SPEECH_VOICE_SETTINGS_KEY]
   );
 }
 
+function getTimerVoiceEnabled() {
+  return normalizeTimerAlertEnabled(
+    ensurePersistentStateCache().valuesByKey[TIMER_VOICE_ENABLED_SETTINGS_KEY]
+  );
+}
+
+function setTimerChimeEnabled(enabled: unknown) {
+  setPersistentStateValue(TIMER_CHIME_ENABLED_SETTINGS_KEY, normalizeTimerAlertEnabled(enabled));
+  broadcastAppSettings();
+  return getAppSettings();
+}
+
 function setTimerSpeechVoice(voice: unknown) {
   setPersistentStateValue(TIMER_SPEECH_VOICE_SETTINGS_KEY, normalizeTimerSpeechVoice(voice));
+  broadcastAppSettings();
+  return getAppSettings();
+}
+
+function setTimerVoiceEnabled(enabled: unknown) {
+  const isEnabled = normalizeTimerAlertEnabled(enabled);
+
+  setPersistentStateValue(TIMER_VOICE_ENABLED_SETTINGS_KEY, isEnabled);
+  if (!isEnabled && activeTimerSpeechProcess) {
+    activeTimerSpeechProcess.kill();
+    activeTimerSpeechProcess = null;
+  }
+
   broadcastAppSettings();
   return getAppSettings();
 }
@@ -2285,12 +2324,18 @@ function clearBlockedLaunchAtLogin() {
 function getAppSettings(): AppSettings {
   return {
     launchAtLogin: getLaunchAtLoginSettings().openAtLogin,
-    timerSpeechVoice: getTimerSpeechVoice()
+    timerChimeEnabled: getTimerChimeEnabled(),
+    timerSpeechVoice: getTimerSpeechVoice(),
+    timerVoiceEnabled: getTimerVoiceEnabled()
   };
 }
 
 function speakTimerText(text: unknown) {
   if (typeof text !== 'string' || !text.trim()) {
+    return false;
+  }
+
+  if (!getTimerVoiceEnabled()) {
     return false;
   }
 
@@ -3056,8 +3101,16 @@ ipcMain.handle('app-settings:set-launch-at-login', (_event, enabled: unknown) =>
   return setLaunchAtLogin(enabled === true);
 });
 
+ipcMain.handle('app-settings:set-timer-chime-enabled', (_event, enabled: unknown) => {
+  return setTimerChimeEnabled(enabled);
+});
+
 ipcMain.handle('app-settings:set-timer-speech-voice', (_event, voice: unknown) => {
   return setTimerSpeechVoice(voice);
+});
+
+ipcMain.handle('app-settings:set-timer-voice-enabled', (_event, enabled: unknown) => {
+  return setTimerVoiceEnabled(enabled);
 });
 
 ipcMain.handle('timer:speak', (_event, text: unknown) => {

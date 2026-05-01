@@ -23,7 +23,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
   setLaunchAtLogin: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-launch-at-login', enabled),
+  setTimerChimeEnabled: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-timer-chime-enabled', enabled),
   setTimerSpeechVoice: (voice: string) => ipcRenderer.invoke('app-settings:set-timer-speech-voice', voice),
+  setTimerVoiceEnabled: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-timer-voice-enabled', enabled),
   onAppSettingsChanged: (listener: (settings: unknown) => void) => {
     const handler = (_event: unknown, settings: unknown) => {
       listener(settings);
