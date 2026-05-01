@@ -4,7 +4,7 @@ import electronUpdater, {
   type ProgressInfo,
   type UpdateInfo
 } from 'electron-updater';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -198,6 +198,7 @@ let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let widgetPopoutBoundsCache: Partial<Record<WidgetPopoutId, Partial<Bounds>>> | null = null;
 let widgetPopoutBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let activeTimerSpeechProcess: ChildProcess | null = null;
+let appIconImage: Electron.NativeImage | null = null;
 let appUpdateState: AppUpdateState = {
   availableVersion: null,
   currentVersion: app.getVersion(),
@@ -208,10 +209,25 @@ let appUpdateState: AppUpdateState = {
 
 const APP_UPDATE_CACHE_DIR_NAME = 'teachertools-overlay-updater';
 const APP_UPDATE_LOG_FILENAME = 'app-update.log';
+const APP_ICON_FILENAME = 'app-icon.png';
+const APP_ICON_SOURCE_FILENAME = 'overlay-dot.svg';
+const MAC_APP_ICON_FILENAME = 'icon.icns';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
 const TIMER_SPEECH_VOICE_SETTINGS_KEY = 'teacher-tools.timer-speech-voice';
 const WINDOW_STATE_SAVE_DELAY_MS = 350;
+const MAC_ICONSET_ENTRIES: Array<[filename: string, size: number]> = [
+  ['icon_16x16.png', 16],
+  ['icon_16x16@2x.png', 32],
+  ['icon_32x32.png', 32],
+  ['icon_32x32@2x.png', 64],
+  ['icon_128x128.png', 128],
+  ['icon_128x128@2x.png', 256],
+  ['icon_256x256.png', 256],
+  ['icon_256x256@2x.png', 512],
+  ['icon_512x512.png', 512],
+  ['icon_512x512@2x.png', 1024]
+];
 
 function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
   return (
@@ -228,24 +244,118 @@ function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
 }
 
 function createTrayIcon() {
-  const svg = `
-    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(32 32) rotate(90) scale(28)">
-          <stop stop-color="#F8FFF6" stop-opacity="0.98" />
-          <stop offset="0.42" stop-color="#71F2C4" stop-opacity="0.92" />
-          <stop offset="0.8" stop-color="#0B8F85" stop-opacity="0.4" />
-          <stop offset="1" stop-color="#0B8F85" stop-opacity="0" />
-        </radialGradient>
-      </defs>
-      <circle cx="32" cy="32" r="28" fill="url(#glow)" />
-      <circle cx="32" cy="32" r="11" fill="#F9FFF6" />
-    </svg>
-  `;
+  return createAppIcon(20);
+}
 
-  return nativeImage
-    .createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`)
-    .resize({ width: 20, height: 20 });
+function getAppIconPath() {
+  return path.join(__dirname, `../assets/${APP_ICON_FILENAME}`);
+}
+
+function getAppIconSourcePath() {
+  return path.join(__dirname, `../assets/${APP_ICON_SOURCE_FILENAME}`);
+}
+
+function getMacAppIconPath() {
+  return path.join(__dirname, `../assets/${MAC_APP_ICON_FILENAME}`);
+}
+
+function getAppIconImage() {
+  if (appIconImage && !appIconImage.isEmpty()) {
+    return appIconImage;
+  }
+
+  const loadedIcon = nativeImage.createFromPath(getAppIconPath());
+  appIconImage = loadedIcon.isEmpty() ? null : loadedIcon;
+  return appIconImage;
+}
+
+function createAppIcon(size?: number) {
+  const icon = getAppIconImage();
+  if (!icon) {
+    return nativeImage.createEmpty();
+  }
+
+  return typeof size === 'number' ? icon.resize({ width: size, height: size }) : icon;
+}
+
+async function renderAppIconSourceImage() {
+  const sourceSvg = fs.readFileSync(getAppIconSourcePath(), 'utf8');
+  const renderWindow = new BrowserWindow({
+    width: OVERLAY_SIZE,
+    height: OVERLAY_SIZE,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000'
+  });
+
+  const html = `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        html, body {
+          margin: 0;
+          width: 100%;
+          height: 100%;
+          background: transparent;
+        }
+
+        body {
+          display: grid;
+          place-items: center;
+        }
+
+        svg {
+          display: block;
+          width: ${OVERLAY_SIZE}px;
+          height: ${OVERLAY_SIZE}px;
+        }
+      </style>
+    </head>
+    <body>${sourceSvg}</body>
+  </html>`;
+
+  try {
+    await renderWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    return await renderWindow.webContents.capturePage();
+  } finally {
+    if (!renderWindow.isDestroyed()) {
+      renderWindow.destroy();
+    }
+  }
+}
+
+async function generateAppIconAssets() {
+  const sourceImage = await renderAppIconSourceImage();
+  if (sourceImage.isEmpty()) {
+    throw new Error(`Could not load icon source from ${getAppIconSourcePath()}`);
+  }
+
+  fs.writeFileSync(getAppIconPath(), sourceImage.resize({ width: 1024, height: 1024 }).toPNG());
+
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'teachertools-iconset-'));
+  const iconsetPath = path.join(tempRoot, 'icon.iconset');
+
+  try {
+    fs.mkdirSync(iconsetPath, { recursive: true });
+
+    for (const [filename, size] of MAC_ICONSET_ENTRIES) {
+      fs.writeFileSync(
+        path.join(iconsetPath, filename),
+        sourceImage.resize({ width: size, height: size }).toPNG()
+      );
+    }
+
+    execFileSync('iconutil', ['--convert', 'icns', '--output', getMacAppIconPath(), iconsetPath]);
+  } finally {
+    fs.rmSync(tempRoot, { force: true, recursive: true });
+  }
 }
 
 function getRendererUrl(route: string) {
@@ -2257,6 +2367,7 @@ function createOverlayWindow() {
     movable: true,
     focusable: true,
     hasShadow: false,
+    icon: createAppIcon(),
     skipTaskbar: !shouldUseDock,
     fullscreenable: false,
     backgroundColor: '#00000000',
@@ -2313,6 +2424,7 @@ function createPopoverWindow() {
     focusable: true,
     show: false,
     hasShadow: false,
+    icon: createAppIcon(),
     skipTaskbar: true,
     fullscreenable: false,
     backgroundColor: '#00000000',
@@ -2387,6 +2499,7 @@ function createBuilderWindow() {
     focusable: true,
     show: false,
     hasShadow: false,
+    icon: createAppIcon(),
     skipTaskbar: true,
     fullscreenable: false,
     backgroundColor: '#00000000',
@@ -2457,6 +2570,7 @@ function createWidgetPickerWindow() {
     focusable: true,
     show: false,
     hasShadow: false,
+    icon: createAppIcon(),
     skipTaskbar: true,
     fullscreenable: false,
     backgroundColor: '#00000000',
@@ -2536,6 +2650,7 @@ function createWidgetPopoutWindow(widgetId: WidgetPopoutId) {
     focusable: true,
     show: false,
     hasShadow: false,
+    icon: createAppIcon(),
     skipTaskbar: true,
     fullscreenable: false,
     backgroundColor: '#00000000',
@@ -2835,8 +2950,28 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  if (process.env.TEACHERTOOLS_GENERATE_ICONS === '1') {
+    void generateAppIconAssets()
+      .then(() => {
+        console.log(`Generated ${path.relative(process.cwd(), getAppIconPath())}`);
+        if (process.platform === 'darwin') {
+          console.log(`Generated ${path.relative(process.cwd(), getMacAppIconPath())}`);
+        }
+        app.exit(0);
+      })
+      .catch((error) => {
+        console.error(error);
+        app.exit(1);
+      });
+    return;
+  }
+
   if (shouldUseDock) {
     app.setActivationPolicy('regular');
+    const dockIcon = createAppIcon(512);
+    if (!dockIcon.isEmpty()) {
+      app.dock.setIcon(dockIcon);
+    }
     app.dock.show();
   }
 
