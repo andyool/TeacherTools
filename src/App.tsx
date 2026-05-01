@@ -8,7 +8,7 @@ import {
   useState
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { CSSProperties, Ref, RefObject } from 'react';
+import type { CSSProperties, ReactNode, Ref, RefObject } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type {
@@ -6240,7 +6240,8 @@ function PlannerWidgetContent({
     : planText.trim() || documents.length > 0
       ? `Saved plan for ${selectedList.name} on ${formatLongDate(selectedDate)}.`
       : `Select a date and start planning ${selectedList.name}.`;
-  const showWeeklyPlannerActionInToolbar = weeklyPlannerActionPlacement === 'toolbar';
+  const showWeeklyPlannerActionInToolbar =
+    weeklyPlannerActionPlacement === 'toolbar' && Boolean(onOpenWeeklyPlanner);
 
   return (
     <>
@@ -6263,35 +6264,38 @@ function PlannerWidgetContent({
               disabled={!selectedList}
               id="lesson-plan-date"
               label="Lesson date"
+              labelAction={
+                showWeeklyPlannerActionInToolbar ? (
+                  <div className="planner-widget__top-actions">
+                    <button
+                      aria-label="Select today"
+                      className="planner-widget__calendar-action planner-widget__calendar-action--today"
+                      disabled={!selectedList}
+                      onClick={() => onSelectDate(getTodayDateKey())}
+                      type="button"
+                    >
+                      Today
+                    </button>
+                    <button
+                      aria-label={weeklyPlannerActionAriaLabel}
+                      className="planner-widget__calendar-action planner-widget__calendar-action--week"
+                      onClick={onOpenWeeklyPlanner}
+                      type="button"
+                    >
+                      {weeklyPlannerActionLabel}
+                    </button>
+                  </div>
+                ) : undefined
+              }
               onChange={onSelectDate}
               value={selectedDate}
             />
           </div>
           <div className="planner-widget__action-row">
             <button
-              aria-label="Select today"
-              className="secondary-link button-tone--utility planner-widget__action-button planner-widget__today"
-              disabled={!selectedList}
-              onClick={() => onSelectDate(getTodayDateKey())}
-              type="button"
-            >
-              <span className="planner-widget__action-label">Today</span>
-            </button>
-            {showWeeklyPlannerActionInToolbar ? (
-              <button
-                aria-label={weeklyPlannerActionAriaLabel}
-                className="secondary-link button-tone--action planner-widget__action-button planner-widget__week"
-                data-compact-icon={weeklyPlannerActionCompactIcon}
-                onClick={onOpenWeeklyPlanner}
-                type="button"
-              >
-                <span className="planner-widget__action-label">{weeklyPlannerActionLabel}</span>
-              </button>
-            ) : null}
-            <button
               aria-haspopup="dialog"
               aria-label="Open deleted lesson plans"
-              className="secondary-link button-tone--utility planner-widget__action-button planner-widget__deleted"
+              className="danger-link planner-widget__action-button planner-widget__deleted"
               data-compact-icon="Del"
               onClick={() => setIsDeletedDialogOpen(true)}
               type="button"
@@ -6311,20 +6315,22 @@ function PlannerWidgetContent({
             >
               <span className="planner-widget__action-label">Export PDF</span>
             </button>
-            <button
-              aria-label="Attach lesson files"
-              className="primary-link window-spawn-button planner-widget__action-button planner-widget__attach"
-              disabled={!selectedList}
-              onClick={() => void onAttachDocuments()}
-              type="button"
-            >
-              <span className="planner-widget__action-label">Attach files</span>
-            </button>
           </div>
         </div>
 
         <div className="planner-widget__copy">
-          <p className="helper-text">{helperCopy}</p>
+          <div className="planner-widget__copy-row">
+            <p className="helper-text">{helperCopy}</p>
+            <button
+              aria-label="Attach lesson files"
+              className="planner-widget__calendar-action planner-widget__calendar-action--attach planner-widget__copy-action window-spawn-button"
+              disabled={!selectedList}
+              onClick={() => void onAttachDocuments()}
+              type="button"
+            >
+              Attach files
+            </button>
+          </div>
           {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
         </div>
 
@@ -7274,7 +7280,7 @@ function WeeklyLessonPlannerContent({
 
           <div className="planner-week__actions">
             <button
-              className="secondary-link button-tone--selection"
+              className="danger-link"
               onClick={() => setIsDeletedDialogOpen(true)}
               type="button"
             >
@@ -8517,12 +8523,14 @@ function HomeworkAssessmentTrackerWidgetContent({
 function TrackerDateField({
   disabled = false,
   id,
+  labelAction,
   label,
   onChange,
   value
 }: {
   disabled?: boolean;
   id: string;
+  labelAction?: ReactNode;
   label: string;
   onChange: (dateKey: string) => void;
   value: string;
@@ -8635,9 +8643,12 @@ function TrackerDateField({
 
   return (
     <div className="tracker-date-field" ref={rootRef}>
-      <label className="field-label" htmlFor={id}>
-        {label}
-      </label>
+      <div className="tracker-date-field__header">
+        <label className="field-label" htmlFor={id}>
+          {label}
+        </label>
+        {labelAction ? <div className="tracker-date-field__header-action">{labelAction}</div> : null}
+      </div>
       <div className="tracker-date-field__control">
         <input
           aria-expanded={isOpen}
