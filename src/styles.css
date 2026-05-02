@@ -245,6 +245,8 @@ textarea {
 .widget-card__header--window,
 .widget-card__header--window .widget-card__title-group,
 .widget-card__header--window .widget-card__title-copy,
+.widget-card__header--window .widget-card__title-row,
+.widget-card__header--window .widget-card__title-icon,
 .widget-card__header--window .widget-card__title {
   -webkit-app-region: drag;
 }
@@ -359,6 +361,14 @@ textarea {
   --control-overlay-top: rgba(204, 227, 242, 0.2);
   --control-overlay-bottom: rgba(70, 110, 150, 0.08);
   --text-primary: #10243a;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.42),
+    0 12px 24px rgba(36, 74, 108, 0.12),
+    0 22px 42px rgba(36, 74, 108, 0.13);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.26))
+    drop-shadow(0 12px 24px rgba(36, 74, 108, 0.12))
+    drop-shadow(0 22px 42px rgba(36, 74, 108, 0.13));
   --text-secondary: rgba(16, 36, 58, 0.78);
   --button-neutral-text: #506f8a;
   --button-neutral-soft: rgba(80, 111, 138, 0.17);
@@ -437,6 +447,14 @@ textarea {
   --control-overlay-top: rgba(238, 246, 255, 0.024);
   --control-overlay-bottom: rgba(0, 0, 0, 0.08);
   --text-primary: #f6fbff;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 26px rgba(0, 0, 0, 0.22),
+    0 24px 44px rgba(0, 0, 0, 0.26);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.07))
+    drop-shadow(0 12px 26px rgba(0, 0, 0, 0.22))
+    drop-shadow(0 24px 44px rgba(0, 0, 0, 0.26));
   --text-secondary: rgba(236, 244, 255, 0.9);
   --button-neutral-text: #bbd5f1;
   --button-neutral-soft: rgba(187, 213, 241, 0.18);
@@ -511,6 +529,14 @@ textarea {
   --control-overlay-top: rgba(255, 255, 255, 0);
   --control-overlay-bottom: rgba(255, 255, 255, 0);
   --text-primary: #241a39;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3),
+    0 11px 22px rgba(47, 36, 69, 0.1),
+    0 20px 38px rgba(47, 36, 69, 0.12);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.2))
+    drop-shadow(0 11px 22px rgba(47, 36, 69, 0.1))
+    drop-shadow(0 20px 38px rgba(47, 36, 69, 0.12));
   --text-secondary: rgba(36, 26, 57, 0.72);
   --button-neutral-text: #241a39;
   --button-neutral-soft: rgba(36, 26, 57, 0.1);
@@ -2204,6 +2230,13 @@ textarea {
   gap: 0;
 }
 
+.widget-card__title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.44em;
+}
+
 .widget-card__meta {
   min-width: 0;
   display: inline-flex;
@@ -2236,10 +2269,22 @@ textarea {
 
 .widget-card__title {
   color: var(--text-primary);
-  font-size: 0.92rem;
-  line-height: 1.1;
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+  font-size: 1.22rem;
+  line-height: 1.03;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  text-shadow: var(--widget-title-shadow);
+}
+
+.widget-card__title-icon {
+  flex: 0 0 auto;
+  width: 1.04em;
+  height: 1.04em;
+  color: var(--text-primary);
+  filter: var(--widget-title-icon-shadow);
 }
 
 .widget-card__body-shell {
@@ -3365,7 +3410,23 @@ textarea {
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__title,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__title,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .widget-card__title {
-  font-size: 0.92rem;
+  line-height: 1.03;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .widget-card__title {
+  font-size: 1.1rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .widget-card__title {
+  font-size: 1.18rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .widget-card__title {
+  font-size: 1.28rem;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .widget-card__title {
+  font-size: 1.4rem;
 }
 
 .dashboard-shell .widget-card[data-widget-id='homework-assessment'] .widget-card__title-group {
@@ -3390,20 +3451,24 @@ textarea {
   white-space: normal;
 }
 
+.widget-card[data-widget-id='homework-assessment'] .widget-card__title-row {
+  align-items: flex-start;
+}
+
 .dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='homework-assessment'] .widget-card__title {
-  font-size: 0.58rem;
+  font-size: 0.8rem;
 }
 
 .dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='homework-assessment'] .widget-card__title {
-  font-size: 0.64rem;
+  font-size: 0.9rem;
 }
 
 .dashboard-shell .widget-card[data-size-tier='3'][data-widget-id='homework-assessment'] .widget-card__title {
-  font-size: 0.72rem;
+  font-size: 1rem;
 }
 
 .dashboard-shell .widget-card[data-size-tier='4'][data-widget-id='homework-assessment'] .widget-card__title {
-  font-size: 0.82rem;
+  font-size: 1.12rem;
 }
 
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .badge,

@@ -200,6 +200,7 @@ let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let widgetPopoutBoundsCache: Partial<Record<WidgetPopoutId, Partial<Bounds>>> | null = null;
 let widgetPopoutBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let activeTimerSpeechProcess: ChildProcess | null = null;
+let cachedAvailableMacSayVoices: Set<string> | null = null;
 let appIconImage: Electron.NativeImage | null = null;
 let appUpdateState: AppUpdateState = {
   availableVersion: null,
@@ -213,6 +214,10 @@ const APP_UPDATE_CACHE_DIR_NAME = 'teachertools-overlay-updater';
 const APP_UPDATE_LOG_FILENAME = 'app-update.log';
 const APP_ICON_FILENAME = 'app-icon.png';
 const APP_ICON_SOURCE_FILENAME = 'overlay-dot.svg';
+const TIMER_MAC_VOICE_CANDIDATES: Record<TimerSpeechVoice, string[]> = {
+  female: ['Samantha', 'Karen', 'Flo (English (US))', 'Shelley (English (US))'],
+  male: ['Daniel', 'Reed (English (US))', 'Eddy (English (US))', 'Ralph', 'Albert', 'Alex']
+};
 const MAC_APP_ICON_FILENAME = 'icon.icns';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
@@ -1981,6 +1986,42 @@ function normalizeTimerAlertEnabled(value: unknown) {
   return value !== false;
 }
 
+function getAvailableMacSayVoices() {
+  if (cachedAvailableMacSayVoices) {
+    return cachedAvailableMacSayVoices;
+  }
+
+  try {
+    const voiceList = execFileSync('say', ['-v', '?'], {
+      encoding: 'utf8'
+    });
+    const availableVoices = new Set(
+      voiceList
+        .split(/\r?\n/u)
+        .map((line) => line.match(/^(.+?)\s{2,}/u)?.[1]?.trim() ?? '')
+        .filter(Boolean)
+    );
+
+    cachedAvailableMacSayVoices = availableVoices;
+    return availableVoices;
+  } catch {
+    cachedAvailableMacSayVoices = new Set();
+    return cachedAvailableMacSayVoices;
+  }
+}
+
+function getMacTimerSpeechVoiceName(voice: TimerSpeechVoice) {
+  const availableVoices = getAvailableMacSayVoices();
+
+  for (const candidate of TIMER_MAC_VOICE_CANDIDATES[voice]) {
+    if (availableVoices.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return voice === 'female' ? 'Samantha' : 'Daniel';
+}
+
 function getTimerChimeEnabled() {
   return normalizeTimerAlertEnabled(
     ensurePersistentStateCache().valuesByKey[TIMER_CHIME_ENABLED_SETTINGS_KEY]
@@ -2351,7 +2392,7 @@ function speakTimerText(text: unknown) {
       activeTimerSpeechProcess = null;
     }
 
-    const voiceName = getTimerSpeechVoice() === 'female' ? 'Samantha' : 'Alex';
+    const voiceName = getMacTimerSpeechVoiceName(getTimerSpeechVoice());
     const speechProcess = spawn('say', ['-v', voiceName, '-r', '175', spokenText], {
       stdio: 'ignore'
     });
