@@ -5014,6 +5014,12 @@ body[data-window-resizing='true'] .window-stage * {
   min-width: 0;
 }
 
+.planner-documents__header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .planner-widget__meta {
   gap: 5px;
 }
@@ -5127,9 +5133,17 @@ body[data-window-resizing='true'] .window-stage * {
   min-width: 0;
 }
 
-.planner-widget__copy-action {
+.planner-documents__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: -1px;
+}
+
+.planner-documents__attach-action {
   flex: 0 0 auto;
-  margin-left: auto;
 }
 
 .lesson-plan-export-dialog__backdrop {
@@ -6819,7 +6833,7 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .planner-documents {
-  gap: 8px;
+  gap: 4px;
   width: 100%;
   max-width: 100%;
 }

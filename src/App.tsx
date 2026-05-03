@@ -6608,15 +6608,6 @@ function PlannerWidgetContent({
         <div className="planner-widget__copy">
           <div className="planner-widget__copy-row">
             <p className="helper-text">{helperCopy}</p>
-            <button
-              aria-label="Attach lesson files"
-              className="planner-widget__calendar-action planner-widget__calendar-action--attach planner-widget__copy-action window-spawn-button"
-              disabled={!selectedList}
-              onClick={() => void onAttachDocuments()}
-              type="button"
-            >
-              Attach files
-            </button>
           </div>
           {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
         </div>
@@ -6638,10 +6629,21 @@ function PlannerWidgetContent({
 
         <div className="planner-documents">
           <div className="planner-documents__header">
-            <div>
+            <div className="planner-documents__header-copy">
               <span className="field-label">Documents</span>
               <p className="helper-text">Attach files from your computer and reopen them from here.</p>
             </div>
+          </div>
+          <div className="planner-documents__toolbar">
+            <button
+              aria-label="Attach lesson files"
+              className="planner-widget__calendar-action planner-widget__calendar-action--attach planner-documents__attach-action window-spawn-button"
+              disabled={!selectedList}
+              onClick={() => void onAttachDocuments()}
+              type="button"
+            >
+              Attach files
+            </button>
           </div>
 
           {documents.length > 0 ? (
