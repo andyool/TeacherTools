@@ -9752,3 +9752,22 @@ body[data-window-resizing='true'] .window-stage * {
     inset 0.5px 0.5px 0 color-mix(in srgb, var(--surface-bezel-light) 64%, transparent),
     inset 0 0 0 0.5px color-mix(in srgb, var(--surface-bezel-line) 44%, transparent);
 }
+
+.tracker-date-field__control {
+  width: 100%;
+  min-width: 0;
+}
+
+.tracker-date-field__input {
+  display: block;
+  min-width: 0;
+}
+
+.tracker-date-field__button {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin: 0;
+}
