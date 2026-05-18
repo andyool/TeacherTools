@@ -1,0 +1,70 @@
+Date : 2026-05-18 14:42:50
+Directory : /Users/andreasbeerli/TeacherTools
+Total : 28 files,  35775 codes, 37 comments, 3932 blanks, all 39744 lines
+
+Languages
++--------------------+------------+------------+------------+------------+------------+
+| language           | files      | code       | comment    | blank      | total      |
++--------------------+------------+------------+------------+------------+------------+
+| TypeScript JSX     |          2 |     15,981 |         10 |      1,915 |     17,906 |
+| PostCSS            |          1 |      8,566 |          0 |      1,208 |      9,774 |
+| JSON               |          3 |      6,252 |          0 |          3 |      6,255 |
+| TypeScript         |          6 |      3,555 |          7 |        577 |      4,139 |
+| JavaScript         |          9 |      1,011 |         20 |        168 |      1,199 |
+| YAML               |          1 |        132 |          0 |         26 |        158 |
+| HTML               |          2 |        118 |          0 |          4 |        122 |
+| Markdown           |          2 |         83 |          0 |         29 |        112 |
+| XML                |          1 |         51 |          0 |          1 |         52 |
+| JSON with Comments |          1 |         26 |          0 |          1 |         27 |
++--------------------+------------+------------+------------+------------+------------+
+
+Directories
++---------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                      | files      | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                         |         28 |     35,775 |         37 |      3,932 |     39,744 |
+| . (Files)                                                                 |          8 |      6,633 |         18 |         33 |      6,684 |
+| .github                                                                   |          2 |        159 |          0 |         30 |        189 |
+| .github (Files)                                                           |          1 |         27 |          0 |          4 |         31 |
+| .github/workflows                                                         |          1 |        132 |          0 |         26 |        158 |
+| assets                                                                    |          1 |         51 |          0 |          1 |         52 |
+| docs                                                                      |          1 |        103 |          0 |          3 |        106 |
+| electron                                                                  |          2 |      2,957 |          7 |        473 |      3,437 |
+| scripts                                                                   |          7 |        750 |          2 |        167 |        919 |
+| src                                                                       |          7 |     25,122 |         10 |      3,225 |     28,357 |
++---------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++---------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| filename                                                                  | language           | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| /Users/andreasbeerli/TeacherTools/.github/copilot-instructions.md         | Markdown           |         27 |          0 |          4 |         31 |
+| /Users/andreasbeerli/TeacherTools/.github/workflows/release.yml           | YAML               |        132 |          0 |         26 |        158 |
+| /Users/andreasbeerli/TeacherTools/README.md                               | Markdown           |         56 |          0 |         25 |         81 |
+| /Users/andreasbeerli/TeacherTools/assets/overlay-dot.svg                  | XML                |         51 |          0 |          1 |         52 |
+| /Users/andreasbeerli/TeacherTools/docs/index.html                         | HTML               |        103 |          0 |          3 |        106 |
+| /Users/andreasbeerli/TeacherTools/electron/main.ts                        | TypeScript         |      2,884 |          7 |        466 |      3,357 |
+| /Users/andreasbeerli/TeacherTools/electron/preload.cts                    | TypeScript         |         73 |          0 |          7 |         80 |
+| /Users/andreasbeerli/TeacherTools/index.html                              | HTML               |         15 |          0 |          1 |         16 |
+| /Users/andreasbeerli/TeacherTools/main.js                                 | JavaScript         |        260 |         18 |          0 |        278 |
+| /Users/andreasbeerli/TeacherTools/package-lock.json                       | JSON               |      6,105 |          0 |          1 |      6,106 |
+| /Users/andreasbeerli/TeacherTools/package.json                            | JSON               |        120 |          0 |          1 |        121 |
+| /Users/andreasbeerli/TeacherTools/scripts/create-mac-self-signed-cert.mjs | JavaScript         |        108 |          0 |         14 |        122 |
+| /Users/andreasbeerli/TeacherTools/scripts/dev-electron.mjs                | JavaScript         |        235 |          2 |         57 |        294 |
+| /Users/andreasbeerli/TeacherTools/scripts/release-auto.mjs                | JavaScript         |         94 |          0 |         27 |        121 |
+| /Users/andreasbeerli/TeacherTools/scripts/run-dev.mjs                     | JavaScript         |        150 |          0 |         30 |        180 |
+| /Users/andreasbeerli/TeacherTools/scripts/sign-mac-adhoc.mjs              | JavaScript         |         94 |          0 |         20 |        114 |
+| /Users/andreasbeerli/TeacherTools/scripts/start-electron.mjs              | JavaScript         |         37 |          0 |         10 |         47 |
+| /Users/andreasbeerli/TeacherTools/scripts/verify-mac-update-signature.mjs | JavaScript         |         32 |          0 |          9 |         41 |
+| /Users/andreasbeerli/TeacherTools/src/App.tsx                             | TypeScript JSX     |     15,972 |         10 |      1,913 |     17,895 |
+| /Users/andreasbeerli/TeacherTools/src/electron-types.js                   | JavaScript         |          1 |          0 |          1 |          2 |
+| /Users/andreasbeerli/TeacherTools/src/electron-types.ts                   | TypeScript         |        149 |          0 |         17 |        166 |
+| /Users/andreasbeerli/TeacherTools/src/electron.d.ts                       | TypeScript         |          7 |          0 |          3 |         10 |
+| /Users/andreasbeerli/TeacherTools/src/main.tsx                            | TypeScript JSX     |          9 |          0 |          2 |         11 |
+| /Users/andreasbeerli/TeacherTools/src/qrcode.ts                           | TypeScript         |        418 |          0 |         81 |        499 |
+| /Users/andreasbeerli/TeacherTools/src/styles.css                          | PostCSS            |      8,566 |          0 |      1,208 |      9,774 |
+| /Users/andreasbeerli/TeacherTools/tsconfig.json                           | JSON with Comments |         26 |          0 |          1 |         27 |
+| /Users/andreasbeerli/TeacherTools/tsconfig.node.json                      | JSON               |         27 |          0 |          1 |         28 |
+| /Users/andreasbeerli/TeacherTools/vite.config.ts                          | TypeScript         |         24 |          0 |          3 |         27 |
+| Total                                                                     |                    |     35,775 |         37 |      3,932 |     39,744 |
++---------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+

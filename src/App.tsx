@@ -861,8 +861,9 @@ function getColorModePanelStyle(
   const swatch = getColorModeSwatch(preferences.backgroundColorId);
 
   return {
+    '--panel-fill': swatch.panelTop,
     '--panel-fill-top': swatch.panelTop,
-    '--panel-fill-bottom': swatch.panelBottom,
+    '--panel-fill-bottom': swatch.panelTop,
     '--panel-border': swatch.panelBorder,
     '--panel-bottom-edge': hexToRgba(swatch.panelBorder, 0.18)
   } as CSSProperties;
@@ -1468,6 +1469,7 @@ const STABLE_BUTTON_LIFT_SELECTOR = [
 const STABLE_BUTTON_STRONG_LIFT_SELECTOR =
   '.window-spawn-button,[data-window-spawn-button="true"],.tracker-date-field__button';
 const STABLE_BUTTON_LIFT_CLASS = 'button-lift-stable';
+const REFLECTIVE_SURFACE_SELECTOR = '.widget-card';
 
 function returnToTeacherTools() {
   window.electronAPI?.returnToTeacherTools();
@@ -1477,6 +1479,7 @@ function App() {
   const [context, setContext] = useState<DesktopWindowContext | null>(null);
 
   useStableButtonLift();
+  useReflectiveSurfacePointerTracking();
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -1671,6 +1674,297 @@ function useStableButtonLift() {
       document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('pointerup', handlePointerUp, true);
       window.removeEventListener('blur', clearActiveButton);
+    };
+  }, []);
+}
+
+function useReflectiveSurfacePointerTracking() {
+  useEffect(() => {
+    let activeSurface: HTMLElement | null = null;
+    let activeSurfaceRect: DOMRect | null = null;
+    let pendingEvent: PointerEvent | null = null;
+    let animationFrame = 0;
+
+    const getCumulativeCssZoom = (element: HTMLElement) => {
+      let zoom = 1;
+      let current: HTMLElement | null = element;
+
+      while (current) {
+        const value = Number.parseFloat(window.getComputedStyle(current).zoom || '1');
+
+        if (Number.isFinite(value) && value > 0) {
+          zoom *= value;
+        }
+
+        current = current.parentElement;
+      }
+
+      return zoom;
+    };
+
+    const getVisualRect = (rect: DOMRect, element: HTMLElement) => {
+      const zoom = getCumulativeCssZoom(element);
+
+      return {
+        bottom: rect.bottom * zoom,
+        height: rect.height * zoom,
+        left: rect.left * zoom,
+        right: rect.right * zoom,
+        top: rect.top * zoom,
+        width: rect.width * zoom
+      };
+    };
+
+    const resetSurface = (surface: HTMLElement | null) => {
+      if (!surface) {
+        return;
+      }
+
+      delete surface.dataset.reflecting;
+      surface.style.removeProperty('--reflection-x');
+      surface.style.removeProperty('--reflection-y');
+      surface.style.removeProperty('--reflection-press-x');
+      surface.style.removeProperty('--reflection-press-y');
+      surface.style.removeProperty('--reflection-shift-x');
+      surface.style.removeProperty('--reflection-shift-y');
+      surface.style.removeProperty('--reflection-tilt-x');
+      surface.style.removeProperty('--reflection-tilt-y');
+      surface.style.removeProperty('--reflection-cone-angle');
+      surface.style.removeProperty('--reflection-cone-half-width');
+      surface.style.removeProperty('--reflection-cone-length');
+      surface.style.removeProperty('--reflection-cone-width');
+      surface.style.removeProperty('--bezel-glint-x');
+      surface.style.removeProperty('--bezel-glint-y');
+      surface.style.removeProperty('--bezel-glint-angle');
+      surface.style.removeProperty('--bezel-glint-radius-x');
+      surface.style.removeProperty('--bezel-glint-radius-y');
+      surface.style.removeProperty('--bezel-glint-mid-radius-x');
+      surface.style.removeProperty('--bezel-glint-mid-radius-y');
+      surface.style.removeProperty('--bezel-glint-core-radius-x');
+      surface.style.removeProperty('--bezel-glint-core-radius-y');
+    };
+
+    const setActiveSurface = (surface: HTMLElement | null) => {
+      if (activeSurface === surface) {
+        return;
+      }
+
+      resetSurface(activeSurface);
+      activeSurface = surface;
+      activeSurfaceRect = surface?.getBoundingClientRect() ?? null;
+    };
+
+    const getReflectiveSurface = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) {
+        return null;
+      }
+
+      return target.closest<HTMLElement>(REFLECTIVE_SURFACE_SELECTOR);
+    };
+
+    const updateSurface = (event: PointerEvent) => {
+      const surface = getReflectiveSurface(event.target);
+      setActiveSurface(surface);
+
+      if (!surface) {
+        return;
+      }
+
+      const rect = getVisualRect(activeSurfaceRect ?? surface.getBoundingClientRect(), surface);
+      const layoutWidth = surface.offsetWidth || rect.width;
+      const layoutHeight = surface.offsetHeight || rect.height;
+
+      if (layoutWidth <= 0 || layoutHeight <= 0 || rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      const anchorX = rect.left + rect.width / 2;
+      const anchorY = rect.top + rect.height / 2;
+      const pointerDeltaX = event.clientX - anchorX;
+      const pointerDeltaY = event.clientY - anchorY;
+      const visualHalfWidth = Math.max(1, rect.width / 2);
+      const visualHalfHeight = Math.max(1, rect.height / 2);
+      const pressX = clampNumber(pointerDeltaX / visualHalfWidth, -1, 1);
+      const pressY = clampNumber(pointerDeltaY / visualHalfHeight, -1, 1);
+      const directionLength = Math.hypot(pointerDeltaX, pointerDeltaY) || 1;
+      const directionX = pointerDeltaX / directionLength;
+      const directionY = pointerDeltaY / directionLength;
+      const virtualPressX = 50 + pressX * 14;
+      const virtualPressY = 50 + pressY * 14;
+      const coneAngle = (Math.atan2(pointerDeltaY, pointerDeltaX) * 180) / Math.PI - 90;
+      const halfWidth = layoutWidth / 2;
+      const halfHeight = layoutHeight / 2;
+      const surfaceStyles = window.getComputedStyle(surface);
+      const radius = Math.min(
+        parseFloat(surfaceStyles.borderTopLeftRadius || '0') || 0,
+        halfWidth,
+        halfHeight
+      );
+      const sideX = directionX >= 0 ? 1 : -1;
+      const sideY = directionY >= 0 ? 1 : -1;
+      const candidates: Array<{
+        angle: number;
+        distance: number;
+        kind: 'corner' | 'horizontal' | 'vertical';
+        x: number;
+        y: number;
+      }> = [];
+
+      if (Math.abs(directionY) > 0.001) {
+        const distance = (sideY * halfHeight) / directionY;
+        const boundaryX = distance * directionX;
+
+        if (distance > 0 && Math.abs(boundaryX) <= halfWidth - radius) {
+          candidates.push({
+            angle: 0,
+            distance,
+            kind: 'horizontal',
+            x: boundaryX,
+            y: sideY * halfHeight
+          });
+        }
+      }
+
+      if (Math.abs(directionX) > 0.001) {
+        const distance = (sideX * halfWidth) / directionX;
+        const boundaryY = distance * directionY;
+
+        if (distance > 0 && Math.abs(boundaryY) <= halfHeight - radius) {
+          candidates.push({
+            angle: 90,
+            distance,
+            kind: 'vertical',
+            x: sideX * halfWidth,
+            y: boundaryY
+          });
+        }
+      }
+
+      const cornerCenterX = sideX * (halfWidth - radius);
+      const cornerCenterY = sideY * (halfHeight - radius);
+      const centerProjection = directionX * cornerCenterX + directionY * cornerCenterY;
+      const cornerDistanceSquared = cornerCenterX * cornerCenterX + cornerCenterY * cornerCenterY;
+      const discriminant = centerProjection * centerProjection - (cornerDistanceSquared - radius * radius);
+
+      if (discriminant >= 0) {
+        const distance = centerProjection + Math.sqrt(discriminant);
+        const boundaryX = distance * directionX;
+        const boundaryY = distance * directionY;
+        const radiusX = boundaryX - cornerCenterX;
+        const radiusY = boundaryY - cornerCenterY;
+
+        candidates.push({
+          angle: (Math.atan2(radiusY, radiusX) * 180) / Math.PI + 90,
+          distance,
+          kind: 'corner',
+          x: boundaryX,
+          y: boundaryY
+        });
+      }
+
+      const bezelPoint =
+        candidates
+          .filter((candidate) => Number.isFinite(candidate.distance) && candidate.distance > 0)
+          .sort((first, second) => first.distance - second.distance)[0] ?? {
+          angle: Math.abs(directionY) > Math.abs(directionX) ? 0 : 90,
+          distance: Math.min(halfWidth, halfHeight),
+          kind: Math.abs(directionY) > Math.abs(directionX) ? ('horizontal' as const) : ('vertical' as const),
+          x: sideX * halfWidth,
+          y: sideY * halfHeight
+        };
+      const bezelX = clampNumber(50 + (bezelPoint.x / layoutWidth) * 100, 0, 100);
+      const bezelY = clampNumber(50 + (bezelPoint.y / layoutHeight) * 100, 0, 100);
+      const coneHalfWidthBase = clampNumber(
+        bezelPoint.distance * 0.24,
+        Math.min(24, Math.max(12, Math.min(layoutWidth, layoutHeight) * 0.18)),
+        Math.max(26, Math.min(layoutWidth, layoutHeight) * 0.48)
+      );
+      const coneHalfWidth = coneHalfWidthBase * 2;
+      const coneLength = bezelPoint.distance + coneHalfWidth * 1.35;
+      const glintRadiusX =
+        bezelPoint.kind === 'vertical'
+          ? Math.max(radius + 8, coneHalfWidth * 0.34)
+          : bezelPoint.kind === 'corner'
+            ? coneHalfWidth * 0.92
+            : coneHalfWidth;
+      const glintRadiusY =
+        bezelPoint.kind === 'horizontal'
+          ? Math.max(radius + 8, coneHalfWidth * 0.34)
+          : bezelPoint.kind === 'corner'
+            ? coneHalfWidth * 0.92
+            : coneHalfWidth;
+      const softGlintRadiusX = glintRadiusX * 1.18;
+      const softGlintRadiusY = glintRadiusY * 1.18;
+      const midGlintRadiusX = Math.max(10, glintRadiusX * 0.76);
+      const midGlintRadiusY = Math.max(6, glintRadiusY * 0.76);
+      const coreGlintRadiusX = Math.max(8, glintRadiusX * 0.46);
+      const coreGlintRadiusY = Math.max(5, glintRadiusY * 0.46);
+
+      surface.dataset.reflecting = 'true';
+      surface.style.setProperty('--reflection-x', `${virtualPressX.toFixed(2)}%`);
+      surface.style.setProperty('--reflection-y', `${virtualPressY.toFixed(2)}%`);
+      surface.style.setProperty('--reflection-press-x', pressX.toFixed(3));
+      surface.style.setProperty('--reflection-press-y', pressY.toFixed(3));
+      surface.style.setProperty('--reflection-shift-x', `${pressX.toFixed(3)}px`);
+      surface.style.setProperty('--reflection-shift-y', `${pressY.toFixed(3)}px`);
+      surface.style.setProperty('--reflection-tilt-x', `${(-pressY * 1.2).toFixed(3)}deg`);
+      surface.style.setProperty('--reflection-tilt-y', `${(pressX * 1.2).toFixed(3)}deg`);
+      surface.style.setProperty('--reflection-cone-angle', `${coneAngle.toFixed(3)}deg`);
+      surface.style.setProperty('--reflection-cone-half-width', `${coneHalfWidth.toFixed(2)}px`);
+      surface.style.setProperty('--reflection-cone-length', `${coneLength.toFixed(2)}px`);
+      surface.style.setProperty('--reflection-cone-width', `${(coneHalfWidth * 2).toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-x', `${bezelX.toFixed(2)}%`);
+      surface.style.setProperty('--bezel-glint-y', `${bezelY.toFixed(2)}%`);
+      surface.style.setProperty('--bezel-glint-angle', `${bezelPoint.angle.toFixed(3)}deg`);
+      surface.style.setProperty('--bezel-glint-radius-x', `${softGlintRadiusX.toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-radius-y', `${softGlintRadiusY.toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-mid-radius-x', `${midGlintRadiusX.toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-mid-radius-y', `${midGlintRadiusY.toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-core-radius-x', `${coreGlintRadiusX.toFixed(2)}px`);
+      surface.style.setProperty('--bezel-glint-core-radius-y', `${coreGlintRadiusY.toFixed(2)}px`);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      pendingEvent = event;
+
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+
+        if (!pendingEvent) {
+          return;
+        }
+
+        updateSurface(pendingEvent);
+      });
+    };
+
+    const clearActiveSurface = () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+      }
+
+      pendingEvent = null;
+      resetSurface(activeSurface);
+      activeSurface = null;
+      activeSurfaceRect = null;
+    };
+
+    document.addEventListener('pointermove', handlePointerMove, true);
+    document.addEventListener('pointerleave', clearActiveSurface, true);
+    document.addEventListener('pointercancel', clearActiveSurface, true);
+    window.addEventListener('blur', clearActiveSurface);
+
+    return () => {
+      clearActiveSurface();
+      document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('pointerleave', clearActiveSurface, true);
+      document.removeEventListener('pointercancel', clearActiveSurface, true);
+      window.removeEventListener('blur', clearActiveSurface);
     };
   }, []);
 }
@@ -4328,6 +4622,7 @@ function TeacherPopover() {
         >
           <div aria-hidden="true" className="panel__glass" />
           <div aria-hidden="true" className="panel__gloss" />
+          <div aria-hidden="true" className="panel__bezel-mid" />
           <div className="panel__content panel__content--main">
             <header className="panel-header panel-header--main">
               <div className="panel-header__title">
@@ -4697,6 +4992,7 @@ function WidgetPopoutWindow({
         >
           <div aria-hidden="true" className="panel__glass" />
           <div aria-hidden="true" className="panel__gloss" />
+          <div aria-hidden="true" className="panel__bezel-mid" />
           <div className="panel__content panel__content--popout">{content}</div>
         </section>
 
@@ -4832,6 +5128,7 @@ function WidgetPickerWindow() {
       >
         <div aria-hidden="true" className="panel__glass" />
         <div aria-hidden="true" className="panel__gloss" />
+        <div aria-hidden="true" className="panel__bezel-mid" />
         <div className="panel__content">
           <header className="panel-header">
             <div className="panel-header__title">
@@ -5142,6 +5439,7 @@ function ClassListBuilderWindow({ windowContext }: { windowContext: DesktopWindo
       >
         <div aria-hidden="true" className="panel__glass" />
         <div aria-hidden="true" className="panel__gloss" />
+        <div aria-hidden="true" className="panel__bezel-mid" />
         <div className="panel__content">
           <header className="panel-header">
             <div className="panel-header__title">
@@ -5344,7 +5642,7 @@ function ColorModeSwatchButton({
   const previewStyle =
     appearance === 'background'
       ? {
-          background: `linear-gradient(180deg, ${swatch.panelTop}, ${swatch.panelBottom})`,
+          background: swatch.panelTop,
           boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.panelBorder, 0.24)}`
         }
       : {
@@ -5385,7 +5683,7 @@ function ColorModeTriggerButton({
   const previewStyle =
     appearance === 'background'
       ? {
-          background: `linear-gradient(180deg, ${swatch.panelTop}, ${swatch.panelBottom})`,
+          background: swatch.panelTop,
           boxShadow: `inset 0 0 0 1px ${hexToRgba(swatch.panelBorder, 0.24)}`
         }
       : {
@@ -5684,6 +5982,7 @@ function WidgetCard({
       } ${isDragOver ? 'widget-card--drag-over' : ''}`}
       style={widgetStyle}
     >
+      <span aria-hidden="true" className="widget-card__bezel-core" />
       <div
         className={`widget-card__header ${
           headerDragMode === 'interactive'
@@ -6922,6 +7221,7 @@ function LessonPlanPdfExportDialog({
       >
         <div aria-hidden="true" className="panel__glass" />
         <div aria-hidden="true" className="panel__gloss" />
+        <div aria-hidden="true" className="panel__bezel-mid" />
         <div className="panel__content lesson-plan-export-dialog__content">
           <header className="lesson-plan-export-dialog__header">
             <div>
@@ -7836,6 +8136,7 @@ function LessonPlanMoveConfirmationDialog({
       >
         <div aria-hidden="true" className="panel__glass" />
         <div aria-hidden="true" className="panel__gloss" />
+        <div aria-hidden="true" className="panel__bezel-mid" />
         <div className="panel__content planner-week-dialog__content">
           <header className="planner-week-dialog__header">
             <div>
@@ -7941,6 +8242,7 @@ function DeletedLessonPlansDialog({
       >
         <div aria-hidden="true" className="panel__glass" />
         <div aria-hidden="true" className="panel__gloss" />
+        <div aria-hidden="true" className="panel__bezel-mid" />
         <div className="panel__content deleted-lessons-dialog__content">
           <header className="planner-week-dialog__header">
             <div>
