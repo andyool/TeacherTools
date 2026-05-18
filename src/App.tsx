@@ -2669,6 +2669,7 @@ function TeacherPopover() {
   const dashboardShellRef = useRef<HTMLDivElement | null>(null);
   const settingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const dragOverWidgetIdRef = useRef<WidgetId | null>(null);
+  const didApplyScheduledClassRef = useRef(false);
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
   const pickerSpinnerTrackRef = useRef<HTMLDivElement | null>(null);
   const pickerRenderedPositionRef = useRef(0);
@@ -2754,6 +2755,7 @@ function TeacherPopover() {
   const timerProgress = timer.baseDurationMs === 0 ? 0 : remainingMs / timer.baseDurationMs;
   useTimerSoundAlerts(timer, remainingMs, setTimer);
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
+  const scheduledClassListId = getActiveBellScheduleClassListId(bellSchedule.currentEntry);
   const selectedStudents = selectedList?.students ?? [];
   const seatingChart = useSeatingChartController(selectedList);
   const selectedLayout = getWidgetLayoutForList(dashboardLayouts, picker.selectedListId);
@@ -2788,6 +2790,20 @@ function TeacherPopover() {
   if (!isResizing) {
     stableDashboardLayoutFitRef.current = calculatedDashboardLayoutFit;
   }
+
+  useLayoutEffect(() => {
+    if (didApplyScheduledClassRef.current) {
+      return;
+    }
+
+    didApplyScheduledClassRef.current = true;
+
+    if (!scheduledClassListId) {
+      return;
+    }
+
+    setPicker((current) => activateClassList(current, scheduledClassListId));
+  }, [scheduledClassListId, setPicker]);
 
   const dashboardColumns = dashboardLayoutFit.columns;
   const dashboardColumnKey = dashboardColumns.map((column) => column.widgetIds.join(',')).join('|');
@@ -13637,6 +13653,14 @@ function formatBellScheduleEntryDetail(entry: BellTimelineEntry) {
   }
 
   return entry.classList?.name ?? 'Class not set';
+}
+
+function getActiveBellScheduleClassListId(entry: BellTimelineEntry | null) {
+  if (entry?.status !== 'teaching' || !entry.classList) {
+    return null;
+  }
+
+  return entry.classList.id;
 }
 
 function formatDateKey(year: number, monthIndex: number, day: number) {
