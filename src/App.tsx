@@ -3142,7 +3142,7 @@ function TeacherPopover() {
       frameId = window.requestAnimationFrame(syncDashboardLayout);
     };
 
-    scheduleDashboardSync();
+    syncDashboardLayout();
 
     if (typeof ResizeObserver !== 'function') {
       return () => {
@@ -3254,7 +3254,7 @@ function TeacherPopover() {
       }
     };
 
-    frameId = window.requestAnimationFrame(measureRenderedOverflow);
+    measureRenderedOverflow();
 
     if (typeof ResizeObserver !== 'function') {
       return () => {
