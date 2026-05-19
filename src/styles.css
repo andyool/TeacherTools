@@ -7184,7 +7184,24 @@ body[data-window-resizing='true'] .window-stage * {
   min-width: 0;
 }
 
+.bell-schedule__summary-copy {
+  flex: 1 1 auto;
+}
+
+.bell-schedule__summary-title-row,
+.bell-schedule__summary-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .bell-schedule__summary-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: 0;
   font-size: 1rem;
   line-height: 1.1;
@@ -7198,6 +7215,34 @@ body[data-window-resizing='true'] .window-stage * {
   font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.bell-schedule__summary-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-schedule__summary-countdown {
+  flex: 0 0 auto;
+  font-size: calc(0.72rem + 2px);
+  font-weight: 400;
+  line-height: 1.35;
+  transition: color 180ms ease;
+  white-space: nowrap;
+}
+
+.bell-schedule__summary-countdown--ready {
+  color: var(--tone-action);
+}
+
+.bell-schedule__summary-countdown--warning {
+  color: var(--tone-warning);
+}
+
+.bell-schedule__summary-countdown--danger {
+  color: var(--danger);
 }
 
 .bell-schedule__summary-time,

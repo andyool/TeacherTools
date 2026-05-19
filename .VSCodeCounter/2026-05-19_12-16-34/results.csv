@@ -1,0 +1,30 @@
+"filename", "language", "TypeScript JSX", "TypeScript", "PostCSS", "JavaScript", "JSON with Comments", "Markdown", "XML", "YAML", "JSON", "HTML", "comment", "blank", "total"
+"/Users/andreasbeerli/TeacherTools/.github/copilot-instructions.md", "Markdown", 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 4, 31
+"/Users/andreasbeerli/TeacherTools/.github/workflows/release.yml", "YAML", 0, 0, 0, 0, 0, 0, 0, 132, 0, 0, 0, 26, 158
+"/Users/andreasbeerli/TeacherTools/README.md", "Markdown", 0, 0, 0, 0, 0, 56, 0, 0, 0, 0, 0, 25, 81
+"/Users/andreasbeerli/TeacherTools/assets/overlay-dot.svg", "XML", 0, 0, 0, 0, 0, 0, 51, 0, 0, 0, 0, 1, 52
+"/Users/andreasbeerli/TeacherTools/docs/index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 103, 0, 3, 106
+"/Users/andreasbeerli/TeacherTools/electron/main.ts", "TypeScript", 0, 2884, 0, 0, 0, 0, 0, 0, 0, 0, 7, 466, 3357
+"/Users/andreasbeerli/TeacherTools/electron/preload.cts", "TypeScript", 0, 73, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 80
+"/Users/andreasbeerli/TeacherTools/index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 1, 16
+"/Users/andreasbeerli/TeacherTools/main.js", "JavaScript", 0, 0, 0, 260, 0, 0, 0, 0, 0, 0, 18, 0, 278
+"/Users/andreasbeerli/TeacherTools/package-lock.json", "JSON", 0, 0, 0, 0, 0, 0, 0, 0, 6105, 0, 0, 1, 6106
+"/Users/andreasbeerli/TeacherTools/package.json", "JSON", 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 1, 121
+"/Users/andreasbeerli/TeacherTools/scripts/create-mac-self-signed-cert.mjs", "JavaScript", 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 14, 122
+"/Users/andreasbeerli/TeacherTools/scripts/dev-electron.mjs", "JavaScript", 0, 0, 0, 235, 0, 0, 0, 0, 0, 0, 2, 57, 294
+"/Users/andreasbeerli/TeacherTools/scripts/release-auto.mjs", "JavaScript", 0, 0, 0, 94, 0, 0, 0, 0, 0, 0, 0, 27, 121
+"/Users/andreasbeerli/TeacherTools/scripts/run-dev.mjs", "JavaScript", 0, 0, 0, 150, 0, 0, 0, 0, 0, 0, 0, 30, 180
+"/Users/andreasbeerli/TeacherTools/scripts/sign-mac-adhoc.mjs", "JavaScript", 0, 0, 0, 94, 0, 0, 0, 0, 0, 0, 0, 20, 114
+"/Users/andreasbeerli/TeacherTools/scripts/start-electron.mjs", "JavaScript", 0, 0, 0, 37, 0, 0, 0, 0, 0, 0, 0, 10, 47
+"/Users/andreasbeerli/TeacherTools/scripts/verify-mac-update-signature.mjs", "JavaScript", 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 9, 41
+"/Users/andreasbeerli/TeacherTools/src/App.tsx", "TypeScript JSX", 15998, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 1915, 17923
+"/Users/andreasbeerli/TeacherTools/src/electron-types.js", "JavaScript", 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2
+"/Users/andreasbeerli/TeacherTools/src/electron-types.ts", "TypeScript", 0, 149, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 166
+"/Users/andreasbeerli/TeacherTools/src/electron.d.ts", "TypeScript", 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 10
+"/Users/andreasbeerli/TeacherTools/src/main.tsx", "TypeScript JSX", 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 11
+"/Users/andreasbeerli/TeacherTools/src/qrcode.ts", "TypeScript", 0, 418, 0, 0, 0, 0, 0, 0, 0, 0, 0, 81, 499
+"/Users/andreasbeerli/TeacherTools/src/styles.css", "PostCSS", 0, 0, 8604, 0, 0, 0, 0, 0, 0, 0, 0, 1215, 9819
+"/Users/andreasbeerli/TeacherTools/tsconfig.json", "JSON with Comments", 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 1, 27
+"/Users/andreasbeerli/TeacherTools/tsconfig.node.json", "JSON", 0, 0, 0, 0, 0, 0, 0, 0, 27, 0, 0, 1, 28
+"/Users/andreasbeerli/TeacherTools/vite.config.ts", "TypeScript", 0, 24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 27
+"Total", "-", 16007, 3555, 8604, 1011, 26, 83, 51, 132, 6252, 118, 37, 3941, 39817

@@ -10652,6 +10652,16 @@ function BellScheduleWidgetContent({
       : controller.todayDayKey
         ? 'All configured blocks for today are finished.'
         : 'Weekend mode. Live tracking resumes on weekdays.';
+  const liveRemainingLabel = controller.currentEntry
+    ? `${formatDuration(controller.currentRemainingMs)} remaining`
+    : null;
+  const liveRemainingTone = controller.currentEntry
+    ? controller.currentRemainingMs <= 2 * 60 * 1000
+      ? 'danger'
+      : controller.currentRemainingMs <= 10 * 60 * 1000
+        ? 'warning'
+        : 'ready'
+    : null;
   const primaryActionLabel = showEditor ? 'Done editing' : 'Edit schedule';
   const handlePrimaryAction = showEditor ? onToggleEditor : onOpenEditor ?? onToggleEditor;
 
@@ -10698,14 +10708,27 @@ function BellScheduleWidgetContent({
 
         <div className="bell-schedule__summary-main">
           <div className="bell-schedule__summary-copy">
-            <h3 className="bell-schedule__summary-title">{heroTitle}</h3>
-            <p className="bell-schedule__summary-detail">{heroDetail}</p>
+            <div className="bell-schedule__summary-title-row">
+              <h3 className="bell-schedule__summary-title">{heroTitle}</h3>
+              {focusEntry ? (
+                <span className="bell-schedule__summary-time">
+                  {formatBellTimeRange(focusEntry.definition)}
+                </span>
+              ) : null}
+            </div>
+            <div className="bell-schedule__summary-detail-row">
+              <p className="bell-schedule__summary-detail">{heroDetail}</p>
+              {liveRemainingLabel ? (
+                <span
+                  className={`bell-schedule__summary-countdown ${
+                    liveRemainingTone ? `bell-schedule__summary-countdown--${liveRemainingTone}` : ''
+                  }`}
+                >
+                  {liveRemainingLabel}
+                </span>
+              ) : null}
+            </div>
           </div>
-          {focusEntry ? (
-            <span className="bell-schedule__summary-time">
-              {formatBellTimeRange(focusEntry.definition)}
-            </span>
-          ) : null}
         </div>
 
         {controller.currentEntry ? (
