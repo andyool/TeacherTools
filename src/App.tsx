@@ -162,6 +162,16 @@ type PlannerWeekLessonBlock = {
   startMinutes: number;
 };
 
+type PlannerWeekScheduleBlock = {
+  dayKey: BellScheduleDayKey;
+  endMinutes: number;
+  id: string;
+  label: string;
+  shortLabel: string;
+  startMinutes: number;
+  status: 'break' | 'free' | 'teaching' | 'unassigned';
+};
+
 type AssessmentTrackerStatus = 'planned' | 'set' | 'marking' | 'complete';
 type HomeworkTrackerStatus = 'set' | 'collecting' | 'reviewed' | 'complete';
 
@@ -1469,7 +1479,7 @@ const STABLE_BUTTON_LIFT_SELECTOR = [
 const STABLE_BUTTON_STRONG_LIFT_SELECTOR =
   '.window-spawn-button,[data-window-spawn-button="true"],.tracker-date-field__button';
 const STABLE_BUTTON_LIFT_CLASS = 'button-lift-stable';
-const REFLECTIVE_SURFACE_SELECTOR = '.widget-card';
+const REFLECTIVE_SURFACE_SELECTOR = '.panel--main .dashboard-shell .widget-card';
 
 function returnToTeacherTools() {
   window.electronAPI?.returnToTeacherTools();
@@ -7597,6 +7607,10 @@ function WeeklyLessonPlannerContent({
     () => getPlannerWeekSelectorYears(weekStartDate, planner.lessonPlanHistory, planner.deletedLessonPlans),
     [planner.deletedLessonPlans, planner.lessonPlanHistory, weekStartDate]
   );
+  const scheduleBlocks = useMemo(
+    () => buildPlannerWeekScheduleBlocks(bellSchedule.weekTimelineByDay),
+    [bellSchedule.weekTimelineByDay]
+  );
   const lessonBlocks = useMemo(
     () =>
       buildPlannerWeekLessonBlocks({
@@ -7939,6 +7953,7 @@ function WeeklyLessonPlannerContent({
             </div>
 
             {BELL_SCHEDULE_DAY_KEYS.map((dayKey) => {
+              const dayScheduleBlocks = scheduleBlocks.filter((block) => block.dayKey === dayKey);
               const dayBlocks = lessonBlocks.filter((block) => block.dayKey === dayKey);
 
               return (
@@ -7948,6 +7963,21 @@ function WeeklyLessonPlannerContent({
                     <strong>{formatPlannerWeekDayLabel(weekDatesByDay[dayKey])}</strong>
                   </header>
                   <div className="planner-week__day-track">
+                    {dayScheduleBlocks.map((block) => (
+                      <div
+                        aria-hidden="true"
+                        className={`planner-week-slot planner-week-slot--${block.status}`}
+                        key={block.id}
+                        style={getPlannerWeekTimedBlockStyle(block, timeRange)}
+                      >
+                        {block.status !== 'teaching' ? (
+                          <>
+                            <span>{block.shortLabel}</span>
+                            <strong>{block.label}</strong>
+                          </>
+                        ) : null}
+                      </div>
+                    ))}
                     {timeMarks.map((mark) => (
                       <span
                         aria-hidden="true"
@@ -7978,7 +8008,7 @@ function WeeklyLessonPlannerContent({
                           onPointerDown={(event) => beginPlannerWeekDrag(block, event)}
                           onPointerMove={continuePlannerWeekDrag}
                           onPointerUp={finishPlannerWeekDrag}
-                          style={getPlannerWeekLessonBlockStyle(block, timeRange)}
+                          style={getPlannerWeekTimedBlockStyle(block, timeRange)}
                         >
                           <div className="planner-week-lesson__header">
                             <span>{block.slotShortLabel}</span>
@@ -14730,6 +14760,35 @@ function buildPlannerWeekLessonBlocks({
   });
 }
 
+function buildPlannerWeekScheduleBlocks(
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>
+) {
+  return BELL_SCHEDULE_DAY_KEYS.flatMap((dayKey) =>
+    weekTimelineByDay[dayKey]
+      .slice()
+      .sort((left, right) => {
+        const startDelta = left.definition.startMinutes - right.definition.startMinutes;
+        return startDelta !== 0 ? startDelta : left.definition.endMinutes - right.definition.endMinutes;
+      })
+      .map((entry) => {
+        const status =
+          entry.status === 'teaching' && !entry.classList
+            ? 'unassigned'
+            : entry.status;
+
+        return {
+          dayKey,
+          endMinutes: entry.definition.endMinutes,
+          id: `${dayKey}-${entry.definition.id}-schedule`,
+          label: entry.definition.label,
+          shortLabel: entry.definition.shortLabel,
+          startMinutes: entry.definition.startMinutes,
+          status
+        } satisfies PlannerWeekScheduleBlock;
+      })
+  );
+}
+
 function getPlannerWeekTimeRange(weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>) {
   const definitions = BELL_SCHEDULE_DAY_KEYS.flatMap((dayKey) =>
     weekTimelineByDay[dayKey].map((entry) => entry.definition)
@@ -14784,15 +14843,17 @@ function getPlannerWeekTimeMarkStyle(
   } as CSSProperties;
 }
 
-function getPlannerWeekLessonBlockStyle(
-  block: PlannerWeekLessonBlock,
+function getPlannerWeekTimedBlockStyle(
+  block: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>,
   timeRange: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>
 ) {
   const top = getPlannerWeekOffsetPercent(block.startMinutes, timeRange);
   const bottom = getPlannerWeekOffsetPercent(block.endMinutes, timeRange);
+  const availableHeight = Math.max(100 - top, 0);
+  const blockHeight = clampNumber(bottom - top, 0, availableHeight);
 
   return {
-    '--planner-week-block-height': `${Math.max(bottom - top, 3.5)}%`,
+    '--planner-week-block-height': `${blockHeight}%`,
     '--planner-week-block-top': `${top}%`
   } as CSSProperties;
 }

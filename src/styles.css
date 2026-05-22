@@ -2384,8 +2384,7 @@ textarea {
   font-size: 0.68rem;
 }
 
-.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon],
-.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
   width: 22px;
   min-width: 22px;
   height: 22px;
@@ -2398,15 +2397,7 @@ textarea {
   color: transparent;
 }
 
-.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-}
-
-.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after,
-.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
   content: attr(data-compact-icon);
   position: absolute;
   z-index: 1;
@@ -2450,19 +2441,6 @@ textarea {
   min-height: 24px;
   padding: 0 7px;
   font-size: 0.74rem;
-}
-
-.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: var(--radius-control);
-  font-size: 0;
-  letter-spacing: 0;
-  flex: 0 0 auto;
-  color: transparent;
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .timer-readout {
@@ -3060,7 +3038,7 @@ textarea {
 }
 
 @container (max-width: 244px) {
-  .dashboard-shell .widget-card :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  .dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
     width: 28px;
     min-width: 28px;
     height: 28px;
@@ -3073,7 +3051,7 @@ textarea {
     flex: 0 0 auto;
   }
 
-  .dashboard-shell .widget-card :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  .dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
     content: attr(data-compact-icon);
     position: absolute;
     z-index: 1;
@@ -5318,6 +5296,7 @@ body[data-window-resizing='true'] .window-stage * {
 .planner-week {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -5429,9 +5408,11 @@ body[data-window-resizing='true'] .window-stage * {
   display: grid;
   grid-template-columns: 56px repeat(5, minmax(138px, 1fr));
   gap: 5px;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
-  padding: 0 2px 2px 0;
+  padding: 0 2px 8px 0;
 }
 
 .planner-week__axis,
@@ -5462,9 +5443,9 @@ body[data-window-resizing='true'] .window-stage * {
 
 .planner-week__day-header {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 4px 6px;
   border-radius: var(--radius-control);
   border: 1px solid var(--field-border);
@@ -5472,6 +5453,7 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .planner-week__day-header span {
+  flex: 0 0 auto;
   color: var(--text-secondary);
   font-size: 0.58rem;
   font-weight: 800;
@@ -5480,16 +5462,21 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 .planner-week__day-header strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-primary);
   font-size: 0.78rem;
   line-height: 1.1;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .planner-week__axis-track,
 .planner-week__day-track {
   position: relative;
-  height: min(62vh, 620px);
-  min-height: 520px;
+  height: clamp(540px, 62vh, 700px);
+  min-height: 0;
 }
 
 .planner-week__day-track {
@@ -5515,6 +5502,7 @@ body[data-window-resizing='true'] .window-stage * {
 
 .planner-week__time-line {
   position: absolute;
+  z-index: 1;
   left: 0;
   right: 0;
   top: var(--planner-week-line-top);
@@ -5522,14 +5510,67 @@ body[data-window-resizing='true'] .window-stage * {
   box-shadow: 0 -1px 0 rgba(8, 12, 18, 0.04);
 }
 
+.planner-week-slot {
+  position: absolute;
+  z-index: 0;
+  top: var(--planner-week-block-top);
+  left: 0;
+  right: 0;
+  height: var(--planner-week-block-height);
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.planner-week-slot--teaching {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.planner-week-slot--break {
+  border-color: var(--tone-warning-border);
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.planner-week-slot--free,
+.planner-week-slot--unassigned {
+  border-color: var(--tone-utility-border);
+  background: var(--tone-utility-soft);
+  color: var(--tone-utility);
+}
+
+.planner-week-slot span {
+  flex: 0 0 auto;
+  min-width: 28px;
+  text-transform: uppercase;
+}
+
+.planner-week-slot strong {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .planner-week-lesson {
   position: absolute;
-  z-index: 1;
-  top: var(--planner-week-block-top);
+  z-index: 2;
+  top: calc(var(--planner-week-block-top) + 2px);
   left: 6px;
   right: 6px;
-  height: var(--planner-week-block-height);
-  min-height: 24px;
+  height: calc(var(--planner-week-block-height) - 4px);
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -5548,6 +5589,10 @@ body[data-window-resizing='true'] .window-stage * {
     border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
+}
+
+.planner-week__day-track > .planner-week-lesson {
+  position: absolute;
 }
 
 .planner-week-lesson:active {
@@ -5601,6 +5646,10 @@ body[data-window-resizing='true'] .window-stage * {
   box-shadow:
     inset 0 0 0 1px var(--tone-action-border),
     0 18px 34px rgba(8, 12, 18, 0.24);
+}
+
+.planner-week-lesson.planner-week__drag-preview {
+  position: fixed;
 }
 
 .planner-week-lesson__header,
@@ -9050,7 +9099,7 @@ body[data-window-resizing='true'] .window-stage * {
   opacity: 0.439;
 }
 
-.widget-card[data-reflecting='true']:not(.widget-card--dragging) {
+.panel--main .dashboard-shell .widget-card[data-reflecting='true']:not(.widget-card--dragging) {
   transform:
     perspective(900px)
     translate(var(--reflection-shift-x), var(--reflection-shift-y))
@@ -9427,10 +9476,9 @@ body[data-window-resizing='true'] .window-stage * {
 
 :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
   content: none;
+  opacity: 0;
 }
 
-.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after,
-.dashboard-shell .widget-card[data-size-tier='2'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
     .toolbar-link,
     .primary-link,
@@ -9456,7 +9504,7 @@ body[data-window-resizing='true'] .window-stage * {
 }
 
 @container (max-width: 244px) {
-  .dashboard-shell .widget-card :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  .dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
     content: attr(data-compact-icon);
     position: absolute;
     z-index: 1;
@@ -9473,6 +9521,18 @@ body[data-window-resizing='true'] .window-stage * {
     opacity: 1;
     pointer-events: none;
   }
+}
+
+/* Compact icons are icon-only affordances; text-size tiers must keep ::after empty. */
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card:not([data-size-tier='1']) :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon]::after {
+  content: none;
+  opacity: 0;
 }
 
 .panel-header,
