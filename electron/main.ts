@@ -20,9 +20,16 @@ const shell = (electron as typeof electron & {
   shell: typeof import('electron').shell;
 }).shell;
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const isGeneratingIcons = process.env.TEACHERTOOLS_GENERATE_ICONS === '1';
 const shouldUseTray = process.platform === 'win32';
 const shouldUseDock = process.platform === 'darwin';
 const OVERLAY_SIZE = 86;
+const OVERLAY_DOCK_SIZE = 64;
+const OVERLAY_EXIT_BUTTON_SIZE = 20;
+const OVERLAY_EXIT_BUTTON_TOP = 4;
+const OVERLAY_EXIT_BUTTON_RIGHT = 8;
+const OVERLAY_INTERACTIVITY_PADDING = 2;
+const OVERLAY_INTERACTIVITY_POLL_MS = 80;
 const OVERLAY_MARGIN = 22;
 const POPOVER_MIN_WIDTH = 260;
 const POPOVER_MIN_HEIGHT = 300;
@@ -193,8 +200,11 @@ const windowContexts = new Map<number, WindowContext>();
 let persistentStateCache: PersistentStateFile | null = null;
 let appUpdater: AppUpdater | null = null;
 let appUpdateCheckPromise: Promise<unknown> | null = null;
+let isInstallingAppUpdate = false;
 let pendingOverlayBounds: Bounds | null = null;
 let overlayBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let overlayInteractivityPollTimer: ReturnType<typeof setInterval> | null = null;
+let overlayIsIgnoringMouseEvents: boolean | null = null;
 let pendingPopoverSize: Pick<Bounds, 'width' | 'height'> | null = null;
 let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let widgetPopoutBoundsCache: Partial<Record<WidgetPopoutId, Partial<Bounds>>> | null = null;
@@ -396,6 +406,60 @@ function getDefaultOverlayBounds() {
     width: OVERLAY_SIZE,
     height: OVERLAY_SIZE
   };
+}
+
+function pointIsInsidePaddedRect(
+  point: { x: number; y: number },
+  rect: { height: number; left: number; top: number; width: number },
+  padding = 0
+) {
+  return (
+    point.x >= rect.left - padding &&
+    point.x <= rect.left + rect.width + padding &&
+    point.y >= rect.top - padding &&
+    point.y <= rect.top + rect.height + padding
+  );
+}
+
+function isCursorInOverlayInteractiveRegion() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return false;
+  }
+
+  const cursorPoint = screen.getCursorScreenPoint();
+  const bounds = overlayWindow.getBounds();
+  const point = {
+    x: cursorPoint.x - bounds.x,
+    y: cursorPoint.y - bounds.y
+  };
+
+  if (
+    point.x < 0 ||
+    point.y < 0 ||
+    point.x > bounds.width ||
+    point.y > bounds.height
+  ) {
+    return false;
+  }
+
+  const dockSize = Math.min(OVERLAY_DOCK_SIZE, bounds.width, bounds.height);
+  const dockRect = {
+    left: Math.round((bounds.width - dockSize) / 2),
+    top: Math.round((bounds.height - dockSize) / 2),
+    width: dockSize,
+    height: dockSize
+  };
+  const exitRect = {
+    left: Math.max(0, bounds.width - OVERLAY_EXIT_BUTTON_RIGHT - OVERLAY_EXIT_BUTTON_SIZE),
+    top: OVERLAY_EXIT_BUTTON_TOP,
+    width: OVERLAY_EXIT_BUTTON_SIZE,
+    height: OVERLAY_EXIT_BUTTON_SIZE
+  };
+
+  return (
+    pointIsInsidePaddedRect(point, dockRect, OVERLAY_INTERACTIVITY_PADDING) ||
+    pointIsInsidePaddedRect(point, exitRect, OVERLAY_INTERACTIVITY_PADDING)
+  );
 }
 
 function getOverlayStateFilePath() {
@@ -1931,7 +1995,9 @@ function installDownloadedAppUpdate() {
     return false;
   }
 
+  const updater = appUpdater;
   appUpdateLogger.info('Installing downloaded app update.');
+  isInstallingAppUpdate = true;
   updateAppUpdateState({
     message: 'Closing TeacherTools to install the downloaded update.',
     progressPercent: 100,
@@ -1939,7 +2005,18 @@ function installDownloadedAppUpdate() {
   });
 
   setImmediate(() => {
-    appUpdater?.quitAndInstall();
+    try {
+      if (shouldUseSingleInstanceLock) {
+        app.releaseSingleInstanceLock();
+      }
+      updater.quitAndInstall();
+    } catch (error) {
+      isInstallingAppUpdate = false;
+      if (shouldUseSingleInstanceLock) {
+        app.requestSingleInstanceLock();
+      }
+      handleAppUpdateError(error);
+    }
   });
 
   return true;
@@ -2291,17 +2368,54 @@ function setWindowPresence(win: Electron.BrowserWindow) {
   win.setMenuBarVisibility(false);
 }
 
-function setOverlayInteractive(interactive: boolean) {
+function setOverlayMouseEventsIgnored(ignored: boolean) {
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     return;
   }
 
-  if (interactive) {
+  if (overlayIsIgnoringMouseEvents === ignored) {
+    return;
+  }
+
+  overlayIsIgnoringMouseEvents = ignored;
+
+  if (!ignored) {
     overlayWindow.setIgnoreMouseEvents(false);
     return;
   }
 
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+}
+
+function refreshOverlayInteractivityFromCursor() {
+  setOverlayMouseEventsIgnored(!isCursorInOverlayInteractiveRegion());
+}
+
+function setOverlayInteractive(interactive: boolean) {
+  setOverlayMouseEventsIgnored(!(interactive || isCursorInOverlayInteractiveRegion()));
+}
+
+function startOverlayInteractivityMonitor() {
+  if (overlayInteractivityPollTimer) {
+    clearInterval(overlayInteractivityPollTimer);
+    overlayInteractivityPollTimer = null;
+  }
+
+  overlayIsIgnoringMouseEvents = null;
+  refreshOverlayInteractivityFromCursor();
+  overlayInteractivityPollTimer = setInterval(
+    refreshOverlayInteractivityFromCursor,
+    OVERLAY_INTERACTIVITY_POLL_MS
+  );
+}
+
+function stopOverlayInteractivityMonitor() {
+  if (overlayInteractivityPollTimer) {
+    clearInterval(overlayInteractivityPollTimer);
+    overlayInteractivityPollTimer = null;
+  }
+
+  overlayIsIgnoringMouseEvents = null;
 }
 
 function focusWindowSoon(win: Electron.BrowserWindow | null) {
@@ -2468,6 +2582,7 @@ function createOverlayWindow() {
 
   setWindowPresence(overlayWindow);
   setOverlayInteractive(false);
+  startOverlayInteractivityMonitor();
   windowContexts.set(overlayWindowContentsId, {
     role: 'overlay',
     anchor: null
@@ -2486,6 +2601,7 @@ function createOverlayWindow() {
   });
 
   overlayWindow.on('closed', () => {
+    stopOverlayInteractivityMonitor();
     windowContexts.delete(overlayWindowContentsId);
     overlayWindow = null;
   });
@@ -2900,6 +3016,7 @@ function returnToTeacherTools(sourceWebContentsId: number) {
 function centerOverlayWindow() {
   const nextBounds = getDefaultOverlayBounds();
   overlayWindow?.setBounds(nextBounds);
+  refreshOverlayInteractivityFromCursor();
   saveOverlayBounds(nextBounds);
 }
 
@@ -2912,6 +3029,7 @@ function setOverlayPosition(position: { x: number; y: number }) {
   if (!boundsAreEqual(overlayWindow.getBounds(), nextBounds)) {
     overlayWindow.setBounds(nextBounds);
   }
+  refreshOverlayInteractivityFromCursor();
   saveOverlayBounds(nextBounds);
 }
 
@@ -3035,49 +3153,73 @@ function createTray() {
   });
 }
 
-app.whenReady().then(() => {
-  if (process.env.TEACHERTOOLS_GENERATE_ICONS === '1') {
-    void generateAppIconAssets()
-      .then(() => {
-        console.log(`Generated ${path.relative(process.cwd(), getAppIconPath())}`);
-        if (process.platform === 'darwin') {
-          console.log(`Generated ${path.relative(process.cwd(), getMacAppIconPath())}`);
-        }
-        app.exit(0);
-      })
-      .catch((error) => {
-        console.error(error);
-        app.exit(1);
-      });
+function handleSecondInstance() {
+  if (isInstallingAppUpdate || !app.isReady()) {
     return;
   }
 
-  if (shouldUseDock) {
-    app.setActivationPolicy('regular');
-    const dockIcon = createAppIcon(512);
-    if (!dockIcon.isEmpty()) {
-      app.dock.setIcon(dockIcon);
-    }
-    app.dock.show();
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    createOverlayWindow();
   }
 
-  clearBlockedLaunchAtLogin();
-  preferredPopoverSize = loadStoredPopoverSize();
-  ensurePersistentStateCache();
-  createOverlayWindow();
-  if (shouldUseTray) {
-    createTray();
-  }
-  initializeAppUpdater();
+  openPopover();
+}
 
-  app.on('activate', () => {
-    if (!overlayWindow) {
-      createOverlayWindow();
+const shouldUseSingleInstanceLock = app.isPackaged && !isGeneratingIcons;
+const hasSingleInstanceLock = !shouldUseSingleInstanceLock || app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  if (shouldUseSingleInstanceLock) {
+    app.on('second-instance', handleSecondInstance);
+  }
+
+  app.whenReady().then(() => {
+    if (isGeneratingIcons) {
+      void generateAppIconAssets()
+        .then(() => {
+          console.log(`Generated ${path.relative(process.cwd(), getAppIconPath())}`);
+          if (process.platform === 'darwin') {
+            console.log(`Generated ${path.relative(process.cwd(), getMacAppIconPath())}`);
+          }
+          app.exit(0);
+        })
+        .catch((error) => {
+          console.error(error);
+          app.exit(1);
+        });
+      return;
     }
+
+    if (shouldUseDock) {
+      app.setActivationPolicy('regular');
+      const dockIcon = createAppIcon(512);
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+      }
+      app.dock.show();
+    }
+
+    clearBlockedLaunchAtLogin();
+    preferredPopoverSize = loadStoredPopoverSize();
+    ensurePersistentStateCache();
+    createOverlayWindow();
+    if (shouldUseTray) {
+      createTray();
+    }
+    initializeAppUpdater();
+
+    app.on('activate', () => {
+      if (!overlayWindow) {
+        createOverlayWindow();
+      }
+    });
   });
-});
+}
 
 app.on('before-quit', () => {
+  stopOverlayInteractivityMonitor();
   flushOverlayBoundsSave();
   flushPopoverSizeSave();
   flushWidgetPopoutBoundsSave();
