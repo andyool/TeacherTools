@@ -10008,6 +10008,49 @@ body[data-window-resizing='true'] .window-stage * {
     var(--button-under-shadow);
 }
 
+.panel[data-theme='light'] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+).button-lift-stable:not(:disabled),
+.panel[data-theme='light'] .button-lift-stable,
+.panel[data-theme='light'] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+).button-lift-stable:not(:disabled),
+.panel[data-theme='light'] .widget-card .button-lift-stable {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(34, 64, 96, 0.08),
+    0 8px 14px -4px rgba(26, 50, 80, 0.3),
+    0 16px 26px -8px rgba(26, 50, 80, 0.2);
+}
+
 :is(
   .icon-button,
   .widget-icon-button,
