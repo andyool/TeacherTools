@@ -442,6 +442,7 @@ const DASHBOARD_FIT_BOTTOM_PADDING = 8;
 const DASHBOARD_FIT_SCALE_MIN = 0.72;
 const WIDGET_SIZE_MIN: WidgetSizeTier = 1;
 const WIDGET_SIZE_MAX: WidgetSizeTier = 5;
+const WIDGET_TITLE_MIN_FONT_SIZE_PX = 6;
 const DEFAULT_INTERFACE_SCALE = 1;
 const INTERFACE_SCALE_STORAGE_KEY = 'teacher-tools.interface-scale';
 const INTERFACE_SCALE_STEP = 0.1;
@@ -688,15 +689,15 @@ const WIDGET_DETAILS: Record<
     description: 'Preview the current seating plan and open the editor to make changes.'
   },
   'bell-schedule': {
-    title: 'Bell Schedule',
+    title: 'Timetable',
     description: 'Track the current period, time remaining, and your saved weekly profiles.'
   },
   planner: {
-    title: 'Class Planner',
+    title: 'Lesson Planner',
     description: 'Plan each class by date and keep lesson documents attached.'
   },
   'homework-assessment': {
-    title: 'Homework / Assessment Tracker',
+    title: 'Homework & Assessments',
     description: 'Track due dates, status, and reminders across classes.'
   },
   'qr-generator': {
@@ -4297,7 +4298,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description="Presets, custom minutes, and a quick class countdown."
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4306,6 +4306,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4336,7 +4337,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description={selectedList ? `Using ${selectedList.name}` : 'Choose a class from the top bar.'}
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4345,6 +4345,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4371,7 +4372,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description={selectedList ? `Using ${selectedList.name}` : 'Choose a class from the top bar.'}
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4380,6 +4380,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4411,7 +4412,6 @@ function TeacherPopover() {
             selectedList ? `Previewing ${selectedList.name}` : 'Choose a class from the top bar.'
           }
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4420,6 +4420,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4443,7 +4444,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description={selectedList ? `Planning ${selectedList.name}` : 'Choose a class from the top bar.'}
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4452,6 +4452,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4485,7 +4486,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description={homeworkAssessmentTracker.summaryDescription}
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4494,6 +4494,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4524,7 +4525,6 @@ function TeacherPopover() {
           collapsed={collapsed}
           description="Paste a link and the QR code appears right here."
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4533,6 +4533,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4554,10 +4555,9 @@ function TeacherPopover() {
           description={
             bellSchedule.activeProfile
               ? `Using ${bellSchedule.activeProfileDisplayName}`
-              : 'Set up a weekly bell schedule.'
+              : 'Set up a weekly timetable.'
           }
           headerDragMode="interactive"
-          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
@@ -4566,6 +4566,7 @@ function TeacherPopover() {
           title={WIDGET_DETAILS[widgetId].title}
           widgetId={widgetId}
           sizeTier={sizeTier}
+          headerActions={headerActions}
           targetHeight={targetHeight}
           {...dragProps}
         >
@@ -4589,7 +4590,6 @@ function TeacherPopover() {
         collapsed={collapsed}
         description="Capture reminders and quick thoughts."
         headerDragMode="interactive"
-        headerActions={headerActions}
         isDragOver={isDragOver}
         isDragging={isDragging}
         key={widgetId}
@@ -4598,6 +4598,7 @@ function TeacherPopover() {
         title={WIDGET_DETAILS[widgetId].title}
         widgetId={widgetId}
         sizeTier={sizeTier}
+        headerActions={headerActions}
         targetHeight={targetHeight}
         {...dragProps}
       >
@@ -5975,6 +5976,7 @@ function WidgetCard({
   targetHeight?: number;
   title: string;
 }) {
+  const fittedTitleRef = useFittedWidgetTitle(title, sizeTier);
   const { preferences: colorModePreferences, theme } = useColorModeAppearance();
   const colorModeStyle = getColorModeWidgetStyle(theme, colorModePreferences, widgetId);
   const widgetStyle = {
@@ -6008,6 +6010,18 @@ function WidgetCard({
         onPointerUp={onPointerUp}
       >
         <div className="widget-card__title-group">
+          <div className="widget-card__title-copy">
+            <span className="widget-card__title-row">
+              <WidgetTitleIcon widgetId={widgetId} />
+              <span className="widget-card__title" ref={fittedTitleRef}>
+                {title}
+              </span>
+            </span>
+          </div>
+        </div>
+        <div className="widget-card__meta">
+          {badge ? <span className={`badge ${badgeTone === 'alert' ? 'badge--alert' : ''}`}>{badge}</span> : null}
+          {headerActions ? <div className="widget-card__header-actions">{headerActions}</div> : null}
           {showCollapse ? (
             <button
               aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
@@ -6027,24 +6041,137 @@ function WidgetCard({
               ^
             </button>
           ) : null}
-          <div className="widget-card__title-copy">
-            <span className="widget-card__title-row">
-              <WidgetTitleIcon widgetId={widgetId} />
-              <span className="widget-card__title">{title}</span>
-            </span>
-          </div>
-        </div>
-        <div className="widget-card__meta">
-          {badge ? <span className={`badge ${badgeTone === 'alert' ? 'badge--alert' : ''}`}>{badge}</span> : null}
-          {headerActions}
         </div>
       </div>
 
       <div className="widget-card__body-shell">
-        <div className="widget-card__body">{children}</div>
+        <div className="widget-card__body">
+          {children}
+        </div>
       </div>
     </article>
   );
+}
+
+function useFittedWidgetTitle(title: string, sizeTier?: WidgetSizeTier) {
+  const titleRef = useRef<HTMLSpanElement | null>(null);
+
+  useLayoutEffect(() => {
+    const titleElement = titleRef.current;
+
+    if (!titleElement) {
+      return;
+    }
+
+    let frameId: number | null = null;
+    let isDisposed = false;
+
+    const fitTitle = () => {
+      if (isDisposed) {
+        return;
+      }
+
+      titleElement.style.fontSize = '';
+      titleElement.removeAttribute('data-title-fitted');
+
+      const availableWidth = titleElement.clientWidth;
+
+      if (availableWidth <= 0) {
+        return;
+      }
+
+      const computedStyle = window.getComputedStyle(titleElement);
+      const baseFontSize = Number.parseFloat(computedStyle.fontSize);
+
+      if (!Number.isFinite(baseFontSize) || baseFontSize <= 0) {
+        return;
+      }
+
+      const naturalWidth = titleElement.scrollWidth;
+
+      if (naturalWidth <= availableWidth + 1) {
+        return;
+      }
+
+      const fittedFontSize = Math.max(
+        Math.min(baseFontSize, WIDGET_TITLE_MIN_FONT_SIZE_PX),
+        (baseFontSize * (availableWidth - 1)) / naturalWidth
+      );
+
+      if (fittedFontSize >= baseFontSize - 0.1) {
+        return;
+      }
+
+      titleElement.style.fontSize = `${Math.floor(fittedFontSize * 100) / 100}px`;
+      titleElement.dataset.titleFitted = 'true';
+    };
+
+    const scheduleFit = () => {
+      if (isDisposed) {
+        return;
+      }
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        fitTitle();
+      });
+    };
+
+    scheduleFit();
+    document.fonts?.ready
+      .then(() => {
+        scheduleFit();
+      })
+      .catch(() => undefined);
+
+    if (typeof ResizeObserver !== 'function') {
+      window.addEventListener('resize', scheduleFit);
+
+      return () => {
+        isDisposed = true;
+
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+        }
+
+        window.removeEventListener('resize', scheduleFit);
+        titleElement.style.fontSize = '';
+        titleElement.removeAttribute('data-title-fitted');
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFit();
+    });
+    const titleGroup = titleElement.closest('.widget-card__title-group');
+    const titleRow = titleElement.closest('.widget-card__title-row');
+
+    resizeObserver.observe(titleElement);
+    if (titleGroup instanceof Element) {
+      resizeObserver.observe(titleGroup);
+    }
+    if (titleRow instanceof Element) {
+      resizeObserver.observe(titleRow);
+    }
+
+    return () => {
+      isDisposed = true;
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      resizeObserver.disconnect();
+      titleElement.style.fontSize = '';
+      titleElement.removeAttribute('data-title-fitted');
+    };
+  }, [sizeTier, title]);
+
+  return titleRef;
 }
 
 function WidgetTitleIcon({ widgetId }: { widgetId: WidgetId }) {
@@ -7636,7 +7763,7 @@ function WeeklyLessonPlannerContent({
   const weekSummary =
     lessonBlocks.length > 0
       ? `${plannedLessonCount}/${lessonBlocks.length} scheduled lesson${lessonBlocks.length === 1 ? '' : 's'} planned`
-      : 'No scheduled lessons in this bell schedule profile';
+      : 'No scheduled lessons in this timetable profile';
 
   const updateWeekStartDate = (nextDateKey: string) => {
     const normalizedDate = normalizeDateKey(nextDateKey) ?? getTodayDateKey();
@@ -8069,7 +8196,7 @@ function WeeklyLessonPlannerContent({
         ) : (
           <div className="widget-empty-state planner-week__empty">
             <p className="empty-copy">
-              Assign classes to teaching blocks in Bell Schedule and they will appear here.
+              Assign classes to teaching blocks in Timetable and they will appear here.
             </p>
           </div>
         )}
@@ -11148,7 +11275,7 @@ function BellScheduleWidgetPopoutCard({
       description={
         bellSchedule.activeProfile
           ? `Using ${bellSchedule.activeProfileDisplayName}`
-          : 'Set up a weekly bell schedule.'
+          : 'Set up a weekly timetable.'
       }
       headerActions={
         <PopoutWidgetActions
@@ -11656,7 +11783,7 @@ function useBellScheduleController(classLists: ClassList[]) {
     null;
   const activeProfileDisplayName = activeProfile
     ? getBellScheduleProfileDisplayName(activeProfile)
-    : 'Bell Schedule';
+    : 'Timetable';
   const todayDate = new Date(now);
   const todayDayKey = getBellScheduleDayKey(todayDate);
   const currentMinutes = getMinutesSinceMidnight(todayDate);
