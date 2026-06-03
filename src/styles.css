@@ -7885,7 +7885,12 @@ body[data-window-resizing='true'] .window-stage * {
   cursor: grab;
 }
 
+.seating-chart__item--assignment-draggable {
+  cursor: grab;
+}
+
 .seating-chart__item--movable:active,
+.seating-chart__item--assignment-draggable:active,
 .seating-chart__item--dragging {
   cursor: grabbing;
 }

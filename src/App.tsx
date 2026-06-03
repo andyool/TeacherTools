@@ -9775,6 +9775,7 @@ function SeatingChartEditorContent({
   const [selectedTool, setSelectedTool] = useState<'select' | SeatingChartItemKind | 'erase'>('seat');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedStudentName, setSelectedStudentName] = useState<string | null>(null);
+  const [draggingSeatAssignmentId, setDraggingSeatAssignmentId] = useState<string | null>(null);
   const [draggingStudentName, setDraggingStudentName] = useState<string | null>(null);
   const [assignmentTargetSeatId, setAssignmentTargetSeatId] = useState<string | null>(null);
   const assignmentGridRef = useRef<HTMLDivElement | null>(null);
@@ -9783,11 +9784,19 @@ function SeatingChartEditorContent({
     originX: number;
     originY: number;
     pointerId: number;
-    sourceSeatId: string | null;
     started: boolean;
-    studentName: string;
     targetSeatId: string | null;
-  } | null>(null);
+  } & (
+    | {
+        sourceSeatId: string;
+        type: 'seat';
+      }
+    | {
+        sourceSeatId: string | null;
+        studentName: string;
+        type: 'student';
+      }
+  ) | null>(null);
   const studentPointerCleanupRef = useRef<(() => void) | null>(null);
   const suppressStudentClickRef = useRef(false);
   const activeItem =
@@ -9818,6 +9827,7 @@ function SeatingChartEditorContent({
   useEffect(() => {
     if (showArrangeWorkspace) {
       setSelectedStudentName(null);
+      setDraggingSeatAssignmentId(null);
       setDraggingStudentName(null);
       setAssignmentTargetSeatId(null);
       studentPointerCleanupRef.current?.();
@@ -9912,7 +9922,11 @@ function SeatingChartEditorContent({
     }
 
     if (activeDrag.started && targetSeatId) {
-      controller.assignStudentToSeat(activeDrag.studentName, targetSeatId, activeDrag.sourceSeatId);
+      if (activeDrag.type === 'seat') {
+        controller.swapSeatAssignments(activeDrag.sourceSeatId, targetSeatId);
+      } else {
+        controller.assignStudentToSeat(activeDrag.studentName, targetSeatId, activeDrag.sourceSeatId);
+      }
       setSelectedItemId(targetSeatId);
       setSelectedStudentName(null);
     } else if (
@@ -9928,6 +9942,7 @@ function SeatingChartEditorContent({
     }
 
     studentPointerDragRef.current = null;
+    setDraggingSeatAssignmentId(null);
     setDraggingStudentName(null);
     setAssignmentTargetSeatId(null);
   };
@@ -9936,14 +9951,23 @@ function SeatingChartEditorContent({
     studentPointerCleanupRef.current?.();
     studentPointerCleanupRef.current = null;
     studentPointerDragRef.current = null;
+    setDraggingSeatAssignmentId(null);
     setDraggingStudentName(null);
     setAssignmentTargetSeatId(null);
   };
 
-  const startStudentPointerDrag = (
+  const startAssignmentPointerDrag = (
     event: ReactPointerEvent<HTMLElement>,
-    studentName: string,
-    sourceSeatId: string | null
+    payload:
+      | {
+          sourceSeatId: string;
+          type: 'seat';
+        }
+      | {
+          sourceSeatId: string | null;
+          studentName: string;
+          type: 'student';
+        }
   ) => {
     if (showArrangeWorkspace) {
       return;
@@ -9956,10 +9980,9 @@ function SeatingChartEditorContent({
       originX: event.clientX,
       originY: event.clientY,
       pointerId: event.pointerId,
-      sourceSeatId,
       started: false,
-      studentName,
-      targetSeatId: getSeatIdFromPoint(event.clientX, event.clientY)
+      targetSeatId: getSeatIdFromPoint(event.clientX, event.clientY),
+      ...payload
     };
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
@@ -9979,7 +10002,11 @@ function SeatingChartEditorContent({
 
       if (!activeDrag.started) {
         activeDrag.started = true;
-        setDraggingStudentName(activeDrag.studentName);
+        if (activeDrag.type === 'seat') {
+          setDraggingSeatAssignmentId(activeDrag.sourceSeatId);
+        } else {
+          setDraggingStudentName(activeDrag.studentName);
+        }
       }
 
       const targetSeatId = getSeatIdFromPoint(moveEvent.clientX, moveEvent.clientY);
@@ -10017,6 +10044,28 @@ function SeatingChartEditorContent({
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
     };
+  };
+
+  const startStudentPointerDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+    studentName: string,
+    sourceSeatId: string | null
+  ) => {
+    startAssignmentPointerDrag(event, {
+      sourceSeatId,
+      studentName,
+      type: 'student'
+    });
+  };
+
+  const startSeatAssignmentPointerDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+    sourceSeatId: string
+  ) => {
+    startAssignmentPointerDrag(event, {
+      sourceSeatId,
+      type: 'seat'
+    });
   };
 
   const handleStudentPillClick = (studentName: string) => {
@@ -10177,11 +10226,13 @@ function SeatingChartEditorContent({
               assignmentGridRef.current = element;
             }}
             layout={activeLayout}
+            draggingSeatAssignmentId={draggingSeatAssignmentId}
             mode={showArrangeWorkspace ? 'arrange' : 'assign'}
             onGridToolAction={handleGridToolAction}
             onMoveItem={controller.moveItem}
             onSelectItem={setSelectedItemId}
             onSeatActivate={handleSeatActivate}
+            onSeatAssignmentPointerDown={startSeatAssignmentPointerDrag}
             onStudentDrop={controller.assignStudentToSeat}
             onStudentTokenPointerDown={startStudentPointerDrag}
             selectedItemId={selectedItemId}
@@ -10409,6 +10460,7 @@ function SeatingChartEditorContent({
 function SeatingChartGrid({
   assignmentTargetSeatId,
   compact,
+  draggingSeatAssignmentId,
   onGridElementChange,
   layout,
   mode,
@@ -10416,6 +10468,7 @@ function SeatingChartGrid({
   onMoveItem,
   onSelectItem,
   onSeatActivate,
+  onSeatAssignmentPointerDown,
   onStudentDrop,
   onStudentTokenPointerDown,
   selectedItemId,
@@ -10423,6 +10476,7 @@ function SeatingChartGrid({
 }: {
   assignmentTargetSeatId: string | null;
   compact: boolean;
+  draggingSeatAssignmentId: string | null;
   onGridElementChange: (element: HTMLDivElement | null) => void;
   layout: SeatingChartLayout;
   mode: 'arrange' | 'assign';
@@ -10430,6 +10484,10 @@ function SeatingChartGrid({
   onMoveItem: (itemId: string, x: number, y: number) => void;
   onSelectItem: (itemId: string | null) => void;
   onSeatActivate: (seatId: string) => void;
+  onSeatAssignmentPointerDown: (
+    event: ReactPointerEvent<HTMLElement>,
+    sourceSeatId: string
+  ) => void;
   onStudentDrop: (studentName: string, targetSeatId: string, sourceSeatId: string | null) => void;
   onStudentTokenPointerDown: (
     event: ReactPointerEvent<HTMLElement>,
@@ -10655,6 +10713,8 @@ function SeatingChartGrid({
           const isSelected = item ? selectedItemId === item.id : false;
           const isDragTarget = dragTargetCellKey === key;
           const isAssignmentTarget = assignmentTargetSeatId !== null && item?.id === assignmentTargetSeatId;
+          const isSeatAssignmentDragging =
+            draggingSeatAssignmentId !== null && item?.id === draggingSeatAssignmentId;
 
           return (
             <div
@@ -10708,10 +10768,25 @@ function SeatingChartGrid({
                     mode === 'arrange' && selectedTool === 'select'
                       ? 'seating-chart__item--movable'
                       : ''
-                  } ${draggingItemId === item.id ? 'seating-chart__item--dragging' : ''}`}
+                  } ${
+                    mode === 'assign' && isSeat
+                      ? 'seating-chart__item--assignment-draggable'
+                      : ''
+                  } ${
+                    draggingItemId === item.id || isSeatAssignmentDragging
+                      ? 'seating-chart__item--dragging'
+                      : ''
+                  }`}
                   data-tooltip-content={compact ? buildSeatingChartItemTitle(item) : undefined}
                   draggable={false}
-                  onPointerDown={(event) => startPointerDrag(event, item.id)}
+                  onPointerDown={(event) => {
+                    if (mode === 'assign' && isSeat) {
+                      onSeatAssignmentPointerDown(event, item.id);
+                      return;
+                    }
+
+                    startPointerDrag(event, item.id);
+                  }}
                   style={
                     {
                       ['--seat-colour' as string]: item.color
@@ -13103,6 +13178,10 @@ function useSeatingChartController(selectedList: ClassList | null) {
       updateActiveLayout((layout) => clearSeatingChartLayoutAssignments(layout)),
     clearSeatAssignment: (seatId: string) =>
       updateActiveLayout((layout) => clearSeatingChartSeatAssignment(layout, seatId)),
+    swapSeatAssignments: (sourceSeatId: string, targetSeatId: string) =>
+      updateActiveLayout((layout) =>
+        swapSeatingChartSeatAssignments(layout, sourceSeatId, targetSeatId)
+      ),
     deleteActiveLayout: () =>
       updateSelectedListChart((current) =>
         current.activeLayoutId
@@ -16463,6 +16542,45 @@ function clearSeatingChartSeatAssignment(layout: SeatingChartLayout, seatId: str
           }
         : item
     ),
+    updatedAt: Date.now()
+  };
+}
+
+function swapSeatingChartSeatAssignments(
+  layout: SeatingChartLayout,
+  sourceSeatId: string,
+  targetSeatId: string
+) {
+  if (sourceSeatId === targetSeatId) {
+    return layout;
+  }
+
+  const sourceSeat = layout.items.find((item) => item.id === sourceSeatId && item.kind === 'seat');
+  const targetSeat = layout.items.find((item) => item.id === targetSeatId && item.kind === 'seat');
+
+  if (!sourceSeat || !targetSeat || sourceSeat.assignedStudent === targetSeat.assignedStudent) {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    items: layout.items.map((item) => {
+      if (item.id === sourceSeatId && item.kind === 'seat') {
+        return {
+          ...item,
+          assignedStudent: targetSeat.assignedStudent
+        };
+      }
+
+      if (item.id === targetSeatId && item.kind === 'seat') {
+        return {
+          ...item,
+          assignedStudent: sourceSeat.assignedStudent
+        };
+      }
+
+      return item;
+    }),
     updatedAt: Date.now()
   };
 }
