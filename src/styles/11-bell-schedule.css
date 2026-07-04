@@ -1,0 +1,523 @@
+.bell-schedule,
+.bell-schedule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bell-schedule__compact-toolbar,
+.bell-schedule__summary-head,
+.bell-schedule__summary-main,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__header,
+.bell-schedule-editor__toolbar,
+.bell-schedule-editor__toolbar-actions,
+.bell-schedule-editor__slot-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bell-schedule__compact-toolbar,
+.bell-schedule__summary-head,
+.bell-schedule__summary-main,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__header,
+.bell-schedule-editor__toolbar,
+.bell-schedule-editor__slot-header {
+  justify-content: space-between;
+}
+
+.bell-schedule__compact-toolbar {
+  flex-wrap: wrap;
+}
+
+.bell-schedule__compact-toolbar .secondary-link {
+  flex: 0 0 auto;
+}
+
+.bell-schedule__profile-select {
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.bell-schedule__summary-card,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__day,
+.bell-schedule-editor__slot {
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 4px 10px rgba(8, 12, 18, 0.06);
+}
+
+.bell-schedule__summary-card,
+.bell-schedule-editor__day {
+  padding: 7px;
+}
+
+.bell-schedule__summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bell-schedule__summary-head {
+  align-items: flex-start;
+}
+
+.bell-schedule__summary-head .card-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-schedule__status-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bell-schedule__summary-main {
+  align-items: flex-start;
+}
+
+.bell-schedule__summary-copy,
+.bell-schedule__upcoming-copy,
+.bell-schedule-editor__slot-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bell-schedule__summary-copy {
+  flex: 1 1 auto;
+}
+
+.bell-schedule__summary-title-row,
+.bell-schedule__summary-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bell-schedule__summary-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.1;
+}
+
+.bell-schedule__summary-detail,
+.bell-schedule__upcoming-class,
+.bell-schedule-editor__slot-time {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.bell-schedule__summary-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-schedule__summary-countdown {
+  flex: 0 0 auto;
+  font-size: var(--fs-md);
+  font-weight: 400;
+  line-height: 1.35;
+  transition: color 180ms ease;
+  white-space: nowrap;
+}
+
+.bell-schedule__summary-countdown--ready {
+  color: var(--tone-action);
+}
+
+.bell-schedule__summary-countdown--warning {
+  color: var(--tone-warning);
+}
+
+.bell-schedule__summary-countdown--danger {
+  color: var(--danger);
+}
+
+.bell-schedule__summary-time,
+.bell-schedule__upcoming-time {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bell-schedule__progress {
+  min-height: 8px;
+}
+
+.bell-schedule__progress-fill {
+  transform-origin: left center;
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='bell-schedule'] .bell-schedule__progress {
+  background:rgba(45, 102, 143, 0.15);
+}
+
+.panel[data-theme='light'] .widget-card[data-widget-id='bell-schedule'] .bell-schedule__progress-fill {
+  background: transparent;
+}
+
+.bell-schedule__metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bell-schedule__metric-row--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bell-schedule__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+  background: transparent;
+}
+
+.bell-schedule__metric strong {
+  font-size: var(--fs-lg);
+}
+
+.bell-schedule__metric-label {
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bell-schedule__upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bell-schedule__upcoming-list,
+.bell-schedule-editor__slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bell-schedule__upcoming-list {
+  gap: 3px;
+  min-width: 0;
+}
+
+.bell-schedule__upcoming-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bell-schedule__upcoming-item {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 26px;
+  padding: 4px 8px;
+}
+
+.bell-schedule__upcoming-period,
+.bell-schedule-editor__day-title,
+.bell-schedule-editor__slot-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.bell-schedule__upcoming-period {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.bell-schedule__upcoming-period,
+.bell-schedule__upcoming-time {
+  flex: 0 0 auto;
+}
+
+.bell-schedule__upcoming-class {
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-schedule-editor__toolbar {
+  align-items: flex-end;
+}
+
+.bell-schedule__profile-name {
+  flex: 1 1 auto;
+  gap: 6px;
+}
+
+.bell-schedule-editor__toolbar-actions {
+  flex-wrap: wrap;
+}
+
+.bell-schedule-editor__day-header {
+  position: relative;
+}
+
+.bell-schedule-editor__day-actions,
+.bell-schedule-editor__time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bell-schedule-editor__day-actions {
+  flex: 0 0 auto;
+}
+
+.bell-schedule-editor__day-actions .icon-button {
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  font-size: var(--fs-md);
+}
+
+.bell-schedule-editor__day-actions .icon-button--active {
+  border-color: var(--accent-border-strong);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.bell-schedule-editor__add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 4;
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+  background: transparent;
+  box-shadow: 0 10px 24px rgba(8, 12, 18, 0.16);
+}
+
+.bell-schedule-editor__time-row {
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.bell-schedule-editor__time-row label {
+  display: flex;
+  flex: 1 1 84px;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.bell-schedule-editor__time-row .text-field {
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+.bell-schedule__status-pill--teaching {
+  border-color: var(--tone-action-border);
+  background:
+    var(--tone-action-soft);
+  color: var(--tone-action);
+}
+
+.bell-schedule__status-pill--free {
+  border-color: var(--tone-utility-border);
+  background:
+    var(--tone-utility-soft);
+  color: var(--tone-utility);
+}
+
+.bell-schedule__status-pill--break {
+  border-color: var(--tone-warning-border);
+  background:
+    var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.bell-schedule-editor__week {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  /* Breathing room inside the scrollport so button lift shadows survive. */
+  padding: 8px 4px;
+  margin: -8px -4px -4px;
+}
+
+.bell-schedule-editor__day {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bell-schedule-editor__slot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+}
+
+.bell-schedule-editor__slot {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  min-height: 104px;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.bell-schedule-editor__slot-header {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bell-schedule-editor__slot .bell-schedule__status-pill {
+  padding: 2px 6px;
+  font-size: var(--fs-2xs);
+  line-height: 1;
+}
+
+.bell-schedule-editor__slot-title {
+  font-size: var(--fs-sm);
+}
+
+.bell-schedule-editor__slot-time {
+  font-size: var(--fs-xs);
+}
+
+.bell-schedule-editor__slot .text-field {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  height: 26px;
+  padding-inline: 6px;
+  font-size: var(--fs-xs);
+}
+
+.bell-schedule-editor__slot .helper-text {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+}
+
+.bell-schedule-editor__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-primary);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.bell-schedule-editor__toggle input {
+  margin: 0;
+  accent-color: var(--tone-action);
+}
+
+@media (max-width: 860px) {
+  .tracker-editor-grid,
+  .tracker-form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tracker-record {
+    flex-direction: column;
+  }
+
+  .tracker-record__actions {
+    min-width: 0;
+    width: 100%;
+    align-items: stretch;
+    flex: 1 1 auto;
+  }
+
+  .tracker-record__button-row {
+    justify-content: flex-start;
+  }
+}
+
+.bell-schedule-editor__settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.bell-schedule-editor__setting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+}
+
+.bell-schedule-editor__setting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.bell-schedule-editor__override-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.bell-schedule-editor__override-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bell-schedule-editor__override-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: var(--radius-control);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.bell-schedule-editor__minutes-field {
+  width: 72px;
+}

@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   setLaunchAtLogin: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-launch-at-login', enabled),
   setTimerChimeEnabled: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-timer-chime-enabled', enabled),
+  setTimerChimeSound: (sound: string) => ipcRenderer.invoke('app-settings:set-timer-chime-sound', sound),
   setTimerSpeechVoice: (voice: string) => ipcRenderer.invoke('app-settings:set-timer-speech-voice', voice),
   setTimerVoiceEnabled: (enabled: boolean) => ipcRenderer.invoke('app-settings:set-timer-voice-enabled', enabled),
   onAppSettingsChanged: (listener: (settings: unknown) => void) => {

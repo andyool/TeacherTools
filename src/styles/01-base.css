@@ -1,0 +1,617 @@
+:root {
+  font-family: "SF Pro Display", "Avenir Next", "Segoe UI Variable", sans-serif;
+
+  /* Type scale — every font-size in the app maps to one of these steps. */
+  --fs-2xs: 0.68rem;
+  --fs-xs: 0.74rem;
+  --fs-sm: 0.8rem;
+  --fs-md: 0.86rem;
+  --fs-lg: 0.95rem;
+  --fs-xl: 1.08rem;
+  --fs-2xl: 1.24rem;
+  --fs-display: 1.68rem;
+
+  /* Control metrics shared by buttons, steppers, and icon buttons. */
+  --control-height: 30px;
+  --control-height-sm: 26px;
+  --icon-button-size: 26px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  color: #eaf2fb;
+  background: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  -webkit-app-region: no-drag;
+}
+
+a,
+label,
+[role='button'],
+[contenteditable='true'],
+[tabindex]:not([tabindex='-1']) {
+  -webkit-app-region: no-drag;
+}
+
+button {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  box-shadow: var(--button-under-shadow, 0 1px 1px rgba(8, 12, 18, 0.16));
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input,
+select,
+textarea {
+  outline: none;
+}
+
+.overlay-shell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.overlay-shell__dock {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+}
+
+.overlay-dot {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  clip-path: circle(50% at 50% 50%);
+  background: transparent;
+  box-shadow: none;
+  transition: transform 180ms ease;
+  animation: floatPulse 3s ease-in-out infinite;
+  user-select: none;
+  touch-action: none;
+  outline: none;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.overlay-exit {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 4;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 220, 0.58);
+  background:
+    rgba(255, 232, 237, 0.92);
+  box-shadow:
+    0 10px 22px rgba(22, 28, 36, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  color: #b53f57;
+  font-size: var(--fs-md);
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px) scale(0.88);
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease;
+}
+
+.overlay-shell__dock:hover .overlay-exit,
+.overlay-shell__dock:focus-within .overlay-exit,
+.overlay-exit:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.overlay-exit:hover {
+  box-shadow:
+    0 14px 26px rgba(22, 28, 36, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+}
+
+.overlay-dot:hover {
+  transform: scale(1.03);
+}
+
+.overlay-dot__alert {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.82);
+  background: transparent;
+  transition: opacity 220ms ease;
+}
+
+.overlay-dot--timer-alert .overlay-dot__alert {
+  opacity: 1;
+  animation: overlayAlertPulse 2.4s ease-in-out infinite;
+}
+
+.overlay-dot__alert-label {
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  z-index: 3;
+  max-width: 82px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 214, 220, 0.55);
+  background: rgba(24, 10, 14, 0.88);
+  color: #ffe4ea;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: break-word;
+}
+
+.overlay-dot__period {
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  z-index: 3;
+  max-width: 82px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(151, 233, 217, 0.55);
+  background: rgba(10, 22, 20, 0.88);
+  color: #c8fff1;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.overlay-dot__art {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: visible;
+}
+
+.overlay-dot__art * {
+  pointer-events: none;
+}
+
+.app-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 230, 255, 0.28);
+  background:
+    rgba(4, 8, 16, 0.94);
+  box-shadow: none;
+  color: #f5fbff;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.app-tooltip--measure {
+  left: 0;
+  top: 0;
+  visibility: hidden;
+}
+
+.app-tooltip::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--tooltip-arrow-left, 18px) - 5px);
+  width: 10px;
+  height: 10px;
+  background:inherit;
+  border-left: 1px solid rgba(212, 230, 255, 0.2);
+  border-top: 1px solid rgba(212, 230, 255, 0.2);
+  transform: rotate(45deg);
+}
+
+.app-tooltip--top::after {
+  bottom: -6px;
+  transform: rotate(225deg);
+}
+
+.app-tooltip--bottom::after {
+  top: -6px;
+  transform: rotate(45deg);
+}
+
+.window-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: transparent;
+}
+
+.window-stage--popover,
+.window-stage--widget-popout,
+.window-stage--popover .panel,
+.window-stage--widget-popout .panel,
+.window-stage--popover .panel__content,
+.window-stage--widget-popout .panel__content,
+.window-stage--widget-popout .widget-card,
+.widget-card__header--window,
+.widget-card__header--window .widget-card__title-group,
+.widget-card__header--window .widget-card__title-copy,
+.widget-card__header--window .widget-card__title-row,
+.widget-card__header--window .widget-card__title-icon,
+.widget-card__header--window .widget-card__title {
+  -webkit-app-region: drag;
+}
+
+.window-stage--popover .widget-card__body-shell,
+.window-stage--widget-popout .widget-card__body-shell,
+.window-stage--popover .widget-card__body,
+.window-stage--widget-popout .widget-card__body,
+.window-stage--popover .dashboard-shell,
+.window-stage--popover .dashboard-columns,
+.window-stage--popover .dashboard-column,
+.window-stage--popover .widget-card,
+.widget-card__header--interactive,
+.widget-card__meta,
+.picker-select,
+.resize-handle {
+  -webkit-app-region: no-drag;
+}
+
+.window-stage--builder {
+  overflow: hidden;
+  padding: 6px;
+}
+
+.window-stage--class-list-builder {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.window-stage--widget-popout {
+  overflow: hidden;
+}
+
+.window-stage--popover {
+  position: relative;
+  overflow: hidden;
+  padding: 7px 7px 14px;
+  background: rgba(255, 255, 255, 0.001);
+}
+
+.panel {
+  --radius-panel: 10px;
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --radius-pill: 7px;
+  width: 100%;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--radius-panel);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.panel__glass,
+.panel__gloss {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.panel__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.panel[data-theme='light'] {
+  --panel-fill-top: #e6f1f8;
+  --panel-fill-bottom: #d8e7f1;
+  --panel-border: rgba(82, 116, 154, 0.38);
+  --panel-highlight: rgba(226, 242, 252, 0.6);
+  --panel-bottom-edge: rgba(83, 111, 145, 0.24);
+  --panel-frost:
+    transparent;
+  --panel-gloss: transparent;
+  --panel-rim: transparent;
+  --card-fill-top: #edf6fa;
+  --card-fill-bottom: #dfeaf3;
+  --card-border: rgba(65, 97, 134, 0.44);
+  --field-fill-top: #f0f7fb;
+  --field-fill-bottom: #dbe8f2;
+  --field-border: rgba(82, 116, 154, 0.28);
+  --card-overlay-top: rgba(202, 224, 239, 0.2);
+  --card-overlay-mid: rgba(202, 224, 239, 0.07);
+  --card-overlay-bottom: rgba(64, 101, 139, 0.045);
+  --surface-overlay-top: rgba(203, 226, 241, 0.22);
+  --surface-overlay-bottom: rgba(75, 114, 155, 0.065);
+  --well-overlay-top: rgba(73, 113, 154, 0.12);
+  --well-overlay-mid: rgba(73, 113, 154, 0.055);
+  --well-overlay-bottom: rgba(226, 242, 252, 0.1);
+  --control-top-shadow: rgba(210, 231, 244, 0.12);
+  --control-mid-shadow: rgba(190, 214, 231, 0.04);
+  --control-bottom-light: rgba(70, 108, 146, 0.045);
+  --control-outer-shadow: rgba(26, 50, 80, 0.08);
+  --control-glint: rgba(224, 243, 254, 0.6);
+  --surface-sheen-top: rgba(211, 234, 248, 0.18);
+  --surface-sheen-bottom: rgba(199, 221, 238, 0.06);
+  --surface-edge-light: rgba(218, 240, 252, 0.28);
+  --control-overlay-top: rgba(204, 227, 242, 0.2);
+  --control-overlay-bottom: rgba(70, 110, 150, 0.08);
+  --text-primary: #10243a;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.42),
+    0 12px 24px rgba(36, 74, 108, 0.12),
+    0 22px 42px rgba(36, 74, 108, 0.13);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.26))
+    drop-shadow(0 12px 24px rgba(36, 74, 108, 0.12))
+    drop-shadow(0 22px 42px rgba(36, 74, 108, 0.13));
+  --text-secondary: rgba(16, 36, 58, 0.78);
+  --button-neutral-text: #506f8a;
+  --button-neutral-soft: rgba(80, 111, 138, 0.17);
+  --button-neutral-border: rgba(80, 111, 138, 0.28);
+  --button-neutral-border-strong: rgba(80, 111, 138, 0.42);
+  --tone-action: #2a9a64;
+  --tone-action-soft: rgba(42, 154, 100, 0.18);
+  --tone-action-border: rgba(42, 154, 100, 0.28);
+  --tone-action-border-strong: rgba(42, 154, 100, 0.42);
+  --tone-utility: #2b7abe;
+  --tone-utility-soft: rgba(43, 122, 190, 0.17);
+  --tone-utility-border: rgba(43, 122, 190, 0.28);
+  --tone-utility-border-strong: rgba(43, 122, 190, 0.42);
+  --tone-selection: #7467c9;
+  --tone-selection-soft: rgba(116, 103, 201, 0.17);
+  --tone-selection-border: rgba(116, 103, 201, 0.28);
+  --tone-selection-border-strong: rgba(116, 103, 201, 0.42);
+  --tone-warning: #d08a2c;
+  --tone-warning-soft: rgba(208, 138, 44, 0.18);
+  --tone-warning-border: rgba(208, 138, 44, 0.28);
+  --tone-warning-border-strong: rgba(208, 138, 44, 0.42);
+  --tone-theme: #d65f9f;
+  --tone-theme-soft: rgba(214, 95, 159, 0.18);
+  --tone-theme-border: rgba(214, 95, 159, 0.28);
+  --tone-theme-border-strong: rgba(214, 95, 159, 0.42);
+  --accent: #2d668f;
+  --accent-contrast: #f6fbff;
+  --accent-soft: rgba(45, 102, 143, 0.17);
+  --accent-border: rgba(45, 102, 143, 0.26);
+  --accent-border-strong: rgba(45, 102, 143, 0.4);
+  --menu-surface: rgba(226, 240, 248, 0.98);
+  --danger: #b8485a;
+  --danger-soft: rgba(184, 72, 90, 0.18);
+  --danger-border: rgba(184, 72, 90, 0.28);
+  --danger-border-strong: rgba(184, 72, 90, 0.42);
+  color-scheme: light;
+}
+
+.panel[data-theme='dark'] {
+  --panel-fill-top: #080d16;
+  --panel-fill-bottom: #03060c;
+  --panel-border: rgba(137, 163, 205, 0.22);
+  --panel-highlight: rgba(238, 246, 255, 0.08);
+  --panel-bottom-edge: rgba(0, 0, 0, 0.42);
+  --panel-frost:
+    transparent;
+  --panel-gloss: transparent;
+  --panel-rim: transparent;
+  --card-fill-top: #101827;
+  --card-fill-bottom: #0b111d;
+  --card-border: rgba(201, 222, 255, 0.18);
+  --field-fill-top: #0f1725;
+  --field-fill-bottom: #080f1a;
+  --field-border: rgba(195, 218, 255, 0.16);
+  --card-overlay-top: rgba(238, 246, 255, 0.03);
+  --card-overlay-mid: rgba(238, 246, 255, 0.01);
+  --card-overlay-bottom: rgba(0, 0, 0, 0.08);
+  --surface-overlay-top: rgba(238, 246, 255, 0.026);
+  --surface-overlay-bottom: rgba(0, 0, 0, 0.1);
+  --well-overlay-top: rgba(0, 0, 0, 0.16);
+  --well-overlay-mid: rgba(0, 0, 0, 0.08);
+  --well-overlay-bottom: rgba(238, 246, 255, 0.018);
+  --control-top-shadow: rgba(238, 246, 255, 0.018);
+  --control-mid-shadow: rgba(0, 0, 0, 0.03);
+  --control-bottom-light: rgba(0, 0, 0, 0.08);
+  --control-outer-shadow: rgba(0, 0, 0, 0.12);
+  --control-glint: rgba(255, 255, 255, 0.74);
+  --surface-sheen-top: rgba(238, 246, 255, 0.09);
+  --surface-sheen-bottom: rgba(238, 246, 255, 0.018);
+  --surface-edge-light: rgba(184, 209, 255, 0.055);
+  --control-overlay-top: rgba(238, 246, 255, 0.024);
+  --control-overlay-bottom: rgba(0, 0, 0, 0.08);
+  --text-primary: #f6fbff;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 26px rgba(0, 0, 0, 0.22),
+    0 24px 44px rgba(0, 0, 0, 0.26);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.07))
+    drop-shadow(0 12px 26px rgba(0, 0, 0, 0.22))
+    drop-shadow(0 24px 44px rgba(0, 0, 0, 0.26));
+  --text-secondary: rgba(236, 244, 255, 0.9);
+  --button-neutral-text: #bbd5f1;
+  --button-neutral-soft: rgba(187, 213, 241, 0.18);
+  --button-neutral-border: rgba(187, 213, 241, 0.26);
+  --button-neutral-border-strong: rgba(187, 213, 241, 0.4);
+  --tone-action: #74e7ab;
+  --tone-action-soft: rgba(116, 231, 171, 0.18);
+  --tone-action-border: rgba(116, 231, 171, 0.28);
+  --tone-action-border-strong: rgba(116, 231, 171, 0.42);
+  --tone-utility: #7ecbff;
+  --tone-utility-soft: rgba(126, 203, 255, 0.18);
+  --tone-utility-border: rgba(126, 203, 255, 0.28);
+  --tone-utility-border-strong: rgba(126, 203, 255, 0.42);
+  --tone-selection: #c5adff;
+  --tone-selection-soft: rgba(197, 173, 255, 0.18);
+  --tone-selection-border: rgba(197, 173, 255, 0.28);
+  --tone-selection-border-strong: rgba(197, 173, 255, 0.42);
+  --tone-warning: #ffd06d;
+  --tone-warning-soft: rgba(255, 208, 109, 0.18);
+  --tone-warning-border: rgba(255, 208, 109, 0.28);
+  --tone-warning-border-strong: rgba(255, 208, 109, 0.42);
+  --tone-theme: #ff9ecf;
+  --tone-theme-soft: rgba(255, 158, 207, 0.18);
+  --tone-theme-border: rgba(255, 158, 207, 0.28);
+  --tone-theme-border-strong: rgba(255, 158, 207, 0.42);
+  --accent: #d9e8ff;
+  --accent-contrast: #0b1526;
+  --accent-soft: rgba(217, 232, 255, 0.18);
+  --accent-border: rgba(217, 232, 255, 0.28);
+  --accent-border-strong: rgba(217, 232, 255, 0.42);
+  --menu-surface: rgba(9, 16, 27, 0.98);
+  --danger: #ff9aaa;
+  --danger-soft: rgba(255, 154, 170, 0.18);
+  --danger-border: rgba(255, 154, 170, 0.28);
+  --danger-border-strong: rgba(255, 154, 170, 0.42);
+  color-scheme: dark;
+}
+
+.panel[data-theme='color'] {
+  --radius-panel: 8px;
+  --radius-card: 6px;
+  --radius-control: 5px;
+  --panel-fill-top: #efe2c0;
+  --panel-fill-bottom: #e7d4ab;
+  --panel-border: #2f2445;
+  --panel-highlight: rgba(255, 255, 255, 0.28);
+  --panel-bottom-edge: rgba(47, 36, 69, 0.18);
+  --panel-frost: transparent;
+  --panel-gloss: none;
+  --panel-rim: none;
+  --card-fill-top: rgba(255, 255, 255, 0.5);
+  --card-fill-bottom: rgba(255, 255, 255, 0.5);
+  --card-border: rgba(47, 36, 69, 0.22);
+  --field-fill-top: rgba(255, 255, 255, 0.18);
+  --field-fill-bottom: rgba(255, 255, 255, 0.18);
+  --field-border: rgba(47, 36, 69, 0.22);
+  --card-overlay-top: rgba(255, 255, 255, 0);
+  --card-overlay-mid: rgba(255, 255, 255, 0);
+  --card-overlay-bottom: rgba(255, 255, 255, 0);
+  --surface-overlay-top: rgba(255, 255, 255, 0.16);
+  --surface-overlay-bottom: rgba(255, 255, 255, 0.16);
+  --well-overlay-top: rgba(255, 255, 255, 0.14);
+  --well-overlay-mid: rgba(255, 255, 255, 0.14);
+  --well-overlay-bottom: rgba(47, 36, 69, 0.05);
+  --control-top-shadow: rgba(255, 255, 255, 0);
+  --control-mid-shadow: rgba(255, 255, 255, 0);
+  --control-bottom-light: rgba(255, 255, 255, 0);
+  --control-outer-shadow: rgba(47, 36, 69, 0.14);
+  --control-glint: rgba(255, 255, 255, 0);
+  --surface-sheen-top: rgba(255, 255, 255, 0);
+  --surface-sheen-bottom: rgba(255, 255, 255, 0);
+  --surface-edge-light: rgba(255, 255, 255, 0.18);
+  --control-overlay-top: rgba(255, 255, 255, 0);
+  --control-overlay-bottom: rgba(255, 255, 255, 0);
+  --text-primary: #241a39;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3),
+    0 11px 22px rgba(47, 36, 69, 0.1),
+    0 20px 38px rgba(47, 36, 69, 0.12);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.2))
+    drop-shadow(0 11px 22px rgba(47, 36, 69, 0.1))
+    drop-shadow(0 20px 38px rgba(47, 36, 69, 0.12));
+  --text-secondary: rgba(36, 26, 57, 0.72);
+  --button-neutral-text: #241a39;
+  --button-neutral-soft: rgba(36, 26, 57, 0.1);
+  --button-neutral-border: rgba(36, 26, 57, 0.2);
+  --button-neutral-border-strong: rgba(36, 26, 57, 0.36);
+  --tone-action: #1f7d57;
+  --tone-action-soft: rgba(31, 125, 87, 0.12);
+  --tone-action-border: rgba(31, 125, 87, 0.22);
+  --tone-action-border-strong: rgba(31, 125, 87, 0.38);
+  --tone-utility: #2659b5;
+  --tone-utility-soft: rgba(38, 89, 181, 0.12);
+  --tone-utility-border: rgba(38, 89, 181, 0.22);
+  --tone-utility-border-strong: rgba(38, 89, 181, 0.38);
+  --tone-selection: #5c39b0;
+  --tone-selection-soft: rgba(92, 57, 176, 0.12);
+  --tone-selection-border: rgba(92, 57, 176, 0.22);
+  --tone-selection-border-strong: rgba(92, 57, 176, 0.38);
+  --tone-warning: #ab5d14;
+  --tone-warning-soft: rgba(171, 93, 20, 0.12);
+  --tone-warning-border: rgba(171, 93, 20, 0.22);
+  --tone-warning-border-strong: rgba(171, 93, 20, 0.38);
+  --tone-theme: #c94a7c;
+  --tone-theme-soft: rgba(201, 74, 124, 0.12);
+  --tone-theme-border: rgba(201, 74, 124, 0.22);
+  --tone-theme-border-strong: rgba(201, 74, 124, 0.38);
+  --accent: #2f2445;
+  --accent-contrast: #fdf6e9;
+  --accent-soft: rgba(47, 36, 69, 0.12);
+  --accent-border: rgba(47, 36, 69, 0.22);
+  --accent-border-strong: rgba(47, 36, 69, 0.38);
+  --menu-surface: rgba(255, 249, 238, 0.98);
+  --danger: #b73964;
+  --danger-soft: rgba(183, 57, 100, 0.12);
+  --danger-border: rgba(183, 57, 100, 0.22);
+  --danger-border-strong: rgba(183, 57, 100, 0.38);
+  color-scheme: light;
+}

@@ -1,0 +1,1466 @@
+@media (max-width: 980px) {
+  .seating-chart__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 420px) {
+  .window-stage {
+    padding: 8px;
+  }
+
+  .panel {
+    padding: 12px;
+    border-radius: 9px;
+  }
+
+  .panel-header--main {
+    align-items: flex-start;
+  }
+
+  .panel-toolbar {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .update-toolbar {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .picker-select--toolbar {
+    width: 100%;
+    max-width: none;
+  }
+
+  .group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-actions,
+  .note-input-row,
+  .action-row,
+  .helper-row {
+    flex-wrap: wrap;
+  }
+
+  .builder-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planner-widget__toolbar,
+  .planner-widget__action-row,
+  .planner-documents__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lesson-plan-export-dialog__backdrop {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .lesson-plan-export-dialog {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+  }
+
+  .lesson-plan-export-dialog__content {
+    max-height: calc(100vh - 16px);
+  }
+
+  .lesson-plan-export-dialog__summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lesson-plan-export-dialog__option-grid,
+  .lesson-plan-export-dialog__toggle-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lesson-plan-export-dialog__footer,
+  .lesson-plan-export-dialog__actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .lesson-plan-export-dialog__actions > button {
+    flex: 1 1 0;
+  }
+
+  .planner-week__toolbar,
+  .planner-week__summary,
+  .planner-week__nav,
+  .planner-week__actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .planner-week__summary {
+    flex-direction: column;
+  }
+
+  .planner-week__summary .helper-text {
+    max-width: none;
+    text-align: left;
+  }
+
+  .planner-week__year-field,
+  .planner-week__week-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .planner-week__grid {
+    grid-template-columns: 50px repeat(5, minmax(132px, 1fr));
+  }
+
+  .deleted-lesson {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .deleted-lesson__restore {
+    grid-column: 1 / -1;
+  }
+
+  .deleted-lessons-dialog__toolbar,
+  .planner-week-dialog__actions {
+    align-items: stretch;
+  }
+
+  .deleted-lessons-dialog__toolbar > button,
+  .planner-week-dialog__actions > button {
+    width: 100%;
+  }
+
+  .planner-widget__meta {
+    width: 100%;
+  }
+
+  .planner-widget__date-row {
+    width: 100%;
+  }
+
+  .planner-calendar__header {
+    flex-direction: column;
+  }
+
+  .bell-schedule__compact-toolbar,
+  .bell-schedule__summary-head,
+  .bell-schedule__summary-main,
+  .bell-schedule__upcoming-item,
+  .bell-schedule-editor__header,
+  .bell-schedule-editor__toolbar,
+  .bell-schedule-editor__slot-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bell-schedule__metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seating-chart__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seating-chart__toolbar,
+  .seating-chart__toolbar-actions,
+  .seating-chart__tool-row {
+    align-items: stretch;
+  }
+
+  .seating-chart__preview-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .seating-chart__canvas {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 720px) {
+  .panel--main .panel-header--main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .panel--main .panel-header__title {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .panel--main .panel-toolbar {
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+}
+
+@container (max-width: 640px) {
+  .panel--main .panel-toolbar {
+    display: grid;
+    grid-template-columns: minmax(88px, 128px) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+  }
+
+  .panel--main .picker-select--toolbar {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    gap: 0;
+  }
+
+  .panel--main .toolbar-caption,
+  .panel--main .update-status-pill {
+    display: none;
+  }
+
+  .panel--main .picker-select__trigger {
+    min-height: 30px;
+    padding: 0 9px;
+  }
+
+  .panel--main .picker-select__trigger > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel--main .picker-select__menu--toolbar {
+    right: auto;
+    min-width: min(220px, calc(100cqw - 28px));
+  }
+
+  .panel--main .panel-actions,
+  .panel--main .update-toolbar {
+    min-width: 0;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .panel--main .panel-actions {
+    justify-content: flex-end;
+  }
+
+  .panel--main .toolbar-link {
+    min-width: 0;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .panel--main .color-mode-trigger__preview {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+  }
+
+  .panel--main .zoom-controls {
+    gap: 4px;
+  }
+
+  .panel--main .icon-button {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+  }
+
+  .panel--main .zoom-controls .icon-button {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@container (max-width: 520px) {
+  .panel--main .panel-toolbar {
+    grid-template-columns: minmax(76px, 96px) minmax(0, 1fr);
+    column-gap: 6px;
+  }
+
+  .panel--main .panel-actions,
+  .panel--main .update-toolbar,
+  .panel--main .zoom-controls {
+    gap: 3px;
+  }
+
+  .panel--main .picker-select__trigger {
+    min-height: 28px;
+    padding: 0 8px;
+  }
+
+  .panel--main .toolbar-link {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+  }
+
+  .panel--main .toolbar-button__label--full {
+    display: none;
+  }
+
+  .panel--main .toolbar-button__label--compact {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-xl);
+    line-height: 1;
+  }
+
+  .panel--main .icon-button,
+  .panel--main .color-mode-trigger--toolbar {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 5px;
+  }
+
+  .panel--main .color-mode-trigger--toolbar {
+    width: 28px;
+    min-width: 28px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .panel--main .color-mode-trigger__text {
+    display: none;
+  }
+
+  .panel--main .zoom-controls .icon-button {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+@container (max-width: 380px) {
+  .panel--main .panel-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 5px;
+  }
+
+  .panel--main .panel-actions {
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+
+  .panel--main .update-toolbar {
+    display: contents;
+    width: auto;
+  }
+
+  .panel--main .panel-actions,
+  .panel--main .zoom-controls {
+    min-width: 0;
+  }
+}
+
+.panel {
+  --panel-fill: var(--panel-fill-top);
+  --card-fill: var(--card-fill-top);
+  --field-fill: var(--field-fill-top);
+  --control-fill: var(--field-fill);
+  --well-fill: var(--field-fill);
+  --reflection-x: 50%;
+  --reflection-y: 50%;
+  --reflection-shift-x: 0px;
+  --reflection-shift-y: 0px;
+  --reflection-tilt-x: 0deg;
+  --reflection-tilt-y: 0deg;
+  --bezel-glint-x: 50%;
+  --bezel-glint-y: 0%;
+  --bezel-glint-angle: 0deg;
+  --surface-reflection: rgba(255, 255, 255, 0.22);
+  --surface-reflection-strong: rgba(255, 255, 255, 0.5);
+  --surface-reflection-opacity: 0.214;
+  --surface-reflection-blur: 18px;
+  --surface-bezel-light: rgba(255, 255, 255, 0.42);
+  --surface-bezel-shadow: rgba(8, 12, 18, 0.16);
+  --surface-bezel-glint: rgba(255, 255, 255, 0.84);
+  --surface-bezel-line: var(--field-border);
+  --surface-depth-shadow: 0 1px 2px rgba(8, 12, 18, 0.06);
+}
+
+.panel[data-theme='light'] {
+  --panel-fill: #dfeef5;
+  --card-fill: #e8f2f7;
+  --field-fill: #e7f2f8;
+  --control-fill: var(--panel-fill);
+  --well-fill: #e1edf5;
+  --surface-reflection: rgba(255, 255, 255, 0.34);
+  --surface-reflection-strong: rgba(255, 255, 255, 0.68);
+  --surface-reflection-opacity: 0.236;
+  --surface-bezel-light: rgba(255, 255, 255, 0.72);
+  --surface-bezel-shadow: rgba(34, 64, 96, 0.16);
+  --surface-bezel-glint: rgba(255, 255, 255, 0.96);
+  --surface-bezel-line: rgba(82, 116, 154, 0.32);
+  --surface-depth-shadow: 0 1px 2px rgba(26, 50, 80, 0.08);
+}
+
+.panel[data-theme='dark'] {
+  --panel-fill: #060a11;
+  --card-fill: #0d1522;
+  --field-fill: #0b121e;
+  --control-fill: #101827;
+  --well-fill: #09101b;
+  --surface-reflection: rgba(238, 246, 255, 0.12);
+  --surface-reflection-strong: rgba(238, 246, 255, 0.34);
+  --surface-reflection-opacity: 0.191;
+  --surface-bezel-light: rgba(238, 246, 255, 0.18);
+  --surface-bezel-shadow: rgba(0, 0, 0, 0.44);
+  --surface-bezel-glint: rgba(255, 255, 255, 0.68);
+  --surface-bezel-line: rgba(195, 218, 255, 0.16);
+  --surface-depth-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+.panel[data-theme='color'] {
+  --panel-fill: var(--panel-fill-top);
+  --card-fill: rgba(255, 255, 255, 0.5);
+  --field-fill: rgba(255, 255, 255, 0.24);
+  --control-fill: rgba(255, 255, 255, 0.28);
+  --well-fill: rgba(255, 255, 255, 0.2);
+  --surface-reflection: rgba(255, 255, 255, 0.22);
+  --surface-reflection-strong: rgba(255, 255, 255, 0.48);
+  --surface-reflection-opacity: 0.203;
+  --surface-bezel-light: rgba(255, 255, 255, 0.52);
+  --surface-bezel-shadow: rgba(47, 36, 69, 0.22);
+  --surface-bezel-glint: rgba(255, 255, 255, 0.9);
+  --surface-bezel-line: rgba(47, 36, 69, 0.24);
+  --surface-depth-shadow: 0 2px 0 rgba(47, 36, 69, 0.08);
+}
+
+.panel__glass {
+  background:var(--panel-fill);
+  border: 1px solid var(--panel-border);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+.panel[data-theme='color'] .panel__glass {
+  background:var(--panel-fill);
+  border-width: 1px;
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+.panel__gloss,
+.panel[data-theme='color'] .panel__gloss {
+  display: block;
+  overflow: hidden;
+  background: transparent;
+}
+
+.panel__gloss::before,
+.panel__gloss::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 140ms ease,
+    left 70ms linear,
+    top 70ms linear,
+    transform 70ms linear;
+}
+
+.panel__gloss::before {
+  left: var(--reflection-x);
+  top: var(--reflection-y);
+  width: min(62%, 240px);
+  height: min(42%, 150px);
+  border-radius: 999px;
+  background:var(--surface-reflection);
+  filter: blur(24px);
+  transform: translate(-50%, -50%);
+}
+
+.panel__gloss::after {
+  left: var(--bezel-glint-x);
+  top: var(--bezel-glint-y);
+  width: min(34%, 92px);
+  height: 1px;
+  border-radius: 999px;
+  background:var(--surface-bezel-glint);
+  box-shadow:
+    0 0 4px var(--surface-bezel-glint),
+    0 0 10px var(--surface-reflection);
+  transform: translate(-50%, -50%) rotate(var(--bezel-glint-angle));
+}
+
+.panel[data-reflecting='true'] .panel__gloss::before {
+  opacity: calc(var(--surface-reflection-opacity) * 0.68);
+}
+
+.panel[data-reflecting='true'] .panel__gloss::after {
+  opacity: 0.439;
+}
+
+/* Plain selector list, not :is(): one compound argument (e.g. the `> span`
+   below) would lift an :is() list's specificity above the bare-class rules
+   that position floating popovers/menus — keep those out of this list too. */
+.card,
+.widget-card,
+.update-status-pill,
+.stepper,
+.group-card,
+.group-maker__empty,
+.note-row,
+.widget-empty-state,
+.widget-toggle,
+.builder-sidebar,
+.builder-editor,
+.planner-calendar,
+.planner-document,
+.tracker-panel,
+.tracker-record,
+.lesson-plan-export-dialog__summary > span,
+.lesson-plan-export-dialog__entry,
+.planner-week__summary,
+.planner-week__day-header,
+.planner-week__day-track,
+.bell-schedule__summary-card,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__day,
+.bell-schedule-editor__slot,
+.bell-schedule__metric,
+.seating-chart__preview-card,
+.seating-chart__stat,
+.seating-chart__sidebar-section,
+.seating-chart__canvas,
+.seating-chart__drop-well {
+  --surface-fill: var(--card-fill);
+  position: relative;
+  isolation: isolate;
+  border-width: 1px;
+  background:var(--surface-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+/* Only static, non-interactive surfaces keep hard clipping; containers that
+   hold lift buttons must stay overflow: visible so hover glows can breathe. */
+.update-status-pill,
+.lesson-plan-export-dialog__summary > span,
+.lesson-plan-export-dialog__entry {
+  overflow: hidden;
+}
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch
+) {
+  --surface-fill: var(--control-fill);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-width: 1px;
+  background:var(--surface-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px color-mix(in srgb, var(--button-outline, var(--surface-bezel-line)) 72%, transparent),
+    var(--surface-depth-shadow);
+}
+
+.text-field,
+.text-area,
+.tracker-date-picker,
+.tracker-completion-table-wrap,
+.tracker-completion-check span {
+  --surface-fill: var(--field-fill);
+  position: relative;
+  isolation: isolate;
+  border-width: 1px;
+  background:var(--surface-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line);
+}
+
+:is(
+  .badge,
+  .group-card__count,
+  .pill,
+  .tracker-status-pill--default,
+  .planner-calendar__badge
+) {
+  --surface-fill: color-mix(in srgb, var(--widget-highlight-soft, var(--accent-soft)) 72%, var(--field-fill));
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-width: 1px;
+  background:var(--surface-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+.widget-card {
+  --surface-fill: var(--widget-card-fill, var(--card-fill));
+  background:var(--surface-fill);
+}
+
+.panel[data-theme='light'] .widget-card,
+.panel[data-theme='color'] .widget-card,
+.panel[data-theme='color'] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .pill,
+  .badge,
+  .group-card__count,
+  .planner-calendar,
+  .planner-document,
+  .text-field,
+  .text-area,
+  .tracker-date-field__button
+) {
+  border-width: 1px;
+}
+
+.panel[data-theme='color'] .widget-card {
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+.panel[data-theme='color'] .widget-card::before,
+.panel[data-theme='color'] .widget-card::after {
+  display: block;
+}
+
+.panel[data-theme='color'] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete
+) {
+  background:var(--control-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px color-mix(in srgb, var(--button-outline, var(--surface-bezel-line)) 72%, transparent),
+    var(--surface-depth-shadow);
+}
+
+.panel[data-theme='color'] .widget-card :is(
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .pill,
+  .badge,
+  .group-card__count,
+  .planner-calendar,
+  .planner-document
+) {
+  background:var(--field-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+.panel[data-theme='color'] .widget-card :is(.text-field, .text-area) {
+  background:var(--field-fill);
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line);
+}
+
+:is(
+  .card,
+  .settings-popout,
+  .color-mode-popover,
+  .update-status-pill,
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .widget-toggle,
+  .builder-sidebar,
+  .builder-editor,
+  .badge,
+  .group-card__count,
+  .pill,
+  .planner-calendar,
+  .planner-document,
+  .tracker-panel,
+  .tracker-record,
+  .bell-schedule__summary-card,
+  .bell-schedule__upcoming-item,
+  .bell-schedule-editor__day,
+  .bell-schedule-editor__slot,
+  .bell-schedule-editor__add-menu,
+  .bell-schedule__metric,
+  .seating-chart__preview-card,
+  .seating-chart__stat,
+  .seating-chart__sidebar-section,
+  .seating-chart__canvas,
+  .seating-chart__drop-well,
+  .seating-chart__item,
+  .seating-chart__student-pill
+)::before {
+  content: '';
+  position: absolute;
+  left: var(--reflection-x);
+  top: var(--reflection-y);
+  width: var(--reflection-width, min(96px, 68%));
+  height: var(--reflection-height, min(58px, 52%));
+  border-radius: 999px;
+  background:var(--surface-reflection);
+  filter: blur(var(--surface-reflection-blur));
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 140ms ease,
+    left 70ms linear,
+    top 70ms linear;
+  pointer-events: none;
+}
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .card,
+  .widget-card,
+  .settings-popout,
+  .color-mode-popover,
+  .update-status-pill,
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .widget-toggle,
+  .builder-sidebar,
+  .builder-editor,
+  .badge,
+  .group-card__count,
+  .pill,
+  .planner-calendar,
+  .planner-document,
+  .tracker-panel,
+  .tracker-record,
+  .bell-schedule__summary-card,
+  .bell-schedule__upcoming-item,
+  .bell-schedule-editor__day,
+  .bell-schedule-editor__slot,
+  .bell-schedule-editor__add-menu,
+  .bell-schedule__metric,
+  .seating-chart__preview-card,
+  .seating-chart__stat,
+  .seating-chart__sidebar-section,
+  .seating-chart__canvas,
+  .seating-chart__drop-well,
+  .seating-chart__item,
+  .seating-chart__student-pill
+)::after {
+  content: '';
+  position: absolute;
+  left: var(--bezel-glint-x);
+  top: var(--bezel-glint-y);
+  width: var(--bezel-glint-length, 40px);
+  height: 1px;
+  border-radius: 999px;
+  background:var(--surface-bezel-glint);
+  box-shadow:
+    0 0 4px var(--surface-bezel-glint),
+    0 0 8px var(--surface-reflection);
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(var(--bezel-glint-angle));
+  transition:
+    opacity 140ms ease,
+    left 70ms linear,
+    top 70ms linear,
+    transform 70ms linear;
+  pointer-events: none;
+}
+
+.panel[data-theme='color'] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .pill,
+  .badge,
+  .group-card__count,
+  .planner-calendar,
+  .planner-document
+)::before,
+.panel[data-theme='color'] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .pill,
+  .badge,
+  .group-card__count,
+  .planner-calendar,
+  .planner-document
+)::after {
+  display: block;
+}
+
+:is(
+  .card,
+  .settings-popout,
+  .color-mode-popover,
+  .update-status-pill,
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .widget-toggle,
+  .builder-sidebar,
+  .builder-editor,
+  .badge,
+  .group-card__count,
+  .pill,
+  .planner-calendar,
+  .planner-document,
+  .tracker-panel,
+  .tracker-record,
+  .bell-schedule__summary-card,
+  .bell-schedule__upcoming-item,
+  .bell-schedule-editor__day,
+  .bell-schedule-editor__slot,
+  .bell-schedule-editor__add-menu,
+  .bell-schedule__metric,
+  .seating-chart__preview-card,
+  .seating-chart__stat,
+  .seating-chart__sidebar-section,
+  .seating-chart__canvas,
+  .seating-chart__drop-well,
+  .seating-chart__item,
+  .seating-chart__student-pill
+)[data-reflecting='true']::before {
+  opacity: var(--surface-reflection-opacity);
+}
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .card,
+  .widget-card,
+  .settings-popout,
+  .color-mode-popover,
+  .update-status-pill,
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .widget-toggle,
+  .builder-sidebar,
+  .builder-editor,
+  .badge,
+  .group-card__count,
+  .pill,
+  .planner-calendar,
+  .planner-document,
+  .tracker-panel,
+  .tracker-record,
+  .bell-schedule__summary-card,
+  .bell-schedule__upcoming-item,
+  .bell-schedule-editor__day,
+  .bell-schedule-editor__slot,
+  .bell-schedule-editor__add-menu,
+  .bell-schedule__metric,
+  .seating-chart__preview-card,
+  .seating-chart__stat,
+  .seating-chart__sidebar-section,
+  .seating-chart__canvas,
+  .seating-chart__drop-well,
+  .seating-chart__item,
+  .seating-chart__student-pill
+)[data-reflecting='true']::after {
+  opacity: 0.439;
+}
+
+.panel--main .dashboard-shell .widget-card[data-reflecting='true']:not(.widget-card--dragging) {
+  transform:
+    perspective(900px)
+    translate(var(--reflection-shift-x), var(--reflection-shift-y))
+    rotateX(var(--reflection-tilt-x))
+    rotateY(var(--reflection-tilt-y));
+  backface-visibility: hidden;
+  transform-origin: center center;
+}
+
+.widget-card--dragging,
+.seating-chart__item--dragging,
+.seating-chart__student-pill--dragging {
+  transform: scale(0.985);
+}
+
+.settings-toggle__switch {
+  background:var(--field-fill);
+}
+
+.settings-toggle input:checked + .settings-toggle__switch {
+  background:color-mix(in srgb, var(--tone-selection) 20%, var(--field-fill));
+}
+
+.widget-icon-button--active,
+.text-toggle--active,
+.picker-select__trigger--open,
+.picker-select__option--active,
+.builder-list__button--active,
+.stepper__value--active,
+.color-mode-trigger--active {
+  background:color-mix(in srgb, var(--button-ink) 12%, var(--control-fill));
+}
+
+.progress__fill,
+.panel[data-theme='light'] .widget-card[data-widget-id='bell-schedule'] .bell-schedule__progress-fill {
+  background:var(--widget-highlight);
+}
+
+.bell-schedule__status-pill--teaching,
+.tracker-status-pill--active,
+.planner-week-lesson {
+  background:var(--tone-action-soft);
+}
+
+.bell-schedule__status-pill--free {
+  background:var(--tone-utility-soft);
+}
+
+.bell-schedule__status-pill--break,
+.tracker-status-pill--warning {
+  background:var(--tone-warning-soft);
+}
+
+.tracker-status-pill--complete {
+  background:var(--tone-theme-soft);
+}
+
+.tracker-status-pill--reminder {
+  background:var(--tone-selection-soft);
+}
+
+.seating-chart__preview-item,
+.seating-chart__item {
+  background:color-mix(in srgb, var(--seat-colour) 18%, var(--field-fill));
+}
+
+.seating-chart__preview-item--assigned {
+  background:color-mix(in srgb, var(--seat-colour) 34%, var(--field-fill));
+}
+
+.seating-chart__student-pill {
+  background:color-mix(in srgb, var(--accent-soft) 80%, var(--field-fill));
+}
+
+.qr-widget__preview-card {
+  background:#ffffff;
+}
+
+.overlay-exit {
+  background:rgba(255, 232, 237, 0.92);
+}
+
+.overlay-dot__alert {
+  background:rgba(230, 44, 44, 0.42);
+  filter: blur(8px);
+  box-shadow:
+    0 0 14px rgba(255, 126, 126, 0.28),
+    0 0 30px rgba(204, 34, 34, 0.2);
+}
+
+.app-tooltip {
+  background:rgba(4, 8, 16, 0.94);
+}
+
+.tracker-status-pill--default,
+.tracker-status-pill--active,
+.tracker-status-pill--warning,
+.tracker-status-pill--complete,
+.tracker-status-pill--reminder,
+.tracker-date-picker,
+.tracker-completion-table-wrap,
+.lesson-plan-export-dialog__summary > span,
+.lesson-plan-export-dialog__entry,
+.planner-week__summary,
+.planner-week__day-header,
+.planner-week__day-track,
+.planner-week-lesson {
+  position: relative;
+  isolation: isolate;
+  border-width: 1px;
+  box-shadow:
+    inset 1px 1px 0 var(--surface-bezel-light),
+    inset -1px -1px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 1px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+/* Static pills and scroll tables keep their clip; week-view rows stay open
+   so slot/lesson button lifts are not cut off. */
+:is(
+  .tracker-status-pill--default,
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap
+) {
+  overflow: hidden;
+}
+
+:is(
+  .tracker-status-pill--default,
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap,
+  .lesson-plan-export-dialog__entry,
+  .planner-week__summary,
+  .planner-week__day-header,
+  .planner-week__day-track,
+  .planner-week-lesson
+)::before,
+.lesson-plan-export-dialog__summary > span::before {
+  content: '';
+  position: absolute;
+  left: var(--reflection-x);
+  top: var(--reflection-y);
+  width: var(--reflection-width, min(96px, 68%));
+  height: var(--reflection-height, min(58px, 52%));
+  border-radius: 999px;
+  background:var(--surface-reflection);
+  filter: blur(var(--surface-reflection-blur));
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 140ms ease,
+    left 70ms linear,
+    top 70ms linear;
+  pointer-events: none;
+}
+
+:is(
+  .tracker-status-pill--default,
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap,
+  .lesson-plan-export-dialog__entry,
+  .planner-week__summary,
+  .planner-week__day-header,
+  .planner-week__day-track,
+  .planner-week-lesson
+)::after,
+.lesson-plan-export-dialog__summary > span::after {
+  content: '';
+  position: absolute;
+  left: var(--bezel-glint-x);
+  top: var(--bezel-glint-y);
+  width: var(--bezel-glint-length, 40px);
+  height: 1px;
+  border-radius: 999px;
+  background:var(--surface-bezel-glint);
+  box-shadow:
+    0 0 4px var(--surface-bezel-glint),
+    0 0 8px var(--surface-reflection);
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(var(--bezel-glint-angle));
+  transition:
+    opacity 140ms ease,
+    left 70ms linear,
+    top 70ms linear,
+    transform 70ms linear;
+  pointer-events: none;
+}
+
+:is(
+  .tracker-status-pill--default,
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap,
+  .lesson-plan-export-dialog__entry,
+  .planner-week__summary,
+  .planner-week__day-header,
+  .planner-week__day-track,
+  .planner-week-lesson
+)[data-reflecting='true']::before,
+.lesson-plan-export-dialog__summary > span[data-reflecting='true']::before {
+  opacity: var(--surface-reflection-opacity);
+}
+
+:is(
+  .tracker-status-pill--default,
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap,
+  .lesson-plan-export-dialog__entry,
+  .planner-week__summary,
+  .planner-week__day-header,
+  .planner-week__day-track,
+  .planner-week-lesson
+)[data-reflecting='true']::after,
+.lesson-plan-export-dialog__summary > span[data-reflecting='true']::after {
+  opacity: 0.439;
+}
+
+.panel {
+  --surface-reflection-opacity: 0.158;
+  --surface-reflection-blur: 22px;
+  --bezel-glint-length: min(52px, 20%);
+}
+
+.panel[data-theme='light'] {
+  --surface-bezel-line: rgba(82, 116, 154, 0.2);
+  --surface-bezel-shadow: rgba(34, 64, 96, 0.1);
+}
+
+.panel[data-theme='dark'] {
+  --surface-bezel-line: rgba(195, 218, 255, 0.1);
+  --surface-bezel-shadow: rgba(0, 0, 0, 0.34);
+}
+
+.panel[data-theme='color'] {
+  --surface-bezel-line: rgba(47, 36, 69, 0.18);
+  --surface-bezel-shadow: rgba(47, 36, 69, 0.14);
+}
+
+.panel__glass,
+.panel[data-theme='color'] .panel__glass,
+.card,
+.widget-card,
+.settings-popout,
+.color-mode-popover,
+.update-status-pill,
+.stepper,
+.picker-select__menu,
+.group-card,
+.group-maker__empty,
+.note-row,
+.widget-empty-state,
+.widget-toggle,
+.builder-sidebar,
+.builder-editor,
+.planner-calendar,
+.planner-document,
+.tracker-panel,
+.tracker-record,
+.lesson-plan-export-dialog__summary > span,
+.lesson-plan-export-dialog__entry,
+.planner-week__summary,
+.planner-week__day-header,
+.planner-week__day-track,
+.bell-schedule__summary-card,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__day,
+.bell-schedule-editor__slot,
+.bell-schedule-editor__add-menu,
+.bell-schedule__metric,
+.seating-chart__preview-card,
+.seating-chart__stat,
+.seating-chart__sidebar-section,
+.seating-chart__canvas,
+.seating-chart__drop-well,
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch
+),
+.text-field,
+.text-area,
+.tracker-date-picker,
+.tracker-completion-table-wrap,
+.tracker-completion-check span,
+:is(
+  .badge,
+  .group-card__count,
+  .pill,
+  .tracker-status-pill--default,
+  .planner-calendar__badge
+) {
+  box-shadow:
+    inset 0.5px 0.5px 0 var(--surface-bezel-light),
+    inset -0.5px -0.5px 0 var(--surface-bezel-shadow),
+    inset 0 0 0 0.5px var(--surface-bezel-line),
+    var(--surface-depth-shadow);
+}
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch
+)::before,
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch
+)::after {
+  inset: 1px;
+  left: auto;
+  top: auto;
+  width: auto;
+  height: auto;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+  clip-path: none;
+  filter: none;
+  opacity: 0;
+  transform: none;
+  z-index: -1;
+}
+
+:is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  content: none;
+  opacity: 0;
+}
+
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(
+    .toolbar-link,
+    .primary-link,
+    .secondary-link,
+    .danger-link,
+    .text-toggle
+  )[data-compact-icon]::after {
+  content: attr(data-compact-icon);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--button-ink);
+  font-size: var(--fs-md);
+  font-weight: 800;
+  line-height: 1;
+  opacity: 1;
+  pointer-events: none;
+}
+
+@container (max-width: 244px) {
+  .dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+    content: attr(data-compact-icon);
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--button-ink);
+    font-size: var(--fs-md);
+    font-weight: 800;
+    line-height: 1;
+    opacity: 1;
+    pointer-events: none;
+  }
+}

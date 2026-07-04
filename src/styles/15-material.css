@@ -1,0 +1,1033 @@
+/* =====================================================================
+   LAYER: NEUMORPHIC GLASS v2
+   True soft-UI: every control is a bump of the exact material it sits
+   on — same fill as its background, no borders, a perfectly flat face.
+   Depth comes only from a twin-shadow extrusion (key light upper-left,
+   occlusion lower-right). Hover grows the bump, pressing squashes it
+   back into the surface with a fluid spring. Panels stay glass.
+   Themed for light, dark, and color modes via the tokens below.
+   ===================================================================== */
+
+/* ---- 1. Material tokens ------------------------------------------- */
+
+.panel,
+.panel[data-theme='color'] {
+  --radius-panel: 18px;
+  --radius-card: 15px;
+  --radius-control: 11px;
+  --radius-pill: 999px;
+}
+
+.panel {
+  /* motion */
+  --neu-spring: cubic-bezier(0.3, 1.28, 0.44, 1);
+
+  /* raised extrusions — flat face, all depth in the twin shadows */
+  --neu-raise-xs:
+    -2px -2px 4px var(--neu-hi),
+    2px 2px 5px var(--neu-lo);
+  --neu-raise-sm:
+    -3px -3px 7px var(--neu-hi),
+    3px 4px 8px var(--neu-lo);
+  --neu-raise-md:
+    -6px -6px 14px var(--neu-hi),
+    6px 8px 16px var(--neu-lo);
+  --neu-raise-lg:
+    -8px -8px 20px var(--neu-hi),
+    10px 12px 24px var(--neu-lo-deep);
+  --neu-raise-hover:
+    -4px -5px 10px var(--neu-hi-strong),
+    5px 7px 13px var(--neu-lo-deep);
+  --neu-raise-float:
+    -8px -10px 22px var(--neu-hi-strong),
+    12px 16px 32px var(--neu-lo-deep);
+
+  /* debossed wells */
+  --neu-inset-sm:
+    inset 2px 2px 5px var(--neu-lo),
+    inset -2px -2px 5px var(--neu-hi);
+  --neu-inset-md:
+    inset 3px 3px 7px var(--neu-lo),
+    inset -3px -3px 6px var(--neu-hi);
+  --neu-pressed:
+    inset 3px 3px 8px var(--neu-lo-deep),
+    inset -2px -3px 6px var(--neu-hi);
+
+  /* bridge legacy bezel vars into the neumorphic material */
+  --surface-bezel-light: transparent;
+  --surface-bezel-shadow: transparent;
+  --surface-bezel-line: transparent;
+  --surface-depth-shadow: var(--neu-raise-sm);
+  --button-under-shadow: var(--neu-raise-xs);
+  --quiet-inner-shadow: var(--neu-raise-xs);
+  --quiet-control-border: transparent;
+  --quiet-field-border: transparent;
+  --quiet-field-border-soft: transparent;
+  --quiet-surface-border: transparent;
+  --quiet-cell-border: transparent;
+  --quiet-cell-border-soft: transparent;
+}
+
+.panel[data-theme='light'] {
+  --neu-material: #e3edf7;
+  --neu-hi: rgba(255, 255, 255, 0.95);
+  --neu-hi-strong: #ffffff;
+  --neu-lo: rgba(104, 132, 164, 0.4);
+  --neu-lo-deep: rgba(76, 104, 138, 0.48);
+  --neu-on-ink: #f7fbff;
+  --glass-rim: rgba(255, 255, 255, 0.65);
+  --panel-fill: rgba(227, 237, 247, 0.94);
+  --card-fill: var(--neu-material);
+  --control-fill: var(--neu-material);
+  --field-fill: #d8e4f0;
+  --well-fill: #d4e1ee;
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 6px rgba(52, 82, 118, 0.18);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4))
+    drop-shadow(0 2px 6px rgba(52, 82, 118, 0.18));
+}
+
+.panel[data-theme='dark'] {
+  --neu-material: #161f2e;
+  --neu-hi: rgba(158, 186, 228, 0.09);
+  --neu-hi-strong: rgba(170, 197, 238, 0.13);
+  --neu-lo: rgba(1, 3, 8, 0.7);
+  --neu-lo-deep: rgba(0, 0, 0, 0.88);
+  --neu-on-ink: #0b1220;
+  --glass-rim: rgba(190, 214, 255, 0.13);
+  --panel-fill: rgba(19, 27, 40, 0.95);
+  --card-fill: var(--neu-material);
+  --control-fill: var(--neu-material);
+  --field-fill: #0d141f;
+  --well-fill: #0c121d;
+  --dark-button-fill: var(--neu-material);
+  --dark-button-fill-hover: #1a2434;
+  --dark-button-fill-active: #121a28;
+  --dark-button-rim: transparent;
+  --dark-button-rim-strong: transparent;
+  --menu-surface: rgba(23, 32, 47, 0.97);
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.5);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.05))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+}
+
+.panel[data-theme='color'] {
+  --neu-material: #f1e6c8;
+  --neu-hi: rgba(255, 253, 244, 0.95);
+  --neu-hi-strong: #fffdf4;
+  --neu-lo: rgba(150, 122, 84, 0.38);
+  --neu-lo-deep: rgba(112, 88, 66, 0.46);
+  --neu-on-ink: #fffdf6;
+  --glass-rim: rgba(255, 255, 255, 0.58);
+  --panel-fill: rgba(241, 230, 200, 0.95);
+  --card-fill: var(--neu-material);
+  --control-fill: var(--neu-material);
+  --field-fill: rgba(122, 96, 62, 0.13);
+  --well-fill: rgba(122, 96, 62, 0.16);
+  --widget-title-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5),
+    0 2px 6px rgba(47, 36, 69, 0.16);
+  --widget-title-icon-shadow:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4))
+    drop-shadow(0 2px 6px rgba(47, 36, 69, 0.16));
+}
+
+/* controls morph out of whatever surface they sit on */
+
+.panel[data-theme] .widget-card {
+  --control-fill: var(--surface-fill, var(--card-fill));
+}
+
+/* ---- 2. Panel: glass sheet ----------------------------------------- */
+
+.panel__content {
+  padding: 13px;
+  gap: 10px;
+}
+
+.panel__glass,
+.panel[data-theme='color'] .panel__glass {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(162deg, color-mix(in srgb, var(--neu-hi) 26%, transparent), transparent 40%),
+    var(--panel-fill);
+  -webkit-backdrop-filter: blur(18px) saturate(1.22);
+  backdrop-filter: blur(18px) saturate(1.22);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 -1px 0 color-mix(in srgb, var(--neu-lo) 26%, transparent),
+    -6px -6px 16px color-mix(in srgb, var(--neu-hi) 36%, transparent),
+    9px 12px 28px var(--neu-lo-deep);
+}
+
+/* ---- 3. Surfaces: flat faces, deep soft extrusion ------------------- */
+
+:is(
+  .card,
+  .widget-card,
+  .builder-sidebar,
+  .builder-editor,
+  .tracker-panel,
+  .tracker-record,
+  .seating-chart__preview-card
+) {
+  --surface-fill: var(--card-fill);
+  border-color: transparent;
+  background: var(--surface-fill);
+  box-shadow: var(--neu-raise-md);
+}
+
+.widget-card,
+.dashboard-shell .widget-card {
+  --surface-fill: var(--widget-card-fill, var(--card-fill));
+  background: var(--surface-fill);
+}
+
+/* interior sub-surfaces: gentle bumps of the same material */
+
+.stepper,
+.group-card,
+.group-maker__empty,
+.note-row,
+.widget-empty-state,
+.widget-toggle,
+.planner-calendar,
+.planner-document,
+.lesson-plan-export-dialog__options,
+.lesson-plan-export-dialog__summary > span,
+.lesson-plan-export-dialog__entry,
+.planner-week__summary,
+.planner-week__day-header,
+.bell-schedule__summary-card,
+.bell-schedule__upcoming-item,
+.bell-schedule-editor__day,
+.bell-schedule-editor__slot,
+.bell-schedule__metric,
+.seating-chart__stat,
+.seating-chart__sidebar-section,
+.panel[data-theme] .widget-card :is(
+  .stepper,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .planner-calendar,
+  .planner-document
+) {
+  border-color: transparent;
+  background: var(--control-fill, var(--card-fill));
+  box-shadow: var(--neu-raise-xs);
+}
+
+/* recessed canvases and tracks */
+
+:is(
+  .seating-chart__canvas,
+  .seating-chart__drop-well,
+  .planner-week__day-track
+) {
+  border-color: transparent;
+  background: var(--well-fill, var(--field-fill));
+  box-shadow: var(--neu-inset-sm);
+}
+
+/* ---- 4. Controls: same material, no border, flat face ---------------- */
+
+.icon-button,
+.widget-icon-button,
+.widget-card__collapse,
+.note-row__delete {
+  border-radius: 999px;
+}
+
+.toolbar-link,
+.primary-link,
+.secondary-link,
+.danger-link,
+.text-toggle,
+.picker-select__trigger {
+  border-radius: 999px;
+}
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch,
+  .color-mode-trigger
+),
+.panel[data-theme] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-popover__swatch,
+  .color-mode-trigger
+),
+.panel[data-theme] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+) {
+  border: 1px solid transparent;
+  color: var(--button-ink);
+  background: var(--control-fill);
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    background 240ms ease,
+    transform 300ms var(--neu-spring),
+    box-shadow 300ms var(--neu-spring),
+    opacity 180ms ease;
+}
+
+.stepper__button + .stepper__value,
+.stepper__value + .stepper__button,
+.panel[data-theme] .widget-card .stepper__button + .stepper__value,
+.panel[data-theme] .widget-card .stepper__value + .stepper__button {
+  border-left-color: color-mix(in srgb, var(--neu-lo) 22%, transparent);
+}
+
+/* hover: the bump grows, base stays fused to the surface */
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-trigger
+):hover:not(:disabled),
+.panel[data-theme] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-trigger
+):hover:not(:disabled),
+.panel[data-theme] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+):hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--button-ink);
+  background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
+  box-shadow: var(--neu-raise-hover);
+}
+
+/* pointer-tracked lift: raised higher, still attached */
+
+.button-lift-stable:not(:disabled),
+.panel[data-theme] .button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card .button-lift-stable:not(:disabled),
+.panel[data-theme] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+).button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+).button-lift-stable:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+  border-color: transparent;
+  color: var(--button-ink);
+  background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
+  box-shadow: var(--neu-raise-hover);
+}
+
+.widget-card__collapse--collapsed.button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card .widget-card__collapse--collapsed.button-lift-stable:not(:disabled) {
+  transform: rotate(180deg) translateY(1px) scale(1.02);
+}
+
+/* window-spawn buttons float a touch higher before popping out */
+
+.window-spawn-button.button-lift-stable:not(:disabled),
+[data-window-spawn-button='true'].button-lift-stable:not(:disabled),
+.panel[data-theme] :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled) {
+  transform: translateY(-2px) scale(1.035);
+  box-shadow: var(--neu-raise-float);
+}
+
+/* selected / toggled: solid accent pill */
+
+:is(
+  .widget-icon-button--active,
+  .text-toggle--active,
+  .picker-select__trigger--open,
+  .picker-select__option--active,
+  .builder-list__button--active,
+  .stepper__value--active,
+  .timer-preset-toggle--active,
+  .timer-stepper__value--active,
+  .color-mode-trigger--active
+),
+.panel[data-theme] :is(
+  .widget-icon-button--active,
+  .text-toggle--active,
+  .picker-select__trigger--open,
+  .picker-select__option--active,
+  .builder-list__button--active,
+  .stepper__value--active,
+  .timer-preset-toggle--active,
+  .timer-stepper__value--active,
+  .color-mode-trigger--active
+),
+.panel[data-theme] .widget-card :is(
+  .widget-icon-button--active,
+  .text-toggle--active,
+  .picker-select__trigger--open,
+  .picker-select__option--active,
+  .builder-list__button--active,
+  .stepper__value--active,
+  .timer-preset-toggle--active,
+  .timer-stepper__value--active,
+  .color-mode-trigger--active
+),
+:is(
+  .widget-icon-button--active,
+  .text-toggle--active,
+  .picker-select__trigger--open,
+  .picker-select__option--active,
+  .builder-list__button--active,
+  .stepper__value--active,
+  .timer-preset-toggle--active,
+  .timer-stepper__value--active,
+  .color-mode-trigger--active
+).button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card :is(
+  .widget-icon-button--active,
+  .text-toggle--active,
+  .picker-select__trigger--open,
+  .picker-select__option--active,
+  .builder-list__button--active,
+  .stepper__value--active,
+  .timer-preset-toggle--active,
+  .timer-stepper__value--active,
+  .color-mode-trigger--active
+).button-lift-stable:not(:disabled) {
+  transform: none;
+  color: var(--neu-on-ink);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--button-ink) 90%, var(--control-fill));
+  box-shadow: var(--neu-raise-sm);
+}
+
+/* press: the bump squashes back into the surface */
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-trigger,
+  .window-spawn-button,
+  [data-window-spawn-button='true']
+):active:not(:disabled),
+.panel[data-theme] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .color-mode-trigger,
+  .window-spawn-button,
+  [data-window-spawn-button='true']
+):active:not(:disabled),
+.panel[data-theme] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button,
+  .window-spawn-button,
+  [data-window-spawn-button='true']
+):active:not(:disabled) {
+  transform: scale(0.97);
+  border-color: transparent;
+  color: var(--button-ink);
+  background: var(--control-fill);
+  box-shadow: var(--neu-pressed);
+  transition-duration: 90ms, 90ms, 110ms, 110ms, 110ms, 90ms;
+}
+
+/* focus: soft luminous ring around the raised form */
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+):focus-visible,
+.panel[data-theme] .widget-card :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .widget-card__collapse,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete,
+  .tracker-date-field__button
+):focus-visible {
+  border-color: transparent;
+  box-shadow:
+    var(--neu-raise-sm),
+    0 0 0 2px color-mix(in srgb, var(--button-ink, var(--accent)) 32%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--button-ink, var(--accent)) 12%, transparent);
+}
+
+/* disabled: the material flattens out */
+
+.primary-link:disabled,
+.secondary-link:disabled,
+.toolbar-link:disabled,
+.danger-link:disabled,
+.text-toggle:disabled,
+.picker-select__trigger:disabled,
+.stepper__button:disabled,
+.stepper__value:disabled,
+.widget-icon-button:disabled,
+.panel[data-theme] .widget-card :is(
+  .primary-link,
+  .secondary-link,
+  .toolbar-link,
+  .danger-link,
+  .text-toggle,
+  .picker-select__trigger,
+  .stepper__button,
+  .stepper__value,
+  .widget-icon-button
+):disabled {
+  transform: none;
+  background: var(--control-fill);
+  box-shadow: none;
+}
+
+/* primary actions: solid accent pill in every state ------------------- */
+
+.primary-link,
+.panel[data-theme] .primary-link,
+.panel[data-theme] .widget-card .primary-link,
+.primary-link:hover:not(:disabled),
+.panel[data-theme] .primary-link:hover:not(:disabled),
+.panel[data-theme] .widget-card .primary-link:hover:not(:disabled),
+.primary-link.button-lift-stable:not(:disabled),
+.panel[data-theme] .primary-link.button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card .primary-link.button-lift-stable:not(:disabled) {
+  color: var(--neu-on-ink);
+  background: color-mix(in srgb, var(--button-ink) 90%, var(--control-fill));
+}
+
+.primary-link:active:not(:disabled),
+.panel[data-theme] .primary-link:active:not(:disabled),
+.panel[data-theme] .widget-card .primary-link:active:not(:disabled) {
+  color: var(--neu-on-ink);
+  background: color-mix(in srgb, var(--button-ink) 78%, var(--control-fill));
+}
+
+/* compact icon glyphs inherit the on-ink color when the pill is filled */
+
+.dashboard-shell .widget-card[data-size-tier='1'] .primary-link[data-compact-icon]::after,
+.dashboard-shell .widget-card[data-size-tier='1'] :is(
+  .text-toggle--active,
+  .timer-preset-toggle--active
+)[data-compact-icon]::after {
+  color: var(--neu-on-ink);
+}
+
+/* ---- 5. Fields: debossed wells --------------------------------------- */
+
+.text-field {
+  border-radius: 999px;
+}
+
+.text-field,
+.text-area,
+.tracker-date-picker,
+.tracker-completion-table-wrap,
+.tracker-completion-check span,
+.panel[data-theme] .widget-card :is(
+  .text-field,
+  .text-area,
+  .tracker-date-picker,
+  .tracker-completion-table-wrap
+),
+.panel[data-theme] .widget-card .tracker-completion-check span,
+.panel[data-theme='color'] .widget-card :is(.text-field, .text-area),
+.text-area--planner,
+.panel[data-theme] .widget-card .text-area--planner {
+  border-color: transparent;
+  background: var(--field-fill);
+  box-shadow: var(--neu-inset-md);
+  transition:
+    box-shadow 240ms var(--neu-spring),
+    background 200ms ease,
+    border-color 200ms ease;
+}
+
+.text-field:hover:not(:focus),
+.text-area:hover:not(:focus) {
+  border-color: transparent;
+}
+
+.text-field:focus,
+.text-area:focus,
+.text-field:focus-visible,
+.text-area:focus-visible,
+.panel[data-theme] .widget-card :is(.text-field, .text-area):focus,
+.panel[data-theme] .widget-card :is(.text-field, .text-area):focus-visible {
+  border-color: transparent;
+  box-shadow:
+    var(--neu-inset-md),
+    0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+/* ---- 6. Toggle switch: deep well + raised knob ------------------------ */
+
+.settings-toggle__switch,
+.panel[data-theme='dark'] .settings-toggle__switch {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--well-fill, var(--field-fill));
+  box-shadow: var(--neu-inset-md);
+  transition:
+    background 220ms ease,
+    box-shadow 260ms var(--neu-spring),
+    opacity 180ms ease;
+}
+
+.settings-toggle__switch::after {
+  background: var(--neu-hi-strong, #ffffff);
+  box-shadow:
+    -1px -1px 2px var(--neu-hi),
+    2px 2px 5px var(--neu-lo);
+  transition:
+    background 200ms ease,
+    transform 280ms var(--neu-spring);
+}
+
+.panel[data-theme='dark'] .settings-toggle__switch::after {
+  background: #d7e2f2;
+}
+
+.settings-toggle input:checked + .settings-toggle__switch,
+.panel[data-theme='dark'] .settings-toggle input:checked + .settings-toggle__switch {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--tone-selection) 88%, var(--field-fill));
+  box-shadow: var(--neu-inset-sm);
+}
+
+.settings-toggle input:checked + .settings-toggle__switch::after {
+  background: var(--neu-hi-strong, #ffffff);
+  transform: translateX(18px);
+}
+
+.panel[data-theme='dark'] .settings-toggle input:checked + .settings-toggle__switch::after {
+  background: #eef4fd;
+}
+
+.settings-toggle input:active + .settings-toggle__switch::after {
+  transform: scaleX(1.14);
+  transform-origin: left center;
+}
+
+.settings-toggle input:checked:active + .settings-toggle__switch::after {
+  transform: translateX(18px) scaleX(1.14);
+  transform-origin: right center;
+}
+
+.settings-toggle input:focus-visible + .settings-toggle__switch {
+  box-shadow:
+    var(--neu-inset-md),
+    0 0 0 2px color-mix(in srgb, var(--tone-selection) 32%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--tone-selection) 12%, transparent);
+}
+
+/* ---- 7. Pills, badges, status chips ----------------------------------- */
+
+:is(
+  .badge,
+  .group-card__count,
+  .pill,
+  .tracker-status-pill--default,
+  .planner-calendar__badge,
+  .update-status-pill
+),
+.panel[data-theme] .widget-card :is(
+  .badge,
+  .group-card__count,
+  .pill,
+  .planner-calendar__badge
+) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--widget-highlight-soft, var(--accent-soft)) 34%, var(--control-fill, var(--card-fill)));
+  box-shadow: var(--neu-raise-xs);
+}
+
+:is(
+  .tracker-status-pill--active,
+  .tracker-status-pill--warning,
+  .tracker-status-pill--complete,
+  .tracker-status-pill--reminder,
+  .bell-schedule__status-pill--teaching,
+  .bell-schedule__status-pill--free,
+  .bell-schedule__status-pill--break,
+  .planner-week-lesson
+) {
+  border-color: transparent;
+  box-shadow: var(--neu-raise-xs);
+}
+
+/* ---- 8. Progress, scrollbars, calendar cells --------------------------- */
+
+.progress,
+.panel[data-theme] .widget-card .progress {
+  border-color: transparent;
+  background: var(--well-fill, var(--field-fill));
+  box-shadow: var(--neu-inset-sm);
+}
+
+.progress__fill,
+.panel[data-theme] .progress__fill {
+  background: var(--widget-highlight, var(--accent));
+  box-shadow: none;
+}
+
+.dashboard-column::-webkit-scrollbar-thumb,
+.dashboard-shell::-webkit-scrollbar-thumb,
+.panel__content--popout::-webkit-scrollbar-thumb,
+.builder-list::-webkit-scrollbar-thumb,
+.panel[data-theme='color'] .dashboard-column::-webkit-scrollbar-thumb,
+.panel[data-theme='color'] .dashboard-shell::-webkit-scrollbar-thumb,
+.panel[data-theme='color'] .panel__content--popout::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 26%, transparent);
+}
+
+:is(
+  .planner-calendar__day,
+  .tracker-date-picker__day,
+  .seating-chart__swatch,
+  .seating-chart__item,
+  .seating-chart__student-pill
+) {
+  border-color: transparent;
+  box-shadow: var(--neu-raise-xs);
+}
+
+:is(
+  .planner-calendar__day--selected,
+  .planner-calendar__day--today,
+  .tracker-date-picker__day--selected,
+  .tracker-date-picker__day--today,
+  .seating-chart__swatch--active,
+  .seating-chart__student-pill--active,
+  .seating-chart__item--selected
+),
+.panel[data-theme='dark'] :is(
+  .planner-calendar__day--selected,
+  .planner-calendar__day--today,
+  .tracker-date-picker__day--selected,
+  .tracker-date-picker__day--today,
+  .seating-chart__student-pill--active,
+  .seating-chart__swatch--active
+) {
+  border-color: transparent;
+  box-shadow:
+    var(--neu-inset-sm),
+    0 0 0 1px color-mix(in srgb, var(--button-ink, var(--accent)) 24%, transparent);
+}
+
+/* ---- 9. Floating menus and popovers: frosted glass --------------------- */
+
+.settings-popout,
+.color-mode-popover,
+.picker-select__menu,
+.bell-schedule-editor__add-menu,
+.panel[data-theme] .widget-card :is(.picker-select__menu, .bell-schedule-editor__add-menu) {
+  border-color: transparent;
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 22%, transparent), transparent 42%),
+    color-mix(in srgb, var(--menu-surface, var(--card-fill)) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: var(--neu-raise-float);
+}
+
+.panel[data-theme='color'] .settings-popout {
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 22%, transparent), transparent 42%),
+    var(--panel-fill) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: var(--neu-raise-float);
+}
+
+.app-tooltip {
+  border: 1px solid rgba(212, 230, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(9, 14, 24, 0.88);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* ---- 10. Color mode: soften the memphis card into the material --------- */
+
+.panel[data-theme='color'] .widget-card {
+  border: 1px solid transparent;
+  background: var(--widget-card-fill);
+  box-shadow:
+    -7px -7px 16px var(--neu-hi-strong),
+    9px 11px 22px color-mix(in srgb, var(--widget-card-shadow, var(--neu-lo)) 94%, transparent);
+}
+
+.panel[data-theme='color'] .widget-card__header {
+  border-bottom: 1px solid color-mix(in srgb, var(--neu-lo) 30%, transparent);
+}
+
+.panel[data-theme='color'] .widget-card--drag-over {
+  box-shadow:
+    var(--neu-raise-lg),
+    0 0 0 2px color-mix(in srgb, var(--widget-highlight, var(--accent)) 36%, transparent);
+}
+
+.panel[data-theme='color'] .widget-card :is(
+  .stepper,
+  .picker-select__menu,
+  .group-card,
+  .group-maker__empty,
+  .note-row,
+  .widget-empty-state,
+  .pill,
+  .badge,
+  .group-card__count,
+  .planner-calendar,
+  .planner-document
+) {
+  border-color: transparent;
+  background: var(--control-fill);
+  box-shadow: var(--neu-raise-xs);
+}
+
+/* ---- 11. Drag states and stray chrome ----------------------------------- */
+
+.widget-card--drag-over,
+.panel[data-theme] .widget-card--drag-over {
+  border-color: transparent;
+  box-shadow:
+    var(--neu-raise-lg),
+    0 0 0 2px color-mix(in srgb, var(--widget-highlight, var(--accent)) 36%, transparent);
+}
+
+.widget-card--dragging {
+  box-shadow: var(--neu-raise-lg);
+}
+
+.overlay-exit {
+  border-color: transparent;
+  box-shadow:
+    -1px -1px 2px rgba(255, 255, 255, 0.7),
+    2px 2.5px 5px rgba(22, 28, 36, 0.28);
+}
+
+.qr-widget__preview-card {
+  border-color: transparent;
+  box-shadow:
+    -3px -3px 8px var(--neu-hi),
+    4px 5px 12px var(--neu-lo);
+}
+
+/* ---- 12. Widget extrusion: stronger ring + room to render it ---------- */
+
+.panel {
+  --neu-raise-card:
+    -7px -7px 16px var(--neu-hi-strong),
+    9px 11px 22px var(--neu-lo-deep);
+}
+
+:is(
+  .card,
+  .widget-card,
+  .builder-sidebar,
+  .builder-editor,
+  .tracker-panel,
+  .tracker-record,
+  .seating-chart__preview-card
+),
+.widget-card,
+.dashboard-shell .widget-card {
+  box-shadow: var(--neu-raise-card);
+}
+
+.panel[data-theme] .widget-card--drag-over {
+  box-shadow:
+    var(--neu-raise-lg),
+    0 0 0 2px color-mix(in srgb, var(--widget-highlight, var(--accent)) 36%, transparent);
+}
+
+/* let the extrusion render inside the scroll clip without changing the
+   measured layout — the JS metrics subtract DASHBOARD_SHELL_SHADOW_PAD */
+
+.dashboard-shell,
+.dashboard-shell--scrolling,
+.dashboard-shell--stacked {
+  margin: -10px -12px -12px;
+  padding: 10px 12px 12px;
+}
+
+.window-stage--widget-popout {
+  padding: 14px;
+}

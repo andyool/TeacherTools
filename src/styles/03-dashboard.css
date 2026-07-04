@@ -1,0 +1,574 @@
+.dashboard-shell {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: visible;
+  padding-right: 2px;
+  padding-bottom: 0;
+  overscroll-behavior: contain;
+}
+
+.dashboard-shell--dragging {
+  cursor: default;
+}
+
+.dashboard-shell--scrolling {
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Padding pulled outward with negative margins widens the scrollport so
+     button lift shadows are not clipped at the shell edges. */
+  padding: 6px 8px 7px;
+  margin: -6px -6px 0 -8px;
+}
+
+.dashboard-shell--stacked {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 8px 7px;
+  margin: -6px -6px 0 -8px;
+}
+
+/* The widget-card halo reaches ~23px above the card but the scrollport can
+   only be widened 6px before it would overlap the panel header, so fade the
+   remaining hard clip edge out instead of cutting the halo flat. */
+.dashboard-shell--scrolling,
+.dashboard-shell--stacked {
+  mask-image: linear-gradient(to bottom, transparent, #000 10px);
+}
+
+.dashboard-columns {
+  width: calc(100% / var(--dashboard-fit-scale, 1));
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--dashboard-column-gap, 7px);
+  zoom: var(--dashboard-fit-scale, 1);
+}
+
+.dashboard-shell--scrolling .dashboard-columns {
+  height: auto;
+  min-height: 0;
+}
+
+.dashboard-columns--stacked {
+  height: auto;
+  min-height: auto;
+  display: block;
+}
+
+.dashboard-column {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--dashboard-column-gap, 7px);
+  overflow: visible;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+  padding-bottom: 0;
+}
+
+/* While the window is being dragged the layout recomputes live; transitions
+   would lag behind the pointer, so cards snap and track the drag directly. */
+.dashboard-shell--resizing .dashboard-columns,
+.dashboard-shell--resizing .dashboard-column,
+.dashboard-shell--resizing .widget-card {
+  transition: none !important;
+}
+
+.dashboard-shell--scrolling .dashboard-column {
+  height: auto;
+  overflow: visible;
+}
+
+.dashboard-column--stacked {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.dashboard-column::-webkit-scrollbar,
+.dashboard-shell::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dashboard-column::-webkit-scrollbar-thumb,
+.dashboard-shell::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background:rgba(255, 255, 255, 0.12);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  position: relative;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--card-border);
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 1px 2px rgba(8, 12, 18, 0.06);
+}
+
+.card,
+.widget-card,
+.stepper,
+.picker-select__menu,
+.group-card,
+.group-maker__empty,
+.note-row,
+.widget-empty-state,
+.widget-toggle,
+.builder-sidebar,
+.builder-editor,
+.badge,
+.group-card__count,
+.pill {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Small static chips can clip; interactive containers stay open so button
+   lift shadows and glows are not cut off at their edges. */
+.badge,
+.group-card__count,
+.pill {
+  overflow: hidden;
+}
+
+.card::before,
+.widget-card::before,
+.stepper::before,
+.picker-select__menu::before,
+.group-card::before,
+.group-maker__empty::before,
+.note-row::before,
+.widget-empty-state::before,
+.widget-toggle::before,
+.builder-sidebar::before,
+.builder-editor::before,
+.badge::before,
+.group-card__count::before,
+.pill::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+}
+
+.widget-card {
+  --widget-card-border: var(--card-border);
+  --widget-splash-a: rgba(255, 255, 255, 0);
+  --widget-splash-b: rgba(255, 255, 255, 0);
+  --widget-splash-c: rgba(255, 255, 255, 0);
+  --widget-body-gap: 5px;
+  --widget-highlight: var(--accent);
+  --widget-highlight-soft: var(--accent-soft);
+  --widget-highlight-border: var(--accent-border);
+  --widget-highlight-border-strong: var(--accent-border-strong);
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--widget-card-border);
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 1px 2px rgba(8, 12, 18, 0.06);
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease,
+    opacity 180ms ease;
+  overflow: visible;
+  contain: layout style;
+}
+
+.panel[data-theme='light'] .widget-card {
+  border-width: 2px;
+}
+
+.dashboard-shell--dragging .widget-card {
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.widget-card--dragging {
+  opacity: 0.5;
+  transform: scale(0.985);
+}
+
+.widget-card--drag-over {
+  border-color: var(--widget-highlight-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 0 0 1px var(--widget-highlight-soft),
+    0 2px 4px rgba(8, 12, 18, 0.08);
+}
+
+.widget-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.widget-card__header--interactive {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.widget-card__header--interactive:active {
+  cursor: grabbing;
+}
+
+.dashboard-shell--dragging .widget-card__header--interactive {
+  cursor: grabbing;
+}
+
+.widget-card__header--window {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.widget-card__title-group {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.widget-card__collapse {
+  width: 21px;
+  height: 21px;
+  min-width: 21px;
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--button-ink);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms ease,
+    border-color 220ms ease;
+}
+
+.widget-card__collapse--collapsed {
+  transform: rotate(180deg);
+}
+
+.widget-card__title-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.widget-card__title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.44em;
+}
+
+.widget-card__meta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title-group {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title-copy {
+  flex: 1 1 auto;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-card[data-widget-id='bell-schedule'] .widget-card__meta,
+.widget-card[data-widget-id='bell-schedule'] .widget-card__meta .badge {
+  flex: 0 0 auto;
+}
+
+.widget-card__title {
+  color: var(--text-primary);
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+  font-size: var(--fs-2xl);
+  line-height: 1.03;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-shadow: var(--widget-title-shadow);
+}
+
+.widget-card__title-icon {
+  flex: 0 0 auto;
+  width: 1.04em;
+  height: 1.04em;
+  color: var(--text-primary);
+  filter: var(--widget-title-icon-shadow);
+}
+
+.widget-card__body-shell {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: visible;
+  margin-top: -3px;
+  padding-top: 3px;
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease,
+    margin-top 220ms ease;
+}
+
+.widget-card__body {
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-body-gap, 10px);
+}
+
+.widget-card--collapsed {
+  gap: 0;
+}
+
+.widget-card--collapsed .widget-card__body-shell {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: -4px;
+  padding-top: 0;
+  overflow: hidden;
+}
+
+.widget-card--collapsed .widget-card__body {
+  pointer-events: none;
+}
+
+.dashboard-shell .widget-card {
+  height: var(--widget-target-height, auto);
+  transition:
+    height 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease,
+    opacity 180ms ease;
+  will-change: height;
+}
+
+.dashboard-shell .widget-card__body-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card__body {
+  min-height: 0;
+  overflow: visible;
+  padding-right: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] {
+  --widget-body-gap: 3px;
+  gap: 3px;
+  padding: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] {
+  --widget-body-gap: 3px;
+  gap: 4px;
+  padding: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] {
+  --widget-body-gap: 4px;
+  gap: 4px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] {
+  --widget-body-gap: 5px;
+  gap: 5px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__header,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__header {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__title-group,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__title-group,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__title-group {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__title {
+  font-size: var(--fs-md);
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-card__title {
+  font-size: var(--fs-lg);
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-card__title {
+  font-size: var(--fs-lg);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .badge {
+  min-width: 20px;
+  padding: 0 4px;
+  font-size: var(--fs-xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .badge,
+.dashboard-shell .widget-card[data-size-tier='3'] .badge {
+  padding: 0 5px;
+  font-size: var(--fs-xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-icon-button {
+  width: 19px;
+  height: 19px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-icon-button,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-icon-button {
+  width: 21px;
+  height: 21px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row),
+.dashboard-shell .widget-card[data-size-tier='2'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row),
+.dashboard-shell .widget-card[data-size-tier='3'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row) {
+  gap: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-top-controls,
+.dashboard-shell .widget-card[data-size-tier='2'] .widget-top-controls,
+.dashboard-shell .widget-card[data-size-tier='3'] .widget-top-controls {
+  gap: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.action-row, .segmented-row, .custom-row, .helper-row, .note-input-row) {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .helper-text,
+.dashboard-shell .widget-card[data-size-tier='1'] .recent-picks,
+.dashboard-shell .widget-card[data-size-tier='2'] .recent-picks {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='1'] .text-toggle {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: var(--radius-control);
+  font-size: 0;
+  letter-spacing: 0;
+  flex: 0 0 auto;
+  color: transparent;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  content: attr(data-compact-icon);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background:none;
+  color: var(--button-ink);
+  font-size: var(--fs-md);
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-toggle {
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='3'] .text-toggle {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: var(--fs-md);
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .toolbar-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .primary-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .secondary-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .danger-link,
+.dashboard-shell .widget-card[data-size-tier='4'] .text-toggle {
+  min-height: var(--control-height);
+  padding: 0 11px;
+  font-size: var(--fs-md);
+}

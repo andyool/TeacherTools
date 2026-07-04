@@ -46,7 +46,7 @@ const WIDGET_POPOUT_DEFAULTS: Record<
   { height: number; minHeight: number; minWidth: number; width: number }
 > = {
   timer: { width: 352, height: 304, minWidth: 280, minHeight: 224 },
-  picker: { width: 392, height: 332, minWidth: 300, minHeight: 240 },
+  picker: { width: 392, height: 372, minWidth: 300, minHeight: 290 },
   'group-maker': { width: 600, height: 456, minWidth: 320, minHeight: 280 },
   'seating-chart': { width: 980, height: 760, minWidth: 760, minHeight: 560 },
   'bell-schedule': { width: 1220, height: 840, minWidth: 340, minHeight: 300 },
@@ -158,11 +158,14 @@ type AppUpdateState = {
 type AppSettings = {
   launchAtLogin: boolean;
   timerChimeEnabled: boolean;
+  timerChimeSound: TimerChimeSound;
   timerSpeechVoice: TimerSpeechVoice;
   timerVoiceEnabled: boolean;
 };
 
 type TimerSpeechVoice = 'female' | 'male';
+
+type TimerChimeSound = 'classic' | 'bells' | 'beeps' | 'chirp';
 
 type PersistentStateFile = {
   version: 1;
@@ -232,6 +235,7 @@ const MAC_APP_ICON_FILENAME = 'icon.icns';
 const PERSISTENT_STATE_VERSION = 1;
 const PERSISTENT_STATE_FILENAME = 'tool-state.json';
 const TIMER_CHIME_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-chime-enabled';
+const TIMER_CHIME_SOUND_SETTINGS_KEY = 'teacher-tools.timer-chime-sound';
 const TIMER_SPEECH_VOICE_SETTINGS_KEY = 'teacher-tools.timer-speech-voice';
 const TIMER_VOICE_ENABLED_SETTINGS_KEY = 'teacher-tools.timer-voice-enabled';
 const WINDOW_STATE_SAVE_DELAY_MS = 350;
@@ -2063,6 +2067,10 @@ function normalizeTimerAlertEnabled(value: unknown) {
   return value !== false;
 }
 
+function normalizeTimerChimeSound(value: unknown): TimerChimeSound {
+  return value === 'bells' || value === 'beeps' || value === 'chirp' ? value : 'classic';
+}
+
 function getAvailableMacSayVoices() {
   if (cachedAvailableMacSayVoices) {
     return cachedAvailableMacSayVoices;
@@ -2105,6 +2113,12 @@ function getTimerChimeEnabled() {
   );
 }
 
+function getTimerChimeSound() {
+  return normalizeTimerChimeSound(
+    ensurePersistentStateCache().valuesByKey[TIMER_CHIME_SOUND_SETTINGS_KEY]
+  );
+}
+
 function getTimerSpeechVoice() {
   return normalizeTimerSpeechVoice(
     ensurePersistentStateCache().valuesByKey[TIMER_SPEECH_VOICE_SETTINGS_KEY]
@@ -2119,6 +2133,12 @@ function getTimerVoiceEnabled() {
 
 function setTimerChimeEnabled(enabled: unknown) {
   setPersistentStateValue(TIMER_CHIME_ENABLED_SETTINGS_KEY, normalizeTimerAlertEnabled(enabled));
+  broadcastAppSettings();
+  return getAppSettings();
+}
+
+function setTimerChimeSound(sound: unknown) {
+  setPersistentStateValue(TIMER_CHIME_SOUND_SETTINGS_KEY, normalizeTimerChimeSound(sound));
   broadcastAppSettings();
   return getAppSettings();
 }
@@ -2480,6 +2500,7 @@ function getAppSettings(): AppSettings {
   return {
     launchAtLogin: getLaunchAtLoginSettings().openAtLogin,
     timerChimeEnabled: getTimerChimeEnabled(),
+    timerChimeSound: getTimerChimeSound(),
     timerSpeechVoice: getTimerSpeechVoice(),
     timerVoiceEnabled: getTimerVoiceEnabled()
   };
@@ -3288,6 +3309,10 @@ ipcMain.handle('app-settings:set-timer-chime-enabled', (_event, enabled: unknown
   return setTimerChimeEnabled(enabled);
 });
 
+ipcMain.handle('app-settings:set-timer-chime-sound', (_event, sound: unknown) => {
+  return setTimerChimeSound(sound);
+});
+
 ipcMain.handle('app-settings:set-timer-speech-voice', (_event, voice: unknown) => {
   return setTimerSpeechVoice(voice);
 });
@@ -3418,6 +3443,17 @@ ipcMain.handle('lesson-documents:select', async () => {
 ipcMain.handle('lesson-documents:open', async (_event, filePath: unknown) => {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     return 'Missing file path.';
+  }
+
+  const trimmedPath = filePath.trim();
+
+  if (/^https?:\/\//i.test(trimmedPath)) {
+    try {
+      await shell.openExternal(trimmedPath);
+      return '';
+    } catch (error) {
+      return error instanceof Error && error.message ? error.message : 'The link could not be opened.';
+    }
   }
 
   return shell.openPath(filePath);

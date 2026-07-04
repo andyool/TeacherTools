@@ -1,0 +1,593 @@
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-readout {
+  font-size: var(--fs-2xl);
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .timer-readout {
+  font-size: var(--fs-display);
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .timer-readout {
+  font-size: var(--fs-display);
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .timer-readout {
+  font-size: var(--fs-display);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner {
+  height: 56px;
+  min-height: 56px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .picker-spinner {
+  height: 68px;
+  min-height: 68px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .picker-spinner {
+  height: 76px;
+  min-height: 76px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .picker-spinner {
+  height: 82px;
+  min-height: 82px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner::before {
+  height: 28px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
+  font-size: var(--fs-xl);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-grid {
+  gap: 5px;
+  max-height: 62px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .group-grid {
+  max-height: 118px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .group-grid {
+  gap: 6px;
+  max-height: 178px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .group-grid {
+  gap: 7px;
+  max-height: 246px;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-card {
+  padding: 7px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-member-list__item {
+  padding: 3px 0;
+  font-size: var(--fs-2xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__preview-card {
+  width: min(100%, 92px);
+  padding: 7px;
+  border-radius: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__preview-card {
+  width: min(100%, 142px);
+  padding: 10px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .qr-widget__preview-card {
+  width: min(100%, 168px);
+  padding: 11px;
+  border-radius: 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .qr-widget__preview-card {
+  width: min(100%, 190px);
+  padding: 12px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__empty {
+  min-height: 56px;
+  padding: 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__empty {
+  min-height: 104px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .qr-widget__empty {
+  min-height: 142px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .qr-widget__empty {
+  min-height: 176px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .notes-list {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-row {
+  padding: 7px 8px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-row p {
+  font-size: var(--fs-xs);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .text-area--planner {
+  min-height: 72px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='3'] .text-area--planner {
+  min-height: 96px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='4'] .text-area--planner {
+  min-height: 126px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__list,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents > .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__eyebrow,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__eyebrow,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__summary,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__summary {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar::before,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar::before {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__header {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents {
+  gap: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__header,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__header {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__header > div,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__header > div,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__copy,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__toolbar {
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row,
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__action-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-field,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-field {
+  height: 30px;
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-area,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-area {
+  min-height: 64px;
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .text-field--date,
+.dashboard-shell .widget-card[data-size-tier='2'] .text-field--date {
+  min-width: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-input-row .text-field,
+.dashboard-shell .widget-card[data-size-tier='2'] .note-input-row .text-field {
+  flex: 1 1 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='2'] .group-grid,
+.dashboard-shell .widget-card[data-size-tier='1'] .notes-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .notes-list {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__meta,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__meta {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__top-controls {
+  align-items: flex-end;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__hint,
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__hint {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='homework-assessment'] .tracker-record__description {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-record-list,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-record-list {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary {
+  gap: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section + .tracker-summary__section {
+  padding-top: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__compact-toolbar {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__profile-select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-card {
+  padding: 9px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-detail {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-title {
+  font-size: var(--fs-lg);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .bell-schedule__summary-time {
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-card {
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-footer,
+.dashboard-shell .widget-card[data-size-tier='2'] .seating-chart__preview-footer {
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-grid {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-cell,
+.dashboard-shell .widget-card[data-size-tier='1'] .seating-chart__preview-item {
+  border-radius: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] {
+  --widget-body-gap: 4px;
+  gap: 4px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__header {
+  min-height: 24px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__collapse,
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-icon-button {
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__meta {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .badge {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-card__body {
+  gap: 4px;
+  padding-right: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon] {
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.toolbar-link, .primary-link, .secondary-link, .danger-link, .text-toggle)[data-compact-icon]::after {
+  font-size: var(--fs-sm);
+}
+
+.dashboard-shell .widget-card[data-widget-id='planner'] .planner-widget__export[data-compact-icon]::after {
+  font-size: var(--fs-2xs);
+  letter-spacing: 0;
+}
+
+.dashboard-shell .widget-card[data-widget-id='planner'] .planner-widget__week[data-compact-icon]::after {
+  letter-spacing: 0;
+}
+
+.dashboard-shell .widget-card[data-widget-id='planner'] .planner-widget__deleted[data-compact-icon]::after {
+  font-size: var(--fs-2xs);
+  letter-spacing: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-widget__export[data-compact-icon]::after {
+  font-size: var(--fs-2xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .widget-primary-actions,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] :is(.text-field, .text-area) {
+  min-height: 0;
+  height: 26px;
+  padding: 0 7px;
+  font-size: var(--fs-xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .field-label,
+.dashboard-shell .widget-card[data-size-tier='1'] .card-label {
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-preset-toggle,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .timer-readout {
+  font-size: var(--fs-xl);
+  line-height: 0.95;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .progress {
+  height: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='timer'] .custom-row {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-widget__top-controls {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-controls-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner {
+  height: 42px;
+  min-height: 42px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner::before {
+  height: 22px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name:not(.picker-spinner__name--active) {
+  opacity: 0.18;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .picker-spinner__name--active {
+  font-size: var(--fs-lg);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .group-maker__top-controls {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .group-maker__empty,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='group-maker'] .group-maker__empty {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .group-maker__controls {
+  gap: 0;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='group-maker'] .custom-row {
+  flex-wrap: nowrap;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .stepper__button,
+.dashboard-shell .widget-card[data-size-tier='1'] .stepper__value {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-card,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='seating-chart'] .seating-chart__preview-footer {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-footer {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-card {
+  padding: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='seating-chart'] .seating-chart__preview-grid {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar,
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__toolbar {
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__meta {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__action-row {
+  justify-content: flex-start;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='planner'] .text-area--planner {
+  height: 40px;
+  min-height: 40px;
+  padding: 6px 7px;
+  line-height: 1.2;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-documents,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='planner'] .planner-widget__copy {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary {
+  gap: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__empty,
+.dashboard-shell .widget-card[data-size-tier='2'] .tracker-summary__empty {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section {
+  gap: 2px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .tracker-summary__section + .tracker-summary__section {
+  padding-top: 3px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls {
+  gap: 4px;
+  align-items: stretch;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__top-controls .field-stack {
+  flex-basis: 100px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__preview-card {
+  width: 52px;
+  padding: 4px;
+  border-radius: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .qr-widget__empty {
+  min-height: 30px;
+  padding: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'] .qr-widget__empty {
+  min-height: 68px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'] .note-input-row {
+  gap: 4px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule {
+  gap: 5px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__compact-toolbar {
+  gap: 4px;
+  align-items: center;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-card {
+  gap: 4px;
+  padding: 6px;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-head,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-time,
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__status-pill {
+  display: none;
+}
+
+.dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__summary-title {
+  font-size: var(--fs-md);
+}
+
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__summary-detail,
+.dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
+  display: none;
+}
