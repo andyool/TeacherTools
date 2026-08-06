@@ -1,0 +1,363 @@
+/* ==========================================================================
+   LAYER 16 — shared UI kit (undo toast, confirm dialog, live region,
+   error fallback) + global accessibility baseline.
+   ========================================================================== */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Undo toast ---------------------------------------------------------- */
+
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 9px 12px 9px 16px;
+  border-radius: 999px;
+  background: var(--menu-surface, rgba(30, 41, 59, 0.94));
+  color: var(--text-primary, #eef4ff);
+  box-shadow: 0 8px 24px rgba(8, 12, 18, 0.32);
+  font-size: var(--fs-sm, 0.82rem);
+  font-weight: 600;
+  animation: undoToastIn 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.undo-toast__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.undo-toast__action {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--accent, #4f8fbf);
+  font-size: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.undo-toast__action:hover,
+.undo-toast__action:focus-visible {
+  background: color-mix(in srgb, var(--accent, #4f8fbf) 14%, transparent);
+}
+
+.undo-toast__dismiss {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  opacity: 0.65;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.undo-toast__dismiss:hover,
+.undo-toast__dismiss:focus-visible {
+  opacity: 1;
+}
+
+@keyframes undoToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* --- Confirm dialog ------------------------------------------------------ */
+
+.confirm-dialog {
+  max-width: 380px;
+}
+
+.confirm-dialog__message {
+  margin: 0 0 16px;
+  font-size: var(--fs-sm, 0.82rem);
+  font-weight: 500;
+  color: var(--text-secondary, rgba(236, 244, 255, 0.82));
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-dialog__confirm--danger {
+  background: color-mix(in srgb, #c0392b 82%, var(--panel-fill, #fff));
+  color: #fff;
+}
+
+.widget-dialog__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Window error fallback ----------------------------------------------- */
+
+.window-error-fallback {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 21, 32, 0.92);
+  z-index: 4000;
+}
+
+.window-error-fallback__card {
+  max-width: 420px;
+  padding: 24px 28px;
+  border-radius: 18px;
+  background: #1c2735;
+  color: #eef4ff;
+  box-shadow: 0 18px 48px rgba(4, 8, 14, 0.5);
+}
+
+.window-error-fallback__card h1 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.window-error-fallback__card p {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.window-error-fallback__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.window-error-fallback__detail {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(8, 12, 18, 0.55);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.75;
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* --- Accessibility baseline ---------------------------------------------- */
+
+/* One global, consistent focus ring. Inputs previously had outline: none. */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #4f8fbf) 85%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Settings additions --------------------------------------------------- */
+
+.settings-release-notes {
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: var(--fs-xs, 0.74rem);
+}
+
+/* --- Popout class bar ------------------------------------------------------ */
+
+.popout-class-bar {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.popout-class-bar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #4f8fbf) 10%, transparent);
+  color: var(--text-primary, inherit);
+  font-size: var(--fs-xs, 0.74rem);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.popout-class-bar__kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: var(--fs-2xs, 0.68rem);
+  opacity: 0.6;
+}
+
+.popout-class-bar__chevron {
+  opacity: 0.55;
+  font-size: 0.65em;
+}
+
+.popout-class-bar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--menu-surface, rgba(30, 41, 59, 0.96));
+  box-shadow: 0 10px 28px rgba(8, 12, 18, 0.32);
+}
+
+.popout-class-bar__option {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--text-primary, inherit);
+  font-size: var(--fs-sm, 0.82rem);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.popout-class-bar__option:hover,
+.popout-class-bar__option:focus-visible {
+  background: color-mix(in srgb, var(--accent, #4f8fbf) 14%, transparent);
+}
+
+.popout-class-bar__option--active {
+  background: color-mix(in srgb, var(--accent, #4f8fbf) 20%, transparent);
+}
+
+/* --- Widget chrome fixes --------------------------------------------------- */
+
+.widget-card__collapse-icon {
+  width: 11px;
+  height: 11px;
+  display: block;
+  transition: transform 160ms ease;
+}
+
+.widget-card__collapse--collapsed .widget-card__collapse-icon {
+  transform: rotate(180deg);
+}
+
+/* Raise the low-contrast header glyphs (collapse chevron, spawn icon). */
+.panel[data-theme] .widget-card__collapse {
+  opacity: 0.78;
+}
+
+.panel[data-theme] .widget-card__collapse:hover,
+.panel[data-theme] .widget-card__collapse:focus-visible {
+  opacity: 1;
+}
+
+/* --- Colour-mode popover: theme-aware inks ---------------------------------
+   The base rules in 06-misc-widgets.css hard-code light-palette inks, which
+   left near-black text on the dark menu surface. Route ink and rings through
+   theme tokens here (this layer loads last). */
+
+.panel[data-theme] .color-mode-popover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  background: var(--menu-surface, rgba(255, 251, 244, 0.96));
+}
+
+.panel[data-theme] .color-mode-popover__kicker {
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+}
+
+.panel[data-theme] .color-mode-popover__label {
+  color: var(--text-secondary);
+}
+
+.panel[data-theme] .color-mode-popover__swatch {
+  border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.panel[data-theme] .color-mode-popover__swatch--selected {
+  border-color: var(--accent-border-strong, var(--accent, #4f8fbf));
+  background: color-mix(in srgb, var(--accent, #4f8fbf) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #4f8fbf) 30%, transparent);
+}
+
+.panel[data-theme] .color-mode-popover__swatch:focus-visible {
+  border-color: var(--accent-border-strong, var(--accent, #4f8fbf));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #4f8fbf) 40%, transparent);
+}
+
+/* --- Touch-target floors (WCAG 2.2: 24×24) --------------------------------- */
+
+.stepper__button,
+.stepper__value {
+  min-height: 24px;
+}
+
+.note-row__tool,
+.note-row__delete,
+.note-row__checkbox {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.overlay-exit {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+/* --- Seating student chips: themed instead of hard white ------------------- */
+
+.panel[data-theme='dark'] .seating-chart__student-token {
+  background: rgba(36, 48, 66, 0.92);
+  color: #e8f1fb;
+}
+
+/* Tooltips ease in like every other surface instead of hard-cutting. */
+.app-tooltip {
+  transition: opacity 120ms ease;
+}

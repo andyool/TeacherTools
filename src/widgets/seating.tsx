@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent
+} from 'react';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { usePersistentState } from '../shared/persistence';
+import { announce, requestConfirm, showUndoToast } from '../shared/uiKit';
 import { clampNumber, createStickyNoteId, formatStudentInitials, isString, shuffleNames } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
 import type { WidgetSizeTier } from './dashboard';
 import type { GroupPairRule } from './groupRules';
 import { getGroupRulesForList, useGroupRulesState } from './groupRules';
-import { usePickerState } from './picker';
+import { filterAbsentStudents, getAbsentStudentsForList, usePickerState } from './picker';
 import { WIDGET_DETAILS } from './registry';
 
 export type SeatingChartItemKind = 'seat' | 'teacher-desk' | 'board' | 'door' | 'storage';
@@ -40,8 +46,11 @@ export type SeatingChartClassState = {
 
 export type SeatingChartSnapshot = {
   chartsByListId: Record<string, SeatingChartClassState>;
+  frontRowByListId: Record<string, string[]>;
   studentNotesByListId: Record<string, Record<string, string>>;
 };
+
+export type SeatingChartTool = 'select' | SeatingChartItemKind | 'erase' | 'rows';
 
 export type SeatingChartDragPayload =
   | {
@@ -109,10 +118,13 @@ export const SEATING_CHART_ITEM_DETAILS: Record<
 
 export const DEFAULT_SEATING_CHART: SeatingChartSnapshot = {
   chartsByListId: {},
+  frontRowByListId: {},
   studentNotesByListId: {}
 };
 
 export const SEATING_RESHUFFLE_ATTEMPTS = 40;
+
+export const SEATING_UNDO_STACK_LIMIT = 50;
 
 export type SeatingChartTimetableLink = {
   enabled: boolean;
@@ -221,7 +233,7 @@ export function SeatingChartDashboardPreview({
                 key={`${x}-${y}`}
               >
                 {item ? (
-                  <button
+                  <div
                     aria-label={buildSeatingChartItemTitle(item)}
                     className={`seating-chart__preview-item seating-chart__preview-item--${item.kind} ${
                       isSeat ? `seating-chart__preview-item--seat-${item.seatStyle}` : ''
@@ -231,12 +243,12 @@ export function SeatingChartDashboardPreview({
                         ? `${getSeatingChartPreviewTooltip(item)} — ${studentNote}`
                         : getSeatingChartPreviewTooltip(item)
                     }
+                    role="img"
                     style={
                       {
                         ['--seat-colour' as string]: item.color
                       } as CSSProperties
                     }
-                    type="button"
                   >
                     <span className="seating-chart__preview-token">
                       {getSeatingChartPreviewToken(item)}
@@ -244,7 +256,7 @@ export function SeatingChartDashboardPreview({
                     {studentNote ? (
                       <span aria-hidden="true" className="seating-chart__note-flag seating-chart__note-flag--preview" />
                     ) : null}
-                  </button>
+                  </div>
                 ) : null}
               </div>
             );
@@ -253,9 +265,6 @@ export function SeatingChartDashboardPreview({
       </div>
 
       <div className="seating-chart__preview-footer">
-        <p className="helper-text">
-          Preview only. Open the editor to change seats or layouts for {selectedList.name}.
-        </p>
         {timetableLink ? (
           <label className="seating-chart__follow-toggle">
             <input
@@ -286,9 +295,14 @@ export function SeatingChartEditorContent({
   selectedList: ClassList;
 }) {
   const [editorTab, setEditorTab] = useState<'arrange' | 'assign'>('arrange');
-  const [selectedTool, setSelectedTool] = useState<'select' | SeatingChartItemKind | 'erase'>('seat');
+  const [selectedTool, setSelectedTool] = useState<SeatingChartTool>('seat');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedStudentName, setSelectedStudentName] = useState<string | null>(null);
+  const [layoutNameDraft, setLayoutNameDraft] = useState(activeLayout.name);
+  const [flipView, setFlipView] = useState(false);
+  const [rowSeatCount, setRowSeatCount] = useState(6);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const copyMenuRef = useRef<HTMLDivElement | null>(null);
   const [draggingSeatAssignmentId, setDraggingSeatAssignmentId] = useState<string | null>(null);
   const [draggingStudentName, setDraggingStudentName] = useState<string | null>(null);
   const [assignmentTargetSeatId, setAssignmentTargetSeatId] = useState<string | null>(null);
@@ -317,6 +331,115 @@ export function SeatingChartEditorContent({
     activeLayout.items.find((item) => item.id === selectedItemId) ?? null;
   const activeSeat = activeItem?.kind === 'seat' ? activeItem : null;
   const showArrangeWorkspace = editorTab === 'arrange';
+
+  // In-memory undo/redo over the active layout. Cleared on layout switch.
+  const activeLayoutRef = useRef(activeLayout);
+  activeLayoutRef.current = activeLayout;
+  const undoStackRef = useRef<SeatingChartLayout[]>([]);
+  const redoStackRef = useRef<SeatingChartLayout[]>([]);
+  const [, setHistoryVersion] = useState(0);
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
+
+  const recordUndoSnapshot = () => {
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-(SEATING_UNDO_STACK_LIMIT - 1)),
+      activeLayoutRef.current
+    ];
+    redoStackRef.current = [];
+    setHistoryVersion((version) => version + 1);
+  };
+
+  const undoLayoutChange = () => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) {
+      return;
+    }
+
+    const previous = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, activeLayoutRef.current];
+    controller.restoreLayout(previous);
+    setHistoryVersion((version) => version + 1);
+    announce('Undo');
+  };
+
+  const redoLayoutChange = () => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0) {
+      return;
+    }
+
+    const next = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current, activeLayoutRef.current];
+    controller.restoreLayout(next);
+    setHistoryVersion((version) => version + 1);
+    announce('Redo');
+  };
+
+  const withHistory =
+    <Args extends unknown[]>(action: (...args: Args) => void) =>
+    (...args: Args) => {
+      recordUndoSnapshot();
+      action(...args);
+    };
+
+  useEffect(() => {
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    setHistoryVersion((version) => version + 1);
+    setFlipView(false);
+  }, [activeLayout.id]);
+
+  useEffect(() => {
+    setLayoutNameDraft(activeLayoutRef.current.name);
+  }, [activeLayout.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.shiftKey) {
+        redoLayoutChange();
+      } else {
+        undoLayoutChange();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  useEffect(() => {
+    if (!copyMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        copyMenuRef.current &&
+        event.target instanceof Node &&
+        !copyMenuRef.current.contains(event.target)
+      ) {
+        setCopyMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [copyMenuOpen]);
 
   useEffect(() => {
     if (!selectedItemId) {
@@ -366,12 +489,22 @@ export function SeatingChartEditorContent({
 
     if (selectedTool === 'erase') {
       if (itemId) {
+        recordUndoSnapshot();
         controller.removeItem(itemId);
       }
       setSelectedItemId(null);
       return;
     }
 
+    if (selectedTool === 'rows') {
+      if (!itemId) {
+        recordUndoSnapshot();
+        controller.setItemAtCell('seat', x, y);
+      }
+      return;
+    }
+
+    recordUndoSnapshot();
     controller.setItemAtCell(selectedTool, x, y);
     const nextItem =
       getSeatingChartCellItem(
@@ -386,11 +519,82 @@ export function SeatingChartEditorContent({
     setSelectedItemId(nextItem?.id ?? itemId);
   };
 
+  const handlePaintStart = () => {
+    recordUndoSnapshot();
+  };
+
+  const handlePaintCell = (x: number, y: number) => {
+    const item = getSeatingChartCellItem(activeLayoutRef.current.items, x, y);
+
+    if (selectedTool === 'erase') {
+      if (item) {
+        controller.removeItem(item.id);
+        setSelectedItemId(null);
+      }
+      return;
+    }
+
+    if (!item) {
+      controller.setItemAtCell('seat', x, y);
+    }
+  };
+
+  const assignStudentToSeatWithAnnounce = (
+    studentName: string,
+    targetSeatId: string,
+    sourceSeatId: string | null = null
+  ) => {
+    recordUndoSnapshot();
+    controller.assignStudentToSeat(studentName, targetSeatId, sourceSeatId);
+    const seat = activeLayoutRef.current.items.find((item) => item.id === targetSeatId);
+    announce(seat ? `${studentName} assigned to seat ${seat.label}` : `${studentName} assigned`);
+  };
+
+  const handleClearAssignments = () => {
+    const previous = activeLayoutRef.current;
+    recordUndoSnapshot();
+    controller.clearAssignments();
+    showUndoToast('Cleared seat assignments', () => {
+      recordUndoSnapshot();
+      controller.restoreLayout(previous);
+    });
+  };
+
+  const handleDeleteLayout = async () => {
+    const layout = activeLayoutRef.current;
+    const layoutName = activeLayoutNameForSeatingChart(layout);
+    const confirmed = await requestConfirm({
+      confirmLabel: 'Delete',
+      title: `Delete "${layoutName}"?`,
+      tone: 'danger'
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    controller.deleteActiveLayout();
+    showUndoToast(`Deleted "${layoutName}"`, () => controller.restoreDeletedLayout(layout));
+  };
+
+  const commitLayoutName = () => {
+    if (layoutNameDraft !== activeLayoutRef.current.name) {
+      controller.renameActiveLayout(layoutNameDraft);
+    }
+  };
+
+  const handleCopyToList = (targetList: ClassList) => {
+    controller.copyActiveLayoutToList(targetList);
+    setCopyMenuOpen(false);
+    showUndoToast(`Copied layout to ${targetList.name}`);
+  };
+
   const handleDropToUnseated = (event: ReactDragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const payload = readSeatingChartDragPayload(event.dataTransfer);
 
     if (payload?.type === 'student' && payload.sourceSeatId) {
+      recordUndoSnapshot();
       controller.clearSeatAssignment(payload.sourceSeatId);
     }
   };
@@ -437,9 +641,10 @@ export function SeatingChartEditorContent({
 
     if (activeDrag.started && targetSeatId) {
       if (activeDrag.type === 'seat') {
+        recordUndoSnapshot();
         controller.swapSeatAssignments(activeDrag.sourceSeatId, targetSeatId);
       } else {
-        controller.assignStudentToSeat(activeDrag.studentName, targetSeatId, activeDrag.sourceSeatId);
+        assignStudentToSeatWithAnnounce(activeDrag.studentName, targetSeatId, activeDrag.sourceSeatId);
       }
       setSelectedItemId(targetSeatId);
       setSelectedStudentName(null);
@@ -450,6 +655,7 @@ export function SeatingChartEditorContent({
       typeof clientY === 'number' &&
       isPointInUnseatedDropWell(clientX, clientY)
     ) {
+      recordUndoSnapshot();
       controller.clearSeatAssignment(activeDrag.sourceSeatId);
       setSelectedItemId(activeDrag.sourceSeatId);
       setSelectedStudentName(null);
@@ -598,7 +804,7 @@ export function SeatingChartEditorContent({
       return;
     }
 
-    controller.assignStudentToSeat(selectedStudentName, seatId);
+    assignStudentToSeatWithAnnounce(selectedStudentName, seatId);
     setSelectedStudentName(null);
   };
 
@@ -633,14 +839,40 @@ export function SeatingChartEditorContent({
           <input
             className="text-field"
             id="seating-chart-layout-name"
-            onChange={(event) => controller.renameActiveLayout(event.target.value)}
+            onBlur={commitLayoutName}
+            onChange={(event) => setLayoutNameDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+            }}
             placeholder="Layout name"
             type="text"
-            value={activeLayout.name}
+            value={layoutNameDraft}
           />
         </div>
 
         <div className="seating-chart__toolbar-actions">
+          <button
+            aria-label="Undo"
+            className="text-toggle button-tone--utility seating-chart__history-button"
+            data-tooltip-content="Undo (⌘Z)"
+            disabled={!canUndo}
+            onClick={undoLayoutChange}
+            type="button"
+          >
+            ↶
+          </button>
+          <button
+            aria-label="Redo"
+            className="text-toggle button-tone--utility seating-chart__history-button"
+            data-tooltip-content="Redo (⇧⌘Z)"
+            disabled={!canRedo}
+            onClick={redoLayoutChange}
+            type="button"
+          >
+            ↷
+          </button>
           <button
             className="primary-link"
             onClick={controller.addLayout}
@@ -655,19 +887,64 @@ export function SeatingChartEditorContent({
           >
             Duplicate
           </button>
+          <div className="seating-chart__copy-menu-wrap" ref={copyMenuRef}>
+            <button
+              aria-expanded={copyMenuOpen}
+              aria-haspopup="menu"
+              className="secondary-link button-tone--utility"
+              disabled={controller.otherLists.length === 0}
+              onClick={() => setCopyMenuOpen((open) => !open)}
+              type="button"
+            >
+              Copy to class…
+            </button>
+            {copyMenuOpen ? (
+              <div className="seating-chart__copy-menu" role="menu">
+                {controller.otherLists.map((list) => (
+                  <button
+                    className="seating-chart__copy-menu-item"
+                    key={list.id}
+                    onClick={() => handleCopyToList(list)}
+                    role="menuitem"
+                    type="button"
+                  >
+                    {list.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button
+            className={`text-toggle button-tone--utility ${flipView ? 'text-toggle--active' : ''}`}
+            data-tooltip-content="Rotate 180° for reading while facing the class"
+            onClick={() => setFlipView((flipped) => !flipped)}
+            type="button"
+          >
+            Flip view
+          </button>
           <button
             aria-label="Export this layout as a PNG image"
             className="secondary-link button-tone--utility"
             data-tooltip-content="Save a printable image for a relief teacher"
-            onClick={controller.exportActiveLayoutPng}
+            onClick={() => controller.exportActiveLayoutPng(flipView)}
             type="button"
           >
             Export PNG
           </button>
           <button
+            aria-label="Copy this layout as a PNG image"
+            className="secondary-link button-tone--utility"
+            onClick={() => controller.copyActiveLayoutPng(flipView)}
+            type="button"
+          >
+            Copy PNG
+          </button>
+          <button
             className="danger-link"
             disabled={!controller.canDeleteLayout}
-            onClick={controller.deleteActiveLayout}
+            onClick={() => {
+              void handleDeleteLayout();
+            }}
             type="button"
           >
             Delete
@@ -685,10 +962,6 @@ export function SeatingChartEditorContent({
         <article className="seating-chart__stat">
           <span className="seating-chart__stat-label">Seats</span>
           <strong>{controller.seatCount}</strong>
-        </article>
-        <article className="seating-chart__stat">
-          <span className="seating-chart__stat-label">Unseated</span>
-          <strong>{controller.unseatedStudents.length}</strong>
         </article>
         <article className="seating-chart__stat">
           <span className="seating-chart__stat-label">Layouts</span>
@@ -721,12 +994,19 @@ export function SeatingChartEditorContent({
         <div className="seating-chart__workspace-main">
           {showArrangeWorkspace ? (
             <div className="seating-chart__tool-row">
-              {(['select', 'seat', 'teacher-desk', 'board', 'door', 'storage', 'erase'] as const).map(
+              {(['select', 'seat', 'rows', 'teacher-desk', 'board', 'door', 'storage', 'erase'] as const).map(
                 (tool) => (
                   <button
                     className={`text-toggle ${getSeatingChartToolToneClass(tool)} ${
                       selectedTool === tool ? 'text-toggle--active' : ''
                     }`}
+                    data-tooltip-content={
+                      tool === 'rows'
+                        ? 'Drag to paint seats'
+                        : tool === 'erase'
+                          ? 'Click or drag to erase'
+                          : undefined
+                    }
                     key={tool}
                     onClick={() => setSelectedTool(tool)}
                     type="button"
@@ -735,7 +1015,9 @@ export function SeatingChartEditorContent({
                       ? 'Select'
                       : tool === 'erase'
                         ? 'Erase'
-                        : SEATING_CHART_ITEM_DETAILS[tool].title}
+                        : tool === 'rows'
+                          ? 'Rows'
+                          : SEATING_CHART_ITEM_DETAILS[tool].title}
                   </button>
                 )
               )}
@@ -745,6 +1027,7 @@ export function SeatingChartEditorContent({
           <SeatingChartGrid
             assignmentTargetSeatId={assignmentTargetSeatId}
             compact={false}
+            flipped={flipView}
             onGridElementChange={(element) => {
               assignmentGridRef.current = element;
             }}
@@ -752,11 +1035,13 @@ export function SeatingChartEditorContent({
             draggingSeatAssignmentId={draggingSeatAssignmentId}
             mode={showArrangeWorkspace ? 'arrange' : 'assign'}
             onGridToolAction={handleGridToolAction}
-            onMoveItem={controller.moveItem}
+            onMoveItem={withHistory(controller.moveItem)}
+            onPaintCell={handlePaintCell}
+            onPaintStart={handlePaintStart}
             onSelectItem={setSelectedItemId}
             onSeatActivate={handleSeatActivate}
             onSeatAssignmentPointerDown={startSeatAssignmentPointerDrag}
-            onStudentDrop={controller.assignStudentToSeat}
+            onStudentDrop={assignStudentToSeatWithAnnounce}
             onStudentTokenPointerDown={startStudentPointerDrag}
             selectedItemId={selectedItemId}
             selectedTool={selectedTool}
@@ -768,7 +1053,7 @@ export function SeatingChartEditorContent({
               className="secondary-link button-tone--utility"
               data-tooltip-content="Seat the class in roster order, filling from the front"
               disabled={controller.seatCount === 0 || controller.selectedStudents.length === 0}
-              onClick={controller.autofillAssignments}
+              onClick={withHistory(controller.autofillAssignments)}
               type="button"
             >
               Fill from front
@@ -777,7 +1062,7 @@ export function SeatingChartEditorContent({
               className="secondary-link button-tone--utility"
               data-tooltip-content="Seat the class alphabetically, filling from the front"
               disabled={controller.seatCount === 0 || controller.selectedStudents.length === 0}
-              onClick={controller.autofillAlphabetical}
+              onClick={withHistory(controller.autofillAlphabetical)}
               type="button"
             >
               A–Z
@@ -785,12 +1070,12 @@ export function SeatingChartEditorContent({
             <button
               className="secondary-link button-tone--utility"
               data-tooltip-content={
-                controller.apartPairs.length > 0
-                  ? 'Random seats that keep keep-apart pairs off neighbouring desks'
+                controller.apartPairs.length > 0 || controller.togetherPairs.length > 0
+                  ? 'Random seats that respect keep-apart and keep-together pairs'
                   : 'Shuffle everyone onto random seats'
               }
               disabled={controller.seatCount === 0 || controller.selectedStudents.length === 0}
-              onClick={controller.reshuffleAssignments}
+              onClick={withHistory(controller.reshuffleAssignments)}
               type="button"
             >
               Randomize
@@ -798,7 +1083,7 @@ export function SeatingChartEditorContent({
             <button
               className="secondary-link"
               disabled={controller.assignedSeatCount === 0}
-              onClick={controller.clearAssignments}
+              onClick={handleClearAssignments}
               type="button"
             >
               Clear seats
@@ -806,11 +1091,18 @@ export function SeatingChartEditorContent({
           </div>
 
           {!controller.hasEnoughSeats ? (
-            <p className="helper-text helper-text--accent">
-              Add {controller.selectedStudents.length - controller.seatCount} more seat
-              {controller.selectedStudents.length - controller.seatCount === 1 ? '' : 's'} to fit
-              the full class.
-            </p>
+            <div className="action-row seating-chart__missing-seats">
+              <button
+                className="secondary-link button-tone--action"
+                onClick={withHistory(() =>
+                  controller.appendSeats(controller.selectedStudents.length - controller.seatCount)
+                )}
+                type="button"
+              >
+                Add {controller.selectedStudents.length - controller.seatCount} seat
+                {controller.selectedStudents.length - controller.seatCount === 1 ? '' : 's'}
+              </button>
+            </div>
           ) : null}
         </div>
 
@@ -861,11 +1153,12 @@ export function SeatingChartEditorContent({
                       className="text-field"
                       onChange={(event) => {
                         if (!event.target.value) {
+                          recordUndoSnapshot();
                           controller.clearSeatAssignment(activeSeat.id);
                           return;
                         }
 
-                        controller.assignStudentToSeat(event.target.value, activeSeat.id);
+                        assignStudentToSeatWithAnnounce(event.target.value, activeSeat.id);
                       }}
                       value={activeSeat.assignedStudent ?? ''}
                     >
@@ -877,28 +1170,37 @@ export function SeatingChartEditorContent({
                       ))}
                     </select>
                     {activeSeat.assignedStudent ? (
-                      <label className="field-stack seating-chart__note-field">
-                        <span className="field-label">Note for {activeSeat.assignedStudent}</span>
-                        <input
-                          className="text-field"
-                          onChange={(event) =>
-                            controller.setStudentNote(
-                              activeSeat.assignedStudent ?? '',
-                              event.target.value
-                            )
-                          }
-                          placeholder="e.g. glasses, needs front row, IEP"
-                          type="text"
-                          value={controller.studentNotes[activeSeat.assignedStudent] ?? ''}
-                        />
-                        <span className="helper-text">
-                          Notes follow the student to any seat and show on hover.
-                        </span>
-                      </label>
+                      <>
+                        <label className="field-stack seating-chart__note-field">
+                          <span className="field-label">Note for {activeSeat.assignedStudent}</span>
+                          <input
+                            className="text-field"
+                            onChange={(event) =>
+                              controller.setStudentNote(
+                                activeSeat.assignedStudent ?? '',
+                                event.target.value
+                              )
+                            }
+                            placeholder="e.g. glasses, IEP"
+                            type="text"
+                            value={controller.studentNotes[activeSeat.assignedStudent] ?? ''}
+                          />
+                        </label>
+                        <label className="seating-chart__front-toggle">
+                          <input
+                            checked={controller.frontRowStudents.includes(activeSeat.assignedStudent)}
+                            onChange={(event) =>
+                              controller.setStudentFrontRow(
+                                activeSeat.assignedStudent ?? '',
+                                event.currentTarget.checked
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          <span>Front row</span>
+                        </label>
+                      </>
                     ) : null}
-                    <p className="helper-text">
-                      Drag a student onto this seat, or click a student on the right and then click a seat.
-                    </p>
                   </>
                 ) : (
                   <p className="empty-copy">Select a seat to assign or clear a student.</p>
@@ -909,18 +1211,43 @@ export function SeatingChartEditorContent({
             <>
               <div className="seating-chart__sidebar-section">
                 <div className="seating-chart__sidebar-head">
-                  <span className="field-label">Arrange tools</span>
-                  <span className="badge">
-                    {selectedTool === 'select'
-                      ? 'Select'
-                      : selectedTool === 'erase'
-                        ? 'Erase'
-                        : SEATING_CHART_ITEM_DETAILS[selectedTool].title}
-                  </span>
+                  <span className="field-label">Quick build</span>
                 </div>
-                <p className="helper-text">
-                  Click any grid square to place items. Drag items to move or swap positions.
-                </p>
+                <div className="seating-chart__row-builder">
+                  <input
+                    aria-label="Seats per row"
+                    className="text-field seating-chart__row-count"
+                    max={SEATING_CHART_GRID_COLUMNS}
+                    min={1}
+                    onChange={(event) =>
+                      setRowSeatCount(
+                        clampNumber(
+                          Math.round(Number(event.target.value) || 1),
+                          1,
+                          SEATING_CHART_GRID_COLUMNS
+                        )
+                      )
+                    }
+                    type="number"
+                    value={rowSeatCount}
+                  />
+                  <button
+                    className="secondary-link button-tone--action"
+                    onClick={withHistory(() => controller.addSeatRow(rowSeatCount))}
+                    type="button"
+                  >
+                    Add row of {rowSeatCount}
+                  </button>
+                </div>
+                <button
+                  className="secondary-link button-tone--utility"
+                  data-tooltip-content="Number seats top-to-bottom, left-to-right"
+                  disabled={controller.seatCount === 0}
+                  onClick={withHistory(controller.renumberSeats)}
+                  type="button"
+                >
+                  Renumber seats
+                </button>
               </div>
 
               <div className="seating-chart__sidebar-section">
@@ -955,12 +1282,13 @@ export function SeatingChartEditorContent({
                             activeItem.color === color ? 'seating-chart__swatch--active' : ''
                           }`}
                           key={color}
-                          onClick={() =>
+                          onClick={() => {
+                            recordUndoSnapshot();
                             controller.updateItem(activeItem.id, (item) => ({
                               ...item,
                               color
-                            }))
-                          }
+                            }));
+                          }}
                           style={{ backgroundColor: color }}
                           type="button"
                         />
@@ -975,12 +1303,13 @@ export function SeatingChartEditorContent({
                               activeItem.seatStyle === seatStyle ? 'text-toggle--active' : ''
                             }`}
                             key={seatStyle}
-                            onClick={() =>
+                            onClick={() => {
+                              recordUndoSnapshot();
                               controller.updateItem(activeItem.id, (item) => ({
                                 ...item,
                                 seatStyle
-                              }))
-                            }
+                              }));
+                            }}
                             type="button"
                           >
                             {seatStyle === 'desk' ? 'Desk' : 'Round'}
@@ -992,6 +1321,7 @@ export function SeatingChartEditorContent({
                     <button
                       className="secondary-link"
                       onClick={() => {
+                        recordUndoSnapshot();
                         controller.removeItem(activeItem.id);
                         setSelectedItemId(null);
                       }}
@@ -1008,10 +1338,6 @@ export function SeatingChartEditorContent({
           )}
         </aside>
       </div>
-
-      <p className="helper-text">
-        Saved automatically for {selectedList.name}. Layouts stay attached to this class.
-      </p>
     </div>
   );
 }
@@ -1020,11 +1346,14 @@ export function SeatingChartGrid({
   assignmentTargetSeatId,
   compact,
   draggingSeatAssignmentId,
+  flipped = false,
   onGridElementChange,
   layout,
   mode,
   onGridToolAction,
   onMoveItem,
+  onPaintCell,
+  onPaintStart,
   onSelectItem,
   onSeatActivate,
   onSeatAssignmentPointerDown,
@@ -1037,11 +1366,14 @@ export function SeatingChartGrid({
   assignmentTargetSeatId: string | null;
   compact: boolean;
   draggingSeatAssignmentId: string | null;
+  flipped?: boolean;
   onGridElementChange: (element: HTMLDivElement | null) => void;
   layout: SeatingChartLayout;
   mode: 'arrange' | 'assign';
   onGridToolAction: (x: number, y: number, itemId: string | null) => void;
   onMoveItem: (itemId: string, x: number, y: number) => void;
+  onPaintCell?: (x: number, y: number) => void;
+  onPaintStart?: () => void;
   onSelectItem: (itemId: string | null) => void;
   onSeatActivate: (seatId: string) => void;
   onSeatAssignmentPointerDown: (
@@ -1055,7 +1387,7 @@ export function SeatingChartGrid({
     sourceSeatId: string | null
   ) => void;
   selectedItemId: string | null;
-  selectedTool: 'select' | SeatingChartItemKind | 'erase';
+  selectedTool: SeatingChartTool;
   studentNotes?: Record<string, string>;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -1069,15 +1401,32 @@ export function SeatingChartGrid({
     targetCell: { x: number; y: number } | null;
   } | null>(null);
   const pointerDragCleanupRef = useRef<(() => void) | null>(null);
+  const paintStateRef = useRef<{
+    lastCellKey: string | null;
+    pointerId: number;
+  } | null>(null);
+  const paintCleanupRef = useRef<(() => void) | null>(null);
   const suppressClickRef = useRef(false);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragTargetCellKey, setDragTargetCellKey] = useState<string | null>(null);
+  const [focusCellKey, setFocusCellKey] = useState<string | null>(null);
+  const selectedItemCell = selectedItemId
+    ? layout.items.find((item) => item.id === selectedItemId) ?? null
+    : null;
+  const tabbableCellKey =
+    focusCellKey ??
+    (selectedItemCell
+      ? getSeatingChartCellKey(selectedItemCell.x, selectedItemCell.y)
+      : getSeatingChartCellKey(0, 0));
 
   useEffect(() => {
     return () => {
       pointerDragCleanupRef.current?.();
       pointerDragCleanupRef.current = null;
       pointerDragStateRef.current = null;
+      paintCleanupRef.current?.();
+      paintCleanupRef.current = null;
+      paintStateRef.current = null;
     };
   }, []);
 
@@ -1153,6 +1502,130 @@ export function SeatingChartGrid({
     pointerDragStateRef.current = null;
     setDraggingItemId(null);
     setDragTargetCellKey(null);
+  };
+
+  const endPaintSession = () => {
+    paintCleanupRef.current?.();
+    paintCleanupRef.current = null;
+    paintStateRef.current = null;
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
+
+  const startPaintSession = (event: ReactPointerEvent<HTMLElement>, x: number, y: number) => {
+    if (
+      mode !== 'arrange' ||
+      !onPaintCell ||
+      (selectedTool !== 'rows' && selectedTool !== 'erase')
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    paintCleanupRef.current?.();
+    onPaintStart?.();
+    paintStateRef.current = {
+      lastCellKey: getSeatingChartCellKey(x, y),
+      pointerId: event.pointerId
+    };
+    onPaintCell(x, y);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const paintState = paintStateRef.current;
+
+      if (!paintState || moveEvent.pointerId !== paintState.pointerId) {
+        return;
+      }
+
+      const cell = getCellFromPoint(moveEvent.clientX, moveEvent.clientY);
+      if (!cell) {
+        return;
+      }
+
+      const cellKey = getSeatingChartCellKey(cell.x, cell.y);
+      if (cellKey === paintState.lastCellKey) {
+        return;
+      }
+
+      paintState.lastCellKey = cellKey;
+      onPaintCell(cell.x, cell.y);
+    };
+
+    const handlePointerEnd = (endEvent: PointerEvent) => {
+      const paintState = paintStateRef.current;
+
+      if (!paintState || endEvent.pointerId !== paintState.pointerId) {
+        return;
+      }
+
+      endPaintSession();
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
+    paintCleanupRef.current = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+    };
+  };
+
+  const handleCellKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    x: number,
+    y: number,
+    item: SeatingChartLayoutItem | null
+  ) => {
+    let deltaX = 0;
+    let deltaY = 0;
+
+    if (event.key === 'ArrowLeft') {
+      deltaX = -1;
+    } else if (event.key === 'ArrowRight') {
+      deltaX = 1;
+    } else if (event.key === 'ArrowUp') {
+      deltaY = -1;
+    } else if (event.key === 'ArrowDown') {
+      deltaY = 1;
+    }
+
+    if (deltaX !== 0 || deltaY !== 0) {
+      event.preventDefault();
+
+      if (flipped) {
+        deltaX = -deltaX;
+        deltaY = -deltaY;
+      }
+
+      const nextX = clampNumber(x + deltaX, 0, SEATING_CHART_GRID_COLUMNS - 1);
+      const nextY = clampNumber(y + deltaY, 0, SEATING_CHART_GRID_ROWS - 1);
+      setFocusCellKey(getSeatingChartCellKey(nextX, nextY));
+      gridRef.current
+        ?.querySelector<HTMLElement>(`[data-grid-x="${nextX}"][data-grid-y="${nextY}"]`)
+        ?.focus();
+      return;
+    }
+
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (mode === 'arrange') {
+      onGridToolAction(x, y, item?.id ?? null);
+      return;
+    }
+
+    if (item?.kind === 'seat') {
+      onSeatActivate(item.id);
+      return;
+    }
+
+    onSelectItem(null);
   };
 
   const startPointerDrag = (
@@ -1257,13 +1730,17 @@ export function SeatingChartGrid({
   return (
     <div className={`seating-chart__canvas ${compact ? 'seating-chart__canvas--compact' : ''}`}>
       <div
+        aria-colcount={SEATING_CHART_GRID_COLUMNS}
+        aria-label="Seating grid"
+        aria-rowcount={SEATING_CHART_GRID_ROWS}
         className={`seating-chart__grid seating-chart__grid--${mode} ${
           compact ? 'seating-chart__grid--compact' : ''
-        }`}
+        } ${flipped ? 'seating-chart__grid--flipped' : ''}`}
         ref={(element) => {
           gridRef.current = element;
           onGridElementChange(element);
         }}
+        role="grid"
       >
         {Array.from({ length: SEATING_CHART_GRID_ROWS * SEATING_CHART_GRID_COLUMNS }, (_value, index) => {
           const x = index % SEATING_CHART_GRID_COLUMNS;
@@ -1280,6 +1757,12 @@ export function SeatingChartGrid({
 
           return (
             <div
+              aria-colindex={x + 1}
+              aria-label={
+                item ? buildSeatingChartItemTitle(item) : `Empty cell, row ${y + 1}, column ${x + 1}`
+              }
+              aria-rowindex={y + 1}
+              aria-selected={isSelected}
               className={`seating-chart__cell ${
                 item ? 'seating-chart__cell--occupied' : ''
               } ${isSelected ? 'seating-chart__cell--selected' : ''} ${
@@ -1288,6 +1771,19 @@ export function SeatingChartGrid({
               data-grid-x={x}
               data-grid-y={y}
               key={key}
+              onFocus={(event) => {
+                if (event.target === event.currentTarget) {
+                  setFocusCellKey(key);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  handleCellKeyDown(event, x, y, item);
+                }
+              }}
+              onPointerDown={(event) => startPaintSession(event, x, y)}
+              role="gridcell"
+              tabIndex={key === tabbableCellKey ? 0 : -1}
               onClick={() => {
                 if (suppressClickRef.current) {
                   suppressClickRef.current = false;
@@ -1397,24 +1893,18 @@ export function SeatingChartGrid({
 
       <div className="seating-chart__grid-axis seating-chart__grid-axis--columns">
         {Array.from({ length: SEATING_CHART_GRID_COLUMNS }, (_value, index) => (
-          <span key={`column-${index + 1}`}>{index + 1}</span>
+          <span key={`column-${index + 1}`}>
+            {flipped ? SEATING_CHART_GRID_COLUMNS - index : index + 1}
+          </span>
         ))}
       </div>
       <div className="seating-chart__grid-axis seating-chart__grid-axis--rows">
         {Array.from({ length: SEATING_CHART_GRID_ROWS }, (_value, index) => (
-          <span key={`row-${index + 1}`}>{index + 1}</span>
+          <span key={`row-${index + 1}`}>
+            {flipped ? SEATING_CHART_GRID_ROWS - index : index + 1}
+          </span>
         ))}
       </div>
-      {mode === 'arrange' ? (
-        <p className="helper-text">
-          Active tool:{' '}
-          {selectedTool === 'select'
-            ? 'Select existing items'
-            : selectedTool === 'erase'
-              ? 'Erase items from the grid'
-              : `Place ${SEATING_CHART_ITEM_DETAILS[selectedTool].title.toLowerCase()} items`}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -1429,9 +1919,16 @@ export function SeatingChartWidgetPopoutCard({
   const [picker] = usePickerState();
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const [groupRules] = useGroupRulesState();
+  const listRules = getGroupRulesForList(
+    groupRules,
+    selectedList?.id ?? null,
+    selectedList?.students ?? []
+  );
   const seatingChart = useSeatingChartController(selectedList, {
-    apartPairs: getGroupRulesForList(groupRules, selectedList?.id ?? null, selectedList?.students ?? [])
-      .apart
+    absentStudents: getAbsentStudentsForList(picker, selectedList),
+    apartPairs: listRules.apart,
+    lists: picker.lists,
+    togetherPairs: listRules.together
   });
 
   return (
@@ -1475,14 +1972,26 @@ export function useSeatingChartState() {
 
 export function useSeatingChartController(
   selectedList: ClassList | null,
-  options?: { apartPairs?: GroupPairRule[] }
+  options?: {
+    absentStudents?: string[];
+    apartPairs?: GroupPairRule[];
+    lists?: ClassList[];
+    togetherPairs?: GroupPairRule[];
+  }
 ) {
   const [seatingChart, setSeatingChart] = useSeatingChartState();
   const apartPairs = options?.apartPairs ?? [];
+  const togetherPairs = options?.togetherPairs ?? [];
+  const absentStudents = options?.absentStudents ?? [];
+  const otherLists = (options?.lists ?? []).filter((list) => list.id !== selectedList?.id);
   const selectedStudents = selectedList?.students ?? [];
+  const presentStudents = filterAbsentStudents(selectedStudents, absentStudents);
   const studentNotes = selectedList
     ? getSeatingStudentNotesForList(seatingChart, selectedList)
     : {};
+  const frontRowStudents = selectedList
+    ? getSeatingFrontRowStudentsForList(seatingChart, selectedList)
+    : [];
   const classState = selectedList
     ? getSeatingChartClassState(seatingChart, selectedList.id, selectedStudents.length)
     : null;
@@ -1530,15 +2039,18 @@ export function useSeatingChartController(
     apartPairs,
     assignedSeatCount: assignedStudentNames.length,
     canDeleteLayout: Boolean(classState && classState.layouts.length > 1),
+    frontRowStudents,
     hasEnoughSeats,
     layoutCount: classState?.layouts.length ?? 0,
     layoutOptions: classState?.layouts ?? [],
+    otherLists,
     seatCount: seatItems.length,
     seatItems,
     selectedList,
     selectedStudents,
     seatingChart,
     studentNotes,
+    togetherPairs,
     unseatedStudents,
     addLayout: () =>
       updateSelectedListChart((current) => createEmptySeatingChartClassStateFromCurrent(current)),
@@ -1557,10 +2069,35 @@ export function useSeatingChartController(
           [...selectedStudents].sort((left, right) => left.localeCompare(right))
         )
       ),
-    exportActiveLayoutPng: () => {
+    exportActiveLayoutPng: (flipped = false) => {
       if (activeLayout && selectedList) {
-        exportSeatingChartPng(activeLayout, selectedList.name, studentNotes);
+        exportSeatingChartPng(activeLayout, selectedList.name, studentNotes, flipped);
       }
+    },
+    copyActiveLayoutPng: (flipped = false) => {
+      if (activeLayout && selectedList) {
+        copySeatingChartPngToClipboard(activeLayout, selectedList.name, studentNotes, flipped);
+      }
+    },
+    copyActiveLayoutToList: (targetList: ClassList) => {
+      if (!activeLayout) {
+        return;
+      }
+
+      setSeatingChart((current) =>
+        updateSeatingChartForList(current, targetList.id, targetList.students.length, (targetState) =>
+          copySeatingChartLayoutToClassState(targetState, activeLayout, targetList.students)
+        )
+      );
+    },
+    setStudentFrontRow: (studentName: string, isFrontRow: boolean) => {
+      if (!selectedList) {
+        return;
+      }
+
+      setSeatingChart((current) =>
+        setSeatingStudentFrontRow(current, selectedList.id, studentName, isFrontRow)
+      );
     },
     setStudentNote: (studentName: string, note: string) => {
       if (!selectedList) {
@@ -1597,10 +2134,40 @@ export function useSeatingChartController(
           ? renameSeatingChartLayout(current, current.activeLayoutId, name)
           : current
       ),
+    renumberSeats: () =>
+      updateActiveLayout((layout) => renumberSeatingChartSeats(layout)),
     reshuffleAssignments: () =>
       updateActiveLayout((layout) =>
-        reshuffleSeatingChartLayout(layout, selectedStudents, apartPairs)
+        reshuffleSeatingChartLayout(
+          layout,
+          presentStudents,
+          apartPairs,
+          togetherPairs,
+          filterAbsentStudents(frontRowStudents, absentStudents)
+        )
       ),
+    restoreDeletedLayout: (layout: SeatingChartLayout) =>
+      updateSelectedListChart((current) =>
+        current.layouts.some((existing) => existing.id === layout.id)
+          ? { ...current, activeLayoutId: layout.id }
+          : {
+              activeLayoutId: layout.id,
+              layouts: [...current.layouts, layout]
+            }
+      ),
+    restoreLayout: (layout: SeatingChartLayout) =>
+      updateSelectedListChart((current) => ({
+        ...current,
+        layouts: current.layouts.map((existing) =>
+          existing.id === layout.id
+            ? sanitizeSeatingChartLayout({ ...layout, updatedAt: Date.now() }, selectedStudents)
+            : existing
+        )
+      })),
+    addSeatRow: (count: number) =>
+      updateActiveLayout((layout) => addSeatingChartSeatRow(layout, count)),
+    appendSeats: (count: number) =>
+      updateActiveLayout((layout) => appendSeatingChartSeats(layout, count)),
     selectLayout: (layoutId: string) =>
       updateSelectedListChart((current) => selectSeatingChartLayout(current, layoutId)),
     setItemAtCell: (kind: SeatingChartItemKind, x: number, y: number) =>
@@ -1623,14 +2190,38 @@ export function normalizeSeatingChartSnapshot(
 
   const nextRaw = raw as {
     chartsByListId?: Record<string, unknown>;
+    frontRowByListId?: Record<string, unknown>;
     studentNotesByListId?: Record<string, unknown>;
   };
   const chartsByListId: Record<string, SeatingChartClassState> = {};
+  const frontRowByListId: Record<string, string[]> = {};
   const studentNotesByListId: Record<string, Record<string, string>> = {};
 
   if (nextRaw.chartsByListId && typeof nextRaw.chartsByListId === 'object') {
     for (const [listId, chartRaw] of Object.entries(nextRaw.chartsByListId)) {
       chartsByListId[listId] = normalizeSeatingChartClassState(chartRaw);
+    }
+  }
+
+  if (nextRaw.frontRowByListId && typeof nextRaw.frontRowByListId === 'object') {
+    for (const [listId, namesRaw] of Object.entries(nextRaw.frontRowByListId)) {
+      if (!Array.isArray(namesRaw)) {
+        continue;
+      }
+
+      const seen = new Set<string>();
+      const names = namesRaw.filter((name): name is string => {
+        if (!isString(name) || !name.trim() || seen.has(name.toLowerCase())) {
+          return false;
+        }
+
+        seen.add(name.toLowerCase());
+        return true;
+      });
+
+      if (names.length > 0) {
+        frontRowByListId[listId] = names;
+      }
     }
   }
 
@@ -1656,6 +2247,7 @@ export function normalizeSeatingChartSnapshot(
 
   return {
     chartsByListId,
+    frontRowByListId,
     studentNotesByListId
   };
 }
@@ -2023,8 +2615,143 @@ export function getSeatingChartSeatItems(layout: SeatingChartLayout) {
     .sort((left, right) => (left.y - right.y) || (left.x - right.x));
 }
 
+/** Relabels every seat 1..N in reading order (top-to-bottom, left-to-right). */
+export function renumberSeatingChartSeats(layout: SeatingChartLayout) {
+  const labelBySeatId = new Map(
+    getSeatingChartSeatItems(layout).map((seat, index) => [seat.id, String(index + 1)])
+  );
+
+  return {
+    ...layout,
+    items: layout.items.map((item) =>
+      item.kind === 'seat'
+        ? {
+            ...item,
+            label: labelBySeatId.get(item.id) ?? item.label
+          }
+        : item
+    ),
+    updatedAt: Date.now()
+  };
+}
+
+/** Appends a centered row of seats below the lowest existing seat row. */
+export function addSeatingChartSeatRow(layout: SeatingChartLayout, count: number) {
+  const seatCount = clampNumber(Math.round(count), 1, SEATING_CHART_GRID_COLUMNS);
+  const seatYs = layout.items.filter((item) => item.kind === 'seat').map((item) => item.y);
+  // Fresh layouts only hold the board/teacher scaffold, so start where the
+  // default seat block starts.
+  const targetY = seatYs.length > 0 ? Math.max(...seatYs) + 1 : 2;
+
+  if (targetY >= SEATING_CHART_GRID_ROWS) {
+    return layout;
+  }
+
+  const startX = Math.floor((SEATING_CHART_GRID_COLUMNS - seatCount) / 2);
+  let items = [...layout.items];
+
+  for (let offset = 0; offset < seatCount; offset += 1) {
+    const x = startX + offset;
+
+    if (getSeatingChartCellItem(items, x, targetY)) {
+      continue;
+    }
+
+    items = [...items, createSeatingChartLayoutItem('seat', x, targetY, items)];
+  }
+
+  if (items.length === layout.items.length) {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    items: sortSeatingChartItems(items),
+    updatedAt: Date.now()
+  };
+}
+
+/**
+ * Appends seats after the last seated row, following the default paired-column
+ * pattern and falling back to any free cell once the lower rows are full.
+ */
+export function appendSeatingChartSeats(layout: SeatingChartLayout, count: number) {
+  if (count <= 0) {
+    return layout;
+  }
+
+  const seatYs = layout.items.filter((item) => item.kind === 'seat').map((item) => item.y);
+  const startY = seatYs.length > 0 ? Math.max(...seatYs) + 1 : 2;
+  const seatColumns = [1, 2, 4, 5, 7, 8, 10, 11];
+  let items = [...layout.items];
+  let remaining = count;
+
+  const placeSeat = (x: number, y: number) => {
+    if (remaining <= 0 || getSeatingChartCellItem(items, x, y)) {
+      return;
+    }
+
+    items = [...items, createSeatingChartLayoutItem('seat', x, y, items)];
+    remaining -= 1;
+  };
+
+  for (let y = startY; y < SEATING_CHART_GRID_ROWS && remaining > 0; y += 1) {
+    for (const x of seatColumns) {
+      placeSeat(x, y);
+    }
+  }
+
+  for (let y = 0; y < SEATING_CHART_GRID_ROWS && remaining > 0; y += 1) {
+    for (let x = 0; x < SEATING_CHART_GRID_COLUMNS; x += 1) {
+      placeSeat(x, y);
+    }
+  }
+
+  if (items.length === layout.items.length) {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    items: sortSeatingChartItems(items),
+    updatedAt: Date.now()
+  };
+}
+
+/**
+ * Clones a layout into another class's chart state. Seat positions are kept;
+ * assignments only carry over for students present in the target roster.
+ */
+export function copySeatingChartLayoutToClassState(
+  classState: SeatingChartClassState,
+  layout: SeatingChartLayout,
+  targetRoster: string[]
+): SeatingChartClassState {
+  const canonicalByLowerName = new Map(targetRoster.map((name) => [name.toLowerCase(), name]));
+  const clonedLayout: SeatingChartLayout = {
+    id: createSeatingChartLayoutId(),
+    items: layout.items.map((item) => ({
+      ...item,
+      assignedStudent:
+        item.kind === 'seat' && item.assignedStudent
+          ? canonicalByLowerName.get(item.assignedStudent.toLowerCase()) ?? null
+          : null,
+      id: createSeatingChartLayoutItemId()
+    })),
+    name: createSeatingChartLayoutName(classState.layouts, activeLayoutNameForSeatingChart(layout)),
+    updatedAt: Date.now()
+  };
+
+  return {
+    activeLayoutId: clonedLayout.id,
+    layouts: [...classState.layouts, clonedLayout]
+  };
+}
+
 export function sanitizeSeatingChartLayout(layout: SeatingChartLayout, roster: string[]) {
-  const rosterSet = new Set(roster);
+  // Case-insensitive match so a roster rename like "ava" → "Ava" keeps the
+  // student seated; the stored name is rewritten to the roster's casing.
+  const canonicalByLowerName = new Map(roster.map((name) => [name.toLowerCase(), name]));
   const occupied = new Set<string>();
   const items: SeatingChartLayoutItem[] = [];
 
@@ -2043,8 +2770,8 @@ export function sanitizeSeatingChartLayout(layout: SeatingChartLayout, roster: s
     items.push({
       ...normalized,
       assignedStudent:
-        normalized.kind === 'seat' && normalized.assignedStudent && rosterSet.has(normalized.assignedStudent)
-          ? normalized.assignedStudent
+        normalized.kind === 'seat' && normalized.assignedStudent
+          ? canonicalByLowerName.get(normalized.assignedStudent.toLowerCase()) ?? null
           : null
     });
   });
@@ -2405,30 +3132,133 @@ export function autofillSeatingChartLayout(layout: SeatingChartLayout, students:
 export function reshuffleSeatingChartLayout(
   layout: SeatingChartLayout,
   students: string[],
-  apartPairs: GroupPairRule[] = []
+  apartPairs: GroupPairRule[] = [],
+  togetherPairs: GroupPairRule[] = [],
+  frontRowStudents: string[] = []
 ) {
-  if (apartPairs.length === 0) {
-    return applySeatingChartAssignments(layout, shuffleNames(students));
+  const buildCandidate = () =>
+    applySeatingChartAssignments(
+      layout,
+      buildSeatingReshuffleOrder(layout, students, frontRowStudents)
+    );
+
+  if (apartPairs.length === 0 && togetherPairs.length === 0) {
+    return buildCandidate();
   }
 
+  // Best-effort: retry random shuffles and keep the candidate with the fewest
+  // rule violations. Keep-apart weighs heavier than keep-together.
   let bestLayout: SeatingChartLayout | null = null;
-  let bestViolations = Number.POSITIVE_INFINITY;
+  let bestScore = Number.POSITIVE_INFINITY;
 
   for (let attempt = 0; attempt < SEATING_RESHUFFLE_ATTEMPTS; attempt += 1) {
-    const candidate = applySeatingChartAssignments(layout, shuffleNames(students));
-    const violations = countSeatingApartViolations(candidate, apartPairs);
+    const candidate = buildCandidate();
+    const score =
+      countSeatingApartViolations(candidate, apartPairs) * 100 +
+      countSeatingTogetherViolations(candidate, togetherPairs);
 
-    if (violations < bestViolations) {
+    if (score < bestScore) {
       bestLayout = candidate;
-      bestViolations = violations;
+      bestScore = score;
     }
 
-    if (bestViolations === 0) {
+    if (bestScore === 0) {
       break;
     }
   }
 
-  return bestLayout ?? applySeatingChartAssignments(layout, shuffleNames(students));
+  return bestLayout ?? buildCandidate();
+}
+
+/**
+ * Builds a randomized seat order (indexed against the layout's seats in
+ * reading order) that pins front-row-flagged students to the lowest-y
+ * occupied row(s).
+ */
+export function buildSeatingReshuffleOrder(
+  layout: SeatingChartLayout,
+  students: string[],
+  frontRowStudents: string[]
+): (string | null)[] {
+  const seats = getSeatingChartSeatItems(layout);
+  const frontRowSet = new Set(frontRowStudents.map((name) => name.toLowerCase()));
+  const frontStudents = shuffleNames(students.filter((name) => frontRowSet.has(name.toLowerCase())));
+  const restStudents = shuffleNames(students.filter((name) => !frontRowSet.has(name.toLowerCase())));
+
+  if (frontStudents.length === 0 || seats.length === 0) {
+    return [...frontStudents, ...restStudents];
+  }
+
+  // Collect the front rows (lowest y values) until they can hold every
+  // front-row student, then scatter those students within them.
+  const frontRowYs = new Set<number>();
+  let frontSeatCount = 0;
+
+  for (const seat of seats) {
+    if (frontSeatCount >= frontStudents.length && !frontRowYs.has(seat.y)) {
+      break;
+    }
+
+    frontRowYs.add(seat.y);
+    frontSeatCount += 1;
+  }
+
+  const frontSeatIndexes = seats
+    .map((seat, index) => (frontRowYs.has(seat.y) ? index : -1))
+    .filter((index) => index >= 0);
+
+  for (let index = frontSeatIndexes.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [frontSeatIndexes[index], frontSeatIndexes[swapIndex]] = [
+      frontSeatIndexes[swapIndex],
+      frontSeatIndexes[index]
+    ];
+  }
+
+  const chosenFrontIndexes = frontSeatIndexes.slice(0, frontStudents.length);
+  const order: (string | null)[] = new Array(seats.length).fill(null);
+
+  chosenFrontIndexes.forEach((seatIndex, position) => {
+    order[seatIndex] = frontStudents[position] ?? null;
+  });
+
+  let restPosition = 0;
+  for (let index = 0; index < order.length && restPosition < restStudents.length; index += 1) {
+    if (order[index] === null) {
+      order[index] = restStudents[restPosition];
+      restPosition += 1;
+    }
+  }
+
+  return order;
+}
+
+/**
+ * A keep-together pair violates seating when both students are seated but not
+ * on touching cells (including diagonals).
+ */
+export function countSeatingTogetherViolations(
+  layout: SeatingChartLayout,
+  togetherPairs: GroupPairRule[]
+) {
+  const cellByStudent = new Map<string, { x: number; y: number }>();
+
+  for (const item of layout.items) {
+    if (item.kind === 'seat' && item.assignedStudent) {
+      cellByStudent.set(item.assignedStudent.toLowerCase(), { x: item.x, y: item.y });
+    }
+  }
+
+  return togetherPairs.filter((pair) => {
+    const first = cellByStudent.get(pair[0].toLowerCase());
+    const second = cellByStudent.get(pair[1].toLowerCase());
+
+    return (
+      first !== undefined &&
+      second !== undefined &&
+      (Math.abs(first.x - second.x) > 1 || Math.abs(first.y - second.y) > 1)
+    );
+  }).length;
 }
 
 /**
@@ -2538,6 +3368,46 @@ export function setSeatingStudentNote(
   };
 }
 
+export function getSeatingFrontRowStudentsForList(
+  snapshot: SeatingChartSnapshot,
+  list: ClassList
+): string[] {
+  const flagged = new Set(
+    (snapshot.frontRowByListId[list.id] ?? []).map((name) => name.toLowerCase())
+  );
+
+  return list.students.filter((student) => flagged.has(student.toLowerCase()));
+}
+
+export function setSeatingStudentFrontRow(
+  snapshot: SeatingChartSnapshot,
+  listId: string,
+  studentName: string,
+  isFrontRow: boolean
+): SeatingChartSnapshot {
+  const currentNames = snapshot.frontRowByListId[listId] ?? [];
+  const nextNames = currentNames.filter(
+    (name) => name.toLowerCase() !== studentName.toLowerCase()
+  );
+
+  if (isFrontRow) {
+    nextNames.push(studentName);
+  }
+
+  const nextFrontRowByListId = { ...snapshot.frontRowByListId };
+
+  if (nextNames.length > 0) {
+    nextFrontRowByListId[listId] = nextNames;
+  } else {
+    delete nextFrontRowByListId[listId];
+  }
+
+  return {
+    ...snapshot,
+    frontRowByListId: nextFrontRowByListId
+  };
+}
+
 export function getSeatingStudentNote(
   item: SeatingChartLayoutItem | null,
   studentNotes: Record<string, string>
@@ -2550,7 +3420,10 @@ export function getSeatingStudentNote(
   return note && note.trim() ? note.trim() : null;
 }
 
-export function applySeatingChartAssignments(layout: SeatingChartLayout, students: string[]) {
+export function applySeatingChartAssignments(
+  layout: SeatingChartLayout,
+  students: (string | null)[]
+) {
   const seats = getSeatingChartSeatItems(layout);
   const assignments = new Map<string, string | null>();
 
@@ -2608,8 +3481,8 @@ export function getSeatingChartPreviewTooltip(item: SeatingChartLayoutItem) {
   return SEATING_CHART_ITEM_DETAILS[item.kind].title;
 }
 
-export function getSeatingChartToolToneClass(tool: 'select' | SeatingChartItemKind | 'erase') {
-  if (tool === 'seat') {
+export function getSeatingChartToolToneClass(tool: SeatingChartTool) {
+  if (tool === 'seat' || tool === 'rows') {
     return 'button-tone--action';
   }
 
@@ -2739,9 +3612,10 @@ export const SEATING_EXPORT_MARGIN = 36;
 export function exportSeatingChartPng(
   layout: SeatingChartLayout,
   className: string,
-  studentNotes: Record<string, string> = {}
+  studentNotes: Record<string, string> = {},
+  flipped = false
 ) {
-  const canvas = renderSeatingChartCanvas(layout, className, studentNotes);
+  const canvas = renderSeatingChartCanvas(layout, className, studentNotes, flipped);
 
   if (!canvas) {
     return;
@@ -2755,10 +3629,35 @@ export function exportSeatingChartPng(
   link.click();
 }
 
+export function copySeatingChartPngToClipboard(
+  layout: SeatingChartLayout,
+  className: string,
+  studentNotes: Record<string, string> = {},
+  flipped = false
+) {
+  const canvas = renderSeatingChartCanvas(layout, className, studentNotes, flipped);
+
+  if (!canvas) {
+    return;
+  }
+
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      return;
+    }
+
+    navigator.clipboard
+      .write([new ClipboardItem({ 'image/png': blob })])
+      .then(() => showUndoToast('Copied seating chart image'))
+      .catch(() => announce('Could not copy the seating chart image'));
+  }, 'image/png');
+}
+
 export function renderSeatingChartCanvas(
   layout: SeatingChartLayout,
   className: string,
-  studentNotes: Record<string, string>
+  studentNotes: Record<string, string>,
+  flipped = false
 ) {
   const cellWidth = SEATING_EXPORT_CELL_WIDTH;
   const cellHeight = SEATING_EXPORT_CELL_HEIGHT;
@@ -2809,7 +3708,9 @@ export function renderSeatingChartCanvas(
     for (let x = 0; x < SEATING_CHART_GRID_COLUMNS; x += 1) {
       const cellX = margin + x * (cellWidth + gap);
       const cellY = gridTop + y * (cellHeight + gap);
-      const item = itemsByCell.get(getSeatingChartCellKey(x, y)) ?? null;
+      const sourceX = flipped ? SEATING_CHART_GRID_COLUMNS - 1 - x : x;
+      const sourceY = flipped ? SEATING_CHART_GRID_ROWS - 1 - y : y;
+      const item = itemsByCell.get(getSeatingChartCellKey(sourceX, sourceY)) ?? null;
 
       if (!item) {
         context.fillStyle = '#f3f4f6';

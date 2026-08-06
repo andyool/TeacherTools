@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppUpdateState: () => ipcRenderer.invoke('app-update:get-state'),
   getAppSettings: () => ipcRenderer.invoke('app-settings:get'),
   checkForAppUpdates: () => ipcRenderer.invoke('app-update:check'),
+  downloadAppUpdate: () => ipcRenderer.invoke('app-update:download'),
   installAppUpdate: () => ipcRenderer.invoke('app-update:install'),
   speakTimerAlert: (text: string) => ipcRenderer.invoke('timer:speak', text),
   onAppUpdateStateChanged: (listener: (state: unknown) => void) => {
@@ -53,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('window:set-overlay-position', position),
   setOverlayInteractive: (interactive: boolean) =>
     ipcRenderer.send('overlay:set-interactive', interactive),
+  showOverlayMenu: () => ipcRenderer.send('overlay:show-menu'),
   setCurrentWindowBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.send('window:set-current-bounds', bounds),
   togglePopover: () => ipcRenderer.send('popover:toggle'),
@@ -76,5 +78,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectLessonDocuments: () => ipcRenderer.invoke('lesson-documents:select'),
   openLessonDocument: (filePath: string) => ipcRenderer.invoke('lesson-documents:open', filePath),
   exportLessonPlansPdf: (payload: unknown) => ipcRenderer.invoke('lesson-plans:export-pdf', payload),
-  quitApp: () => ipcRenderer.send('app:quit')
+  quitApp: () => ipcRenderer.send('app:quit'),
+  revealDataFolder: () => ipcRenderer.invoke('storage:reveal-data-folder'),
+  exportAppData: () => ipcRenderer.invoke('storage:export'),
+  importAppData: () => ipcRenderer.invoke('storage:import')
 });

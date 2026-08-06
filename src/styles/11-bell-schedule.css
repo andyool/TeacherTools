@@ -112,7 +112,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin: 0;
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
+  letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
@@ -520,4 +521,43 @@
 
 .bell-schedule-editor__minutes-field {
   width: 72px;
+}
+
+.bell-schedule-editor__live-warning {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--tone-warning-border);
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.bell-schedule-editor__slot-label-input {
+  margin-top: 2px;
+}
+
+.bell-schedule-editor__slot-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.bell-schedule-editor__slot-tools .secondary-link {
+  padding: 2px 6px;
+  font-size: var(--fs-2xs);
+}
+
+.bell-schedule-editor__slot-tools .icon-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  font-size: var(--fs-sm);
 }

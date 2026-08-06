@@ -6,6 +6,7 @@ export const fallbackAppUpdateState: AppUpdateState = {
   currentVersion: 'dev',
   message: 'Updates are available in installed desktop builds.',
   progressPercent: null,
+  releaseNotes: null,
   status: 'unsupported'
 };
 
@@ -42,7 +43,7 @@ export function getAppUpdateButtonLabel(appUpdate: AppUpdateState) {
     case 'checking':
       return 'Checking…';
     case 'available':
-      return 'Downloading…';
+      return 'Download update';
     case 'downloading':
       return appUpdate.progressPercent !== null
         ? `Downloading ${Math.round(appUpdate.progressPercent)}%`

@@ -161,8 +161,6 @@
 .dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__upcoming,
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-widget__copy,
 .dashboard-shell .widget-card[data-size-tier='2'] .planner-widget__copy,
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__header-copy,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__header-copy,
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-documents,
 .dashboard-shell .widget-card[data-size-tier='2'] .planner-documents,
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__list,
@@ -176,10 +174,6 @@
 .dashboard-shell .widget-card[data-size-tier='2'] .group-grid,
 .dashboard-shell .widget-card[data-size-tier='3'] .group-grid,
 .dashboard-shell .widget-card[data-size-tier='4'] .group-grid,
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__weekdays,
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__grid,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__weekdays,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__grid,
 .dashboard-shell .widget-card[data-size-tier='1'][data-widget-id='bell-schedule'] .bell-schedule__metric-row,
 .dashboard-shell .widget-card[data-size-tier='2'][data-widget-id='bell-schedule'] .bell-schedule__metric-row {
   display: grid;
@@ -473,10 +467,13 @@
 }
 
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .timer-readout,
-:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .timer-readout,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .timer-readout {
+  font-size: calc(var(--fs-display) * 1.3);
+}
+
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='3'] .timer-readout,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='4'] .timer-readout {
-  font-size: var(--fs-display);
+  font-size: calc(var(--fs-display) * 1.5);
 }
 
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] :is(.text-field, .text-area),
@@ -490,8 +487,8 @@
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .card-label,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .field-label,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='2'] .card-label {
-  font-size: var(--fs-xs);
-  letter-spacing: 0.14em;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
 }
 
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier='1'] .stepper__button,

@@ -139,6 +139,10 @@ export function GlobalTooltipLayer() {
     };
 
     const hideTooltip = () => {
+      // Drop the programmatic association so AT doesn't read stale tooltips.
+      if (activeElementRef.current?.getAttribute('aria-describedby') === 'app-tooltip') {
+        activeElementRef.current.removeAttribute('aria-describedby');
+      }
       activeElementRef.current = null;
       setTooltip(null);
       setPosition(null);
@@ -183,6 +187,9 @@ export function GlobalTooltipLayer() {
       }
 
       activeElementRef.current = element;
+      if (!element.hasAttribute('aria-describedby')) {
+        element.setAttribute('aria-describedby', 'app-tooltip');
+      }
       const nextTooltip = {
         alignment: getTooltipAlignment(element),
         anchorRect: element.getBoundingClientRect(),
@@ -295,6 +302,7 @@ export function GlobalTooltipLayer() {
       />
       <div
         className={`app-tooltip ${position ? `app-tooltip--${position.placement}` : 'app-tooltip--top'}`}
+        id="app-tooltip"
         role="tooltip"
         style={
           position

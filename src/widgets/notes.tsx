@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { usePersistentState } from '../shared/persistence';
+import { announce, showUndoToast } from '../shared/uiKit';
 import { createStickyNoteId } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
@@ -10,6 +11,8 @@ import { usePickerState } from './picker';
 import { WIDGET_DETAILS } from './registry';
 
 export const STICKY_NOTE_COLORS = ['yellow', 'pink', 'blue', 'green'] as const;
+
+const NOTES_SEARCH_AUTO_SHOW_COUNT = 8;
 
 export type StickyNoteColor = (typeof STICKY_NOTE_COLORS)[number];
 
@@ -66,7 +69,16 @@ export function normalizeStickyNoteScope(raw: unknown): StickyNoteScope {
 }
 
 export function sortStickyNotesForDisplay(notes: StickyNote[]) {
-  return [...notes.filter((note) => note.pinned), ...notes.filter((note) => !note.pinned)];
+  const doneLast = (group: StickyNote[]) => [
+    ...group.filter((note) => !(note.isTask && note.done)),
+    ...group.filter((note) => note.isTask && note.done)
+  ];
+
+  return [...doneLast(notes.filter((note) => note.pinned)), ...doneLast(notes.filter((note) => !note.pinned))];
+}
+
+function formatStickyNoteDate(createdAt: number) {
+  return new Date(createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 export function useNotesWidgetState(selectedList: ClassList | null, classLists: ClassList[]) {
@@ -85,7 +97,13 @@ export function useNotesWidgetState(selectedList: ClassList | null, classLists: 
       normalize: normalizeStickyNoteScope
     }
   );
-  const [draftIsTask, setDraftIsTask] = useState(false);
+  const [draftIsTask, setDraftIsTask] = usePersistentState<boolean>(
+    'teacher-tools.note-draft-is-task',
+    false,
+    {
+      normalize: (raw, initialValue) => (typeof raw === 'boolean' ? raw : initialValue)
+    }
+  );
 
   useEffect(() => {
     if (stickyNotes.length > 0) {
@@ -121,11 +139,9 @@ export function useNotesWidgetState(selectedList: ClassList | null, classLists: 
   }, [setStickyNotes, stickyNotes.length]);
 
   const activeScope: StickyNoteScope = selectedList && noteScope === 'class' ? 'class' : 'all';
-  const visibleNotes = sortStickyNotesForDisplay(
-    activeScope === 'class' && selectedList
-      ? stickyNotes.filter((note) => note.listId === selectedList.id)
-      : stickyNotes
-  );
+  const isNoteInScope = (note: StickyNote) =>
+    activeScope === 'class' && selectedList ? note.listId === selectedList.id : true;
+  const visibleNotes = sortStickyNotesForDisplay(stickyNotes.filter(isNoteInScope));
 
   const updateStickyNote = (id: string, update: (note: StickyNote) => StickyNote) => {
     setStickyNotes((current) => current.map((note) => (note.id === id ? update(note) : note)));
@@ -154,16 +170,58 @@ export function useNotesWidgetState(selectedList: ClassList | null, classLists: 
   };
 
   const removeStickyNote = (id: string) => {
-    setStickyNotes((current) => current.filter((note) => note.id !== id));
-  };
-
-  const updateNoteText = (id: string, text: string) => {
-    const nextText = text.trim();
-    if (!nextText) {
+    const removedIndex = stickyNotes.findIndex((note) => note.id === id);
+    if (removedIndex < 0) {
       return;
     }
 
-    updateStickyNote(id, (note) => ({ ...note, text: nextText }));
+    const removedNote = stickyNotes[removedIndex];
+    setStickyNotes((current) => current.filter((note) => note.id !== id));
+    showUndoToast('Note deleted', () => {
+      setStickyNotes((current) => {
+        if (current.some((note) => note.id === removedNote.id)) {
+          return current;
+        }
+
+        const insertIndex = Math.min(removedIndex, current.length);
+        return [...current.slice(0, insertIndex), removedNote, ...current.slice(insertIndex)];
+      });
+    });
+  };
+
+  const clearDoneNotes = () => {
+    const removed: Array<{ index: number; note: StickyNote }> = [];
+    stickyNotes.forEach((note, index) => {
+      if (note.isTask && note.done && isNoteInScope(note)) {
+        removed.push({ index, note });
+      }
+    });
+
+    if (removed.length === 0) {
+      return;
+    }
+
+    const removedIds = new Set(removed.map((entry) => entry.note.id));
+    setStickyNotes((current) => current.filter((note) => !removedIds.has(note.id)));
+    showUndoToast(
+      removed.length === 1 ? 'Cleared 1 done to-do' : `Cleared ${removed.length} done to-dos`,
+      () => {
+        setStickyNotes((current) => {
+          const next = [...current];
+          for (const entry of removed) {
+            if (!next.some((note) => note.id === entry.note.id)) {
+              next.splice(Math.min(entry.index, next.length), 0, entry.note);
+            }
+          }
+
+          return next;
+        });
+      }
+    );
+  };
+
+  const updateNoteText = (id: string, text: string) => {
+    updateStickyNote(id, (note) => ({ ...note, text: text.trim() }));
   };
 
   const toggleNoteDone = (id: string) => {
@@ -186,29 +244,101 @@ export function useNotesWidgetState(selectedList: ClassList | null, classLists: 
     }));
   };
 
+  const setNoteColor = (id: string, color: StickyNoteColor) => {
+    updateStickyNote(id, (note) => ({ ...note, color }));
+  };
+
+  const cycleNoteListId = (id: string) => {
+    if (classLists.length === 0) {
+      return;
+    }
+
+    updateStickyNote(id, (note) => {
+      const currentIndex = note.listId
+        ? classLists.findIndex((list) => list.id === note.listId)
+        : -1;
+      const nextList = classLists[currentIndex + 1] ?? null;
+      return { ...note, listId: nextList ? nextList.id : null };
+    });
+  };
+
   const moveStickyNote = (draggedId: string, targetId: string) => {
     if (draggedId === targetId) {
       return;
     }
 
+    const draggedVisibleIndex = visibleNotes.findIndex((note) => note.id === draggedId);
+    const targetVisibleIndex = visibleNotes.findIndex((note) => note.id === targetId);
+    if (draggedVisibleIndex < 0 || targetVisibleIndex < 0) {
+      return;
+    }
+
+    const movingDown = draggedVisibleIndex < targetVisibleIndex;
     setStickyNotes((current) => {
-      const draggedIndex = current.findIndex((note) => note.id === draggedId);
-      const targetIndex = current.findIndex((note) => note.id === targetId);
-      if (draggedIndex < 0 || targetIndex < 0) {
+      const dragged = current.find((note) => note.id === draggedId);
+      const target = current.find((note) => note.id === targetId);
+      if (!dragged || !target) {
         return current;
       }
 
-      const target = current[targetIndex];
-      const dragged =
-        current[draggedIndex].pinned === target.pinned
-          ? current[draggedIndex]
-          : { ...current[draggedIndex], pinned: target.pinned };
       const without = current.filter((note) => note.id !== draggedId);
-      const insertIndex =
-        without.findIndex((note) => note.id === targetId) + (draggedIndex < targetIndex ? 1 : 0);
+      let insertIndex: number;
+
+      if (dragged.pinned === target.pinned) {
+        const targetIndex = without.findIndex((note) => note.id === targetId);
+        insertIndex = targetIndex + (movingDown ? 1 : 0);
+      } else if (dragged.pinned) {
+        // Dropped onto the unpinned section: keep the pin, land at the bottom of the pinned section.
+        let lastPinnedIndex = -1;
+        without.forEach((note, index) => {
+          if (note.pinned) {
+            lastPinnedIndex = index;
+          }
+        });
+        insertIndex = lastPinnedIndex + 1;
+      } else {
+        // Dropped onto the pinned section: stay unpinned, land at the top of the unpinned section.
+        const firstUnpinnedIndex = without.findIndex((note) => !note.pinned);
+        insertIndex = firstUnpinnedIndex < 0 ? without.length : firstUnpinnedIndex;
+      }
 
       return [...without.slice(0, insertIndex), dragged, ...without.slice(insertIndex)];
     });
+  };
+
+  const moveNoteInSection = (id: string, direction: -1 | 1) => {
+    const note = stickyNotes.find((entry) => entry.id === id);
+    if (!note) {
+      return;
+    }
+
+    const isDone = note.isTask && note.done;
+    const section = visibleNotes.filter(
+      (entry) => entry.pinned === note.pinned && (entry.isTask && entry.done) === isDone
+    );
+    const sectionIndex = section.findIndex((entry) => entry.id === id);
+    const neighbor = sectionIndex >= 0 ? section[sectionIndex + direction] : undefined;
+    if (!neighbor) {
+      announce(
+        direction === -1
+          ? 'Note is already at the top of its section'
+          : 'Note is already at the bottom of its section'
+      );
+      return;
+    }
+
+    setStickyNotes((current) => {
+      const moved = current.find((entry) => entry.id === id);
+      const without = current.filter((entry) => entry.id !== id);
+      const neighborIndex = without.findIndex((entry) => entry.id === neighbor.id);
+      if (!moved || neighborIndex < 0) {
+        return current;
+      }
+
+      const insertIndex = direction === 1 ? neighborIndex + 1 : neighborIndex;
+      return [...without.slice(0, insertIndex), moved, ...without.slice(insertIndex)];
+    });
+    announce(direction === -1 ? 'Note moved up' : 'Note moved down');
   };
 
   const getListName = (listId: string | null) => {
@@ -223,18 +353,23 @@ export function useNotesWidgetState(selectedList: ClassList | null, classLists: 
     activeScope,
     addStickyNote,
     badgeLabel: visibleNotes.length > 0 ? `${visibleNotes.length}` : null,
+    classLists,
+    clearDoneNotes,
     cycleNoteColor,
+    cycleNoteListId,
     descriptionLabel:
       activeScope === 'class' && selectedList
         ? `Notes for ${selectedList.name}.`
         : WIDGET_DETAILS.notes.description,
     draftIsTask,
     getListName,
+    moveNoteInSection,
     moveStickyNote,
     noteDraft,
     removeStickyNote,
     selectedList,
     setDraftIsTask,
+    setNoteColor,
     setNoteDraft,
     setNoteScope,
     stickyNotes,
@@ -294,18 +429,32 @@ function NoteTaskIcon() {
   );
 }
 
+function NoteSearchIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <circle cx="7" cy="7" fill="none" r="4.2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="m10.4 10.4 3 3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 export function NotesWidgetContent({ controller }: { controller: NotesWidgetController }) {
   const {
     activeScope,
     addStickyNote,
+    classLists,
+    clearDoneNotes,
     cycleNoteColor,
+    cycleNoteListId,
     draftIsTask,
     getListName,
+    moveNoteInSection,
     moveStickyNote,
     noteDraft,
     removeStickyNote,
     selectedList,
     setDraftIsTask,
+    setNoteColor,
     setNoteDraft,
     setNoteScope,
     toggleNoteDone,
@@ -318,6 +467,63 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
   const [editDraft, setEditDraft] = useState('');
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
   const [dropTargetNoteId, setDropTargetNoteId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [colorMenuNoteId, setColorMenuNoteId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressFiredRef = useRef(false);
+
+  const showSearch = isSearchOpen || visibleNotes.length > NOTES_SEARCH_AUTO_SHOW_COUNT;
+  const normalizedQuery = showSearch ? searchQuery.trim().toLowerCase() : '';
+  const displayNotes = normalizedQuery
+    ? visibleNotes.filter((note) => note.text.toLowerCase().includes(normalizedQuery))
+    : visibleNotes;
+  const doneCount = visibleNotes.filter((note) => note.isTask && note.done).length;
+  const canReorder = normalizedQuery === '';
+
+  useEffect(() => {
+    if (!colorMenuNoteId) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-note-color-menu]')) {
+        return;
+      }
+
+      setColorMenuNoteId(null);
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setColorMenuNoteId(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [colorMenuNoteId]);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearLongPress, []);
+
+  const startLongPress = (noteId: string) => {
+    clearLongPress();
+    longPressFiredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true;
+      setColorMenuNoteId(noteId);
+    }, 450);
+  };
 
   const startEditing = (note: StickyNote) => {
     setEditingNoteId(note.id);
@@ -378,6 +584,18 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
     }
   };
 
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLElement>, note: StickyNote) => {
+    if (editingNoteId === note.id) {
+      return;
+    }
+
+    if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveNoteInSection(note.id, event.key === 'ArrowUp' ? -1 : 1);
+    }
+  };
+
   return (
     <>
       <div className="note-input-row widget-top-controls">
@@ -391,17 +609,18 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
         >
           <NoteTaskIcon />
         </button>
-        <input
-          className="text-field"
+        <textarea
+          aria-label={draftIsTask ? 'New to-do' : 'New note'}
+          className="text-field note-compose-field"
           onChange={(event) => setNoteDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               addStickyNote();
             }
           }}
           placeholder={draftIsTask ? 'Type a to-do and press Enter' : 'Type a note and press Enter'}
-          type="text"
+          rows={Math.min(5, Math.max(1, noteDraft.split('\n').length))}
           value={noteDraft}
         />
         <button
@@ -413,7 +632,50 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
         >
           Add
         </button>
+        <button
+          aria-label={isSearchOpen ? 'Hide note search' : 'Search notes'}
+          aria-pressed={isSearchOpen}
+          className={`text-toggle note-compose-mode${isSearchOpen ? ' note-compose-mode--active' : ''}`}
+          data-tooltip-content="Search"
+          onClick={() => {
+            setIsSearchOpen((current) => {
+              if (current) {
+                setSearchQuery('');
+              }
+
+              return !current;
+            });
+          }}
+          type="button"
+        >
+          <NoteSearchIcon />
+        </button>
       </div>
+
+      {showSearch || doneCount > 0 ? (
+        <div className="notes-toolbar widget-top-controls">
+          {showSearch ? (
+            <input
+              aria-label="Search notes"
+              className="text-field notes-search-field"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search notes"
+              type="search"
+              value={searchQuery}
+            />
+          ) : null}
+          {doneCount > 0 ? (
+            <button
+              className="text-toggle notes-clear-done"
+              data-tooltip-content="Remove completed to-dos"
+              onClick={clearDoneNotes}
+              type="button"
+            >
+              Clear done
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {selectedList ? (
         <div className="segmented-row notes-scope-row widget-top-controls">
@@ -442,10 +704,10 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
       ) : null}
 
       <div className="notes-list">
-        {visibleNotes.length > 0 ? (
-          visibleNotes.map((note) => {
+        {displayNotes.length > 0 ? (
+          displayNotes.map((note) => {
             const isEditing = editingNoteId === note.id;
-            const listName = activeScope === 'all' ? getListName(note.listId) : null;
+            const scopeLabel = getListName(note.listId) ?? 'All';
             const rowClasses = [
               'note-row',
               note.pinned ? 'note-row--pinned' : '',
@@ -460,12 +722,13 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
               <article
                 className={rowClasses}
                 data-note-color={note.color}
-                draggable={!isEditing}
+                draggable={!isEditing && canReorder}
                 key={note.id}
                 onDragEnd={clearDragState}
                 onDragOver={(event) => handleDragOver(event, note)}
                 onDragStart={(event) => handleDragStart(event, note)}
                 onDrop={(event) => handleDrop(event, note)}
+                onKeyDown={(event) => handleRowKeyDown(event, note)}
               >
                 <span aria-hidden="true" className="note-row__hue" />
                 {note.isTask ? (
@@ -512,7 +775,19 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
                       {note.text}
                     </p>
                   )}
-                  {listName ? <span className="note-row__tag">{listName}</span> : null}
+                  {classLists.length > 0 ? (
+                    <button
+                      aria-label={`Shown for ${
+                        note.listId ? scopeLabel : 'all classes'
+                      }. Switch class.`}
+                      className="note-row__scope"
+                      data-tooltip-content="Switch class"
+                      onClick={() => cycleNoteListId(note.id)}
+                      type="button"
+                    >
+                      {scopeLabel}
+                    </button>
+                  ) : null}
                 </div>
                 <div className="note-row__actions">
                   <button
@@ -527,15 +802,52 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
                   >
                     <NotePinIcon />
                   </button>
-                  <button
-                    aria-label="Switch note color"
-                    className="note-row__tool note-row__tool--color"
-                    data-tooltip-content="Switch color"
-                    onClick={() => cycleNoteColor(note.id)}
-                    type="button"
-                  >
-                    <span className="note-row__swatch" />
-                  </button>
+                  <span className="note-color-anchor" data-note-color-menu>
+                    <button
+                      aria-label="Switch note color. Right-click or hold for all colors."
+                      className="note-row__tool note-row__tool--color"
+                      data-tooltip-content="Switch color · hold to choose"
+                      onClick={() => {
+                        if (longPressFiredRef.current) {
+                          longPressFiredRef.current = false;
+                          return;
+                        }
+
+                        cycleNoteColor(note.id);
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setColorMenuNoteId((current) => (current === note.id ? null : note.id));
+                      }}
+                      onPointerCancel={clearLongPress}
+                      onPointerDown={() => startLongPress(note.id)}
+                      onPointerLeave={clearLongPress}
+                      onPointerUp={clearLongPress}
+                      type="button"
+                    >
+                      <span className="note-row__swatch" />
+                    </button>
+                    {colorMenuNoteId === note.id ? (
+                      <span aria-label="Note color" className="note-color-menu" role="menu">
+                        {STICKY_NOTE_COLORS.map((color) => (
+                          <button
+                            aria-label={`Set color to ${color}`}
+                            className={`note-color-menu__swatch${
+                              note.color === color ? ' note-color-menu__swatch--current' : ''
+                            }`}
+                            data-note-color={color}
+                            key={color}
+                            onClick={() => {
+                              setNoteColor(note.id, color);
+                              setColorMenuNoteId(null);
+                            }}
+                            role="menuitem"
+                            type="button"
+                          />
+                        ))}
+                      </span>
+                    ) : null}
+                  </span>
                   <button
                     aria-label={note.isTask ? 'Turn into note' : 'Turn into to-do'}
                     aria-pressed={note.isTask}
@@ -557,14 +869,19 @@ export function NotesWidgetContent({ controller }: { controller: NotesWidgetCont
                     ×
                   </button>
                 </div>
+                <span aria-hidden="true" className="note-row__date">
+                  {formatStickyNoteDate(note.createdAt)}
+                </span>
               </article>
             );
           })
         ) : (
           <p className="empty-copy">
-            {activeScope === 'class' && selectedList
-              ? `No notes for ${selectedList.name} yet.`
-              : 'No notes yet.'}
+            {normalizedQuery
+              ? 'No matching notes.'
+              : activeScope === 'class' && selectedList
+                ? `No notes for ${selectedList.name} yet.`
+                : 'No notes yet.'}
           </p>
         )}
       </div>

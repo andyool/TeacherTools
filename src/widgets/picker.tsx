@@ -3,7 +3,9 @@ import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useColorModeAppearance } from '../app/colorMode';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
+import { getTodayDateKey, parseDateKey } from '../shared/dates';
 import { usePersistentState } from '../shared/persistence';
+import { announce, showUndoToast, useToday } from '../shared/uiKit';
 import { clampNumber, dedupeNames, isString } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
@@ -17,6 +19,11 @@ export type PickerHistoryEntry = {
   purpose: string;
 };
 
+export type PickerAbsenceRecord = {
+  dateKey: string;
+  names: string[];
+};
+
 export type PickerSnapshot = {
   lists: ClassList[];
   selectedListId: string | null;
@@ -24,7 +31,7 @@ export type PickerSnapshot = {
   currentPick: string | null;
   recentPicks: string[];
   removePickedStudents: boolean;
-  absentByListId: Record<string, string[]>;
+  absentByListId: Record<string, PickerAbsenceRecord>;
   historyByListId: Record<string, PickerHistoryEntry[]>;
   lastPickedNames: string[];
   pickCount: number;
@@ -49,6 +56,16 @@ export type LegacyPickerSnapshot = {
   recentPicks?: string[];
 };
 
+type PickerLastPickUndo = {
+  entryAt: number;
+  listId: string;
+  pickedNames: string[];
+  previousCurrentPick: string | null;
+  previousLastPickedNames: string[];
+  previousPool: string[];
+  previousRecentPicks: string[];
+};
+
 export const PICKER_SPINNER_WINDOW_SIZE = 5;
 
 export const PICKER_SPINNER_VISIBLE_SIZE = 3;
@@ -65,7 +82,7 @@ export const PICKER_SPIN_STEP_DURATION_MS = 150;
 
 export const PICKER_PICK_COUNT_MIN = 1;
 
-export const PICKER_PICK_COUNT_MAX = 6;
+export const PICKER_PICK_COUNT_MAX = 12;
 
 export const PICKER_HISTORY_LIMIT = 400;
 
@@ -88,6 +105,7 @@ export function PickerWidgetContent({ controller }: { controller: PickerWidgetCo
   const [isStudentsDialogOpen, setIsStudentsDialogOpen] = useState(false);
   const {
     absentStudents,
+    canUndoPick,
     isPickerSpinning,
     lastPickedNames,
     pickCount,
@@ -97,20 +115,28 @@ export function PickerWidgetContent({ controller }: { controller: PickerWidgetCo
     recentPicks,
     selectedList,
     selectedStudents,
+    setWeightedPicks,
+    skipSpin,
     spinnerTrackRef,
+    undoLastPick,
     updatePickCount
   } = controller;
   const removePickedStudents = controller.picker.removePickedStudents;
+  const weightedPicks = controller.picker.weightedPicks;
   const pickerModeLabel = removePickedStudents ? 'Remove after pick' : 'Keep in list';
   const pickerSpinnerStyle = {
     '--picker-spinner-translate': `${pickerSpinnerView.translatePercent}%`
   } as CSSProperties;
   const effectivePickCount = Math.min(pickCount, Math.max(pickableStudentCount, 1));
   const pickButtonLabel = isPickerSpinning
-    ? 'Picking…'
+    ? 'Skip'
     : effectivePickCount > 1
       ? `Pick ${effectivePickCount} students`
       : 'Pick student';
+  const presentStudentCount = filterAbsentStudents(selectedStudents, absentStudents).length;
+  const showEmptyPoolReset =
+    !isPickerSpinning && pickableStudentCount === 0 && presentStudentCount > 0;
+  const showUndoPick = !isPickerSpinning && canUndoPick;
 
   return (
     <>
@@ -161,8 +187,37 @@ export function PickerWidgetContent({ controller }: { controller: PickerWidgetCo
         </div>
       </div>
 
+      {selectedStudents.length > 0 && (
+        <div className="picker-status-row">
+          {absentStudents.length > 0 && (
+            <button
+              aria-haspopup="dialog"
+              aria-label={`${absentStudents.length} student${absentStudents.length === 1 ? '' : 's'} away — open the students dialog`}
+              className="picker-status-chip"
+              data-tooltip-content="Open absences"
+              onClick={() => setIsStudentsDialogOpen(true)}
+              type="button"
+            >
+              {absentStudents.length} away
+            </button>
+          )}
+          <button
+            aria-pressed={weightedPicks}
+            className={`picker-status-chip${weightedPicks ? ' picker-status-chip--active' : ''}`}
+            data-tooltip-content="Prefer least-picked students"
+            onClick={() => setWeightedPicks(!weightedPicks)}
+            type="button"
+          >
+            Fair
+          </button>
+        </div>
+      )}
+
       <div className="picker-stack">
-        <div className={`picker-spinner ${isPickerSpinning ? 'picker-spinner--running' : ''}`}>
+        <div
+          className={`picker-spinner ${isPickerSpinning ? 'picker-spinner--running' : ''}`}
+          onClick={isPickerSpinning ? skipSpin : undefined}
+        >
           <div className="picker-spinner__fade" />
           <div className="picker-spinner__track" ref={spinnerTrackRef} style={pickerSpinnerStyle}>
             {pickerSpinnerView.items.map((item) => (
@@ -177,6 +232,30 @@ export function PickerWidgetContent({ controller }: { controller: PickerWidgetCo
             ))}
           </div>
         </div>
+        {(showUndoPick || showEmptyPoolReset) && (
+          <div className="picker-stage-actions">
+            {showUndoPick && (
+              <button
+                className="secondary-link"
+                data-tooltip-content="Return the last pick to the cycle and restore the previous result"
+                onClick={undoLastPick}
+                type="button"
+              >
+                Undo pick
+              </button>
+            )}
+            {showEmptyPoolReset && (
+              <button
+                className="secondary-link"
+                data-tooltip-content="Return every picked student to the cycle"
+                onClick={controller.resetCurrentListCycle}
+                type="button"
+              >
+                Reset cycle
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="action-row widget-primary-actions picker-pick-row">
@@ -202,10 +281,11 @@ export function PickerWidgetContent({ controller }: { controller: PickerWidgetCo
           </button>
         </div>
         <button
-          aria-label={isPickerSpinning ? 'Picking student' : `Pick ${effectivePickCount} student${effectivePickCount === 1 ? '' : 's'}`}
+          aria-label={isPickerSpinning ? 'Skip to the result' : `Pick ${effectivePickCount} student${effectivePickCount === 1 ? '' : 's'}`}
           className="primary-link picker-pick-button"
-          disabled={pickableStudentCount === 0 || isPickerSpinning}
-          onClick={pickStudent}
+          data-tooltip-content={isPickerSpinning ? 'Land on the result now' : undefined}
+          disabled={!isPickerSpinning && pickableStudentCount === 0}
+          onClick={isPickerSpinning ? skipSpin : pickStudent}
           type="button"
         >
           {pickButtonLabel}
@@ -250,9 +330,11 @@ export function PickerStudentsDialog({
   onClose: () => void;
 }) {
   const { theme } = useColorModeAppearance();
+  const todayKey = useToday();
   const {
     absentStudents,
     clearHistory,
+    copyHistory,
     history,
     pickCounts,
     selectedList,
@@ -262,9 +344,11 @@ export function PickerStudentsDialog({
     toggleAbsentStudent
   } = controller;
   const absentSet = new Set(absentStudents.map((name) => name.toLowerCase()));
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayCounts = getPickCountsFromHistory(history, todayStart.getTime());
+  const todayParts = parseDateKey(todayKey);
+  const todayStartMs = todayParts
+    ? new Date(todayParts.year, todayParts.monthIndex, todayParts.day).getTime()
+    : Date.now();
+  const todayCounts = getPickCountsFromHistory(history, todayStartMs);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -373,14 +457,25 @@ export function PickerStudentsDialog({
           <div className="picker-students-dialog__history">
             <div className="picker-students-dialog__history-head">
               <span className="field-label">Pick log</span>
-              <button
-                className="danger-link"
-                disabled={history.length === 0}
-                onClick={clearHistory}
-                type="button"
-              >
-                Clear log
-              </button>
+              <div className="picker-students-dialog__history-actions">
+                <button
+                  className="secondary-link"
+                  data-tooltip-content="Copy every pick as “Name — date time” lines"
+                  disabled={history.length === 0}
+                  onClick={() => void copyHistory()}
+                  type="button"
+                >
+                  Copy log
+                </button>
+                <button
+                  className="danger-link"
+                  disabled={history.length === 0}
+                  onClick={clearHistory}
+                  type="button"
+                >
+                  Clear log
+                </button>
+              </div>
             </div>
             {history.length > 0 ? (
               <div className="picker-students-dialog__history-list">
@@ -426,10 +521,11 @@ export function PickerWidgetPopoutCard({
   sizeTier: WidgetSizeTier;
 }) {
   const picker = usePickerWidgetState();
+  const absentCount = picker.absentStudents.length;
 
   return (
     <WidgetCard
-      badge={`${picker.rosterCount}`}
+      badge={absentCount > 0 ? `${picker.rosterCount} · ${absentCount} away` : `${picker.rosterCount}`}
       collapsed={false}
       description={picker.selectedList ? `Using ${picker.selectedList.name}` : 'Choose a class from the main dashboard.'}
       headerActions={
@@ -460,16 +556,24 @@ export function usePickerState() {
 
 export function usePickerWidgetState() {
   const pickerSpinAnimationFrameRef = useRef<number | null>(null);
+  const pickerSpinFinishRef = useRef<(() => void) | null>(null);
   const pickerSpinnerTrackRef = useRef<HTMLDivElement | null>(null);
   const pickerRenderedPositionRef = useRef(0);
   const [picker, setPicker] = usePickerState();
   const [isPickerSpinning, setIsPickerSpinning] = useState(false);
   const [spinnerPosition, setSpinnerPosition] = useState(0);
+  const [lastPickUndo, setLastPickUndo] = useState<PickerLastPickUndo | null>(null);
+  const todayKey = useToday();
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const selectedStudents = selectedList?.students ?? [];
+  const selectedStudentSet = new Set(selectedStudents.map((name) => name.toLowerCase()));
   const absentStudents = getAbsentStudentsForList(picker, selectedList);
   const history = selectedList ? picker.historyByListId[selectedList.id] ?? [] : [];
   const pickCounts = getPickCountsFromHistory(history);
+  const canUndoPick =
+    lastPickUndo !== null &&
+    lastPickUndo.listId === selectedList?.id &&
+    history.some((entry) => entry.at === lastPickUndo.entryAt);
   const pickableStudents = filterAbsentStudents(
     getPickerSelectionPool(selectedStudents, picker.pool, picker.removePickedStudents),
     absentStudents
@@ -496,6 +600,7 @@ export function usePickerWidgetState() {
       if (pickerSpinAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
       }
+      pickerSpinFinishRef.current = null;
     };
   }, []);
 
@@ -504,6 +609,7 @@ export function usePickerWidgetState() {
       return;
     }
 
+    setLastPickUndo(null);
     setPicker((current) => ({
       ...current,
       pool: [...selectedList.students],
@@ -514,6 +620,7 @@ export function usePickerWidgetState() {
   };
 
   const toggleRemovePickedStudents = (removePickedStudents: boolean) => {
+    setLastPickUndo(null);
     setPicker((current) => {
       if (current.removePickedStudents === removePickedStudents) {
         return current;
@@ -590,28 +697,15 @@ export function usePickerWidgetState() {
 
     const spinStartedAt = window.performance.now();
 
-    const animatePickerSpin = (timestamp: number) => {
-      const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
-      const easedProgress = easeOutPickerSpin(progress);
-      const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
-      const nextBaseIndex = Math.floor(nextPosition);
-      const nextActiveStep = Math.round(nextPosition - nextBaseIndex);
-      const renderedBaseIndex = Math.floor(pickerRenderedPositionRef.current);
-      const renderedActiveStep = Math.round(
-        pickerRenderedPositionRef.current - renderedBaseIndex
-      );
+    const finishSpin = () => {
+      pickerSpinFinishRef.current = null;
 
-      syncSpinnerPosition(
-        nextPosition,
-        nextBaseIndex !== renderedBaseIndex || nextActiveStep !== renderedActiveStep
-      );
-
-      if (progress < 1) {
-        pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
-        return;
+      if (pickerSpinAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(pickerSpinAnimationFrameRef.current);
+        pickerSpinAnimationFrameRef.current = null;
       }
 
-      pickerSpinAnimationFrameRef.current = null;
+      const pickedAt = Date.now();
 
       syncSpinnerPosition(finalIndex, true);
       setIsPickerSpinning(false);
@@ -621,7 +715,7 @@ export function usePickerWidgetState() {
         }
 
         const historyEntry: PickerHistoryEntry = {
-          at: Date.now(),
+          at: pickedAt,
           names: pickedNames,
           purpose: current.pickPurpose.trim()
         };
@@ -644,9 +738,85 @@ export function usePickerWidgetState() {
           }
         };
       });
+      setLastPickUndo({
+        entryAt: pickedAt,
+        listId: selectedListId,
+        pickedNames,
+        previousCurrentPick: picker.currentPick,
+        previousLastPickedNames: [...picker.lastPickedNames],
+        previousPool: [...picker.pool],
+        previousRecentPicks: [...picker.recentPicks]
+      });
+      announce(`Picked ${pickedNames.join(', ')}`);
     };
 
+    const animatePickerSpin = (timestamp: number) => {
+      const progress = Math.min((timestamp - spinStartedAt) / spinDurationMs, 1);
+      const easedProgress = easeOutPickerSpin(progress);
+      const nextPosition = startPosition + (endPosition - startPosition) * easedProgress;
+      const nextBaseIndex = Math.floor(nextPosition);
+      const nextActiveStep = Math.round(nextPosition - nextBaseIndex);
+      const renderedBaseIndex = Math.floor(pickerRenderedPositionRef.current);
+      const renderedActiveStep = Math.round(
+        pickerRenderedPositionRef.current - renderedBaseIndex
+      );
+
+      syncSpinnerPosition(
+        nextPosition,
+        nextBaseIndex !== renderedBaseIndex || nextActiveStep !== renderedActiveStep
+      );
+
+      if (progress < 1) {
+        pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
+        return;
+      }
+
+      pickerSpinAnimationFrameRef.current = null;
+      finishSpin();
+    };
+
+    pickerSpinFinishRef.current = finishSpin;
     pickerSpinAnimationFrameRef.current = window.requestAnimationFrame(animatePickerSpin);
+  };
+
+  const skipSpin = () => {
+    pickerSpinFinishRef.current?.();
+  };
+
+  const undoLastPick = () => {
+    if (!canUndoPick || !lastPickUndo || isPickerSpinning) {
+      return;
+    }
+
+    const undo = lastPickUndo;
+
+    setLastPickUndo(null);
+    setPicker((current) => {
+      if (current.selectedListId !== undo.listId) {
+        return current;
+      }
+
+      const remainingEntries = (current.historyByListId[undo.listId] ?? []).filter(
+        (entry) => entry.at !== undo.entryAt
+      );
+      const nextHistoryByListId = { ...current.historyByListId };
+
+      if (remainingEntries.length > 0) {
+        nextHistoryByListId[undo.listId] = remainingEntries;
+      } else {
+        delete nextHistoryByListId[undo.listId];
+      }
+
+      return {
+        ...current,
+        pool: undo.previousPool,
+        currentPick: undo.previousCurrentPick,
+        lastPickedNames: undo.previousLastPickedNames,
+        recentPicks: undo.previousRecentPicks,
+        historyByListId: nextHistoryByListId
+      };
+    });
+    announce(`Undid pick: ${undo.pickedNames.join(', ')}`);
   };
 
   const updatePickCount = (nextCount: number) => {
@@ -669,20 +839,26 @@ export function usePickerWidgetState() {
     const listId = selectedList.id;
 
     setPicker((current) => {
-      const currentAbsent = current.absentByListId[listId] ?? [];
+      const currentRecord = current.absentByListId[listId];
+      const currentAbsent =
+        currentRecord && currentRecord.dateKey === todayKey ? currentRecord.names : [];
       const isAbsent = currentAbsent.some(
         (entry) => entry.toLowerCase() === studentName.toLowerCase()
       );
       const nextAbsent = isAbsent
         ? currentAbsent.filter((entry) => entry.toLowerCase() !== studentName.toLowerCase())
         : [...currentAbsent, studentName];
+      const nextAbsentByListId = { ...current.absentByListId };
+
+      if (nextAbsent.length > 0) {
+        nextAbsentByListId[listId] = { dateKey: todayKey, names: nextAbsent };
+      } else {
+        delete nextAbsentByListId[listId];
+      }
 
       return {
         ...current,
-        absentByListId: {
-          ...current.absentByListId,
-          [listId]: nextAbsent
-        }
+        absentByListId: nextAbsentByListId
       };
     });
   };
@@ -698,12 +874,14 @@ export function usePickerWidgetState() {
   };
 
   const clearHistory = () => {
-    if (!selectedList) {
+    if (!selectedList || history.length === 0) {
       return;
     }
 
     const listId = selectedList.id;
+    const clearedEntries = [...history];
 
+    setLastPickUndo(null);
     setPicker((current) => {
       const nextHistoryByListId = { ...current.historyByListId };
       delete nextHistoryByListId[listId];
@@ -713,14 +891,44 @@ export function usePickerWidgetState() {
         historyByListId: nextHistoryByListId
       };
     });
+    showUndoToast('Cleared pick log', () => {
+      setPicker((current) => ({
+        ...current,
+        historyByListId: {
+          ...current.historyByListId,
+          [listId]: clearedEntries
+        }
+      }));
+    });
+  };
+
+  const copyHistory = async () => {
+    if (history.length === 0) {
+      return;
+    }
+
+    const lines = history.flatMap((entry) =>
+      entry.names.map((name) => `${name} — ${formatPickerHistoryTimestamp(entry.at)}`)
+    );
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      announce('Pick log copied');
+    } catch {
+      announce('Could not copy the pick log');
+    }
   };
 
   return {
     absentStudents,
+    canUndoPick,
     clearHistory,
+    copyHistory,
     history,
     isPickerSpinning,
-    lastPickedNames: picker.lastPickedNames.filter((name) => selectedStudents.includes(name)),
+    lastPickedNames: picker.lastPickedNames.filter((name) =>
+      selectedStudentSet.has(name.toLowerCase())
+    ),
     pickCount: picker.pickCount,
     pickCounts,
     pickStudent,
@@ -745,9 +953,11 @@ export function usePickerWidgetState() {
     setPickPurpose,
     setPicker,
     setWeightedPicks,
+    skipSpin,
     spinnerTrackRef: pickerSpinnerTrackRef,
     toggleAbsentStudent,
     toggleRemovePickedStudents,
+    undoLastPick,
     updatePickCount
   };
 }
@@ -759,11 +969,16 @@ export function getAbsentStudentsForList(snapshot: PickerSnapshot, list: ClassLi
     return [];
   }
 
+  const record = snapshot.absentByListId[list.id];
+
+  // Absences are date-scoped: records from a previous day have expired.
+  if (!record || record.dateKey !== getTodayDateKey()) {
+    return [];
+  }
+
   const rosterSet = new Set(list.students.map((name) => name.toLowerCase()));
 
-  return (snapshot.absentByListId[list.id] ?? []).filter((name) =>
-    rosterSet.has(name.toLowerCase())
-  );
+  return record.names.filter((name) => rosterSet.has(name.toLowerCase()));
 }
 
 export function filterAbsentStudents(names: string[], absentStudents: string[]) {
@@ -950,20 +1165,41 @@ export function normalizePickerAbsentMap(
   raw: Record<string, unknown> | undefined,
   listIds: Set<string>
 ) {
-  const absentByListId: Record<string, string[]> = {};
+  const absentByListId: Record<string, PickerAbsenceRecord> = {};
 
   if (!raw || typeof raw !== 'object') {
     return absentByListId;
   }
 
-  for (const [listId, namesRaw] of Object.entries(raw)) {
-    if (!listIds.has(listId) || !Array.isArray(namesRaw)) {
+  const todayKey = getTodayDateKey();
+
+  for (const [listId, recordRaw] of Object.entries(raw)) {
+    if (!listIds.has(listId)) {
       continue;
     }
 
-    const names = dedupeNames(namesRaw.filter(isString));
-    if (names.length > 0) {
-      absentByListId[listId] = names;
+    // Legacy plain-array absences become today's absences once.
+    if (Array.isArray(recordRaw)) {
+      const names = dedupeNames(recordRaw.filter(isString));
+      if (names.length > 0) {
+        absentByListId[listId] = { dateKey: todayKey, names };
+      }
+      continue;
+    }
+
+    if (!recordRaw || typeof recordRaw !== 'object') {
+      continue;
+    }
+
+    const candidate = recordRaw as { dateKey?: unknown; names?: unknown };
+    if (typeof candidate.dateKey !== 'string' || !Array.isArray(candidate.names)) {
+      continue;
+    }
+
+    // Date-scoped absences expire on a new day, so drop stale records here.
+    const names = dedupeNames(candidate.names.filter(isString));
+    if (names.length > 0 && candidate.dateKey === todayKey) {
+      absentByListId[listId] = { dateKey: candidate.dateKey, names };
     }
   }
 

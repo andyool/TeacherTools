@@ -113,6 +113,7 @@ export type AppUpdateState = {
   currentVersion: string;
   message: string;
   progressPercent: number | null;
+  releaseNotes: string | null;
   status: AppUpdateStatus;
 };
 
@@ -136,6 +137,7 @@ export type ElectronBridge = {
   getAppUpdateState: () => Promise<AppUpdateState>;
   getAppSettings: () => Promise<AppSettings>;
   checkForAppUpdates: () => Promise<AppUpdateState>;
+  downloadAppUpdate?: () => Promise<AppUpdateState>;
   installAppUpdate: () => Promise<boolean>;
   speakTimerAlert: (text: string) => Promise<boolean>;
   onAppUpdateStateChanged: (listener: (state: AppUpdateState) => void) => () => void;
@@ -150,6 +152,7 @@ export type ElectronBridge = {
   onPersistentStateChanged: (listener: (change: PersistentStateChange) => void) => () => void;
   setOverlayPosition: (position: { x: number; y: number }) => void;
   setOverlayInteractive: (interactive: boolean) => void;
+  showOverlayMenu?: () => void;
   setCurrentWindowBounds: (bounds: WindowBounds) => void;
   togglePopover: () => void;
   returnToTeacherTools: () => void;
@@ -166,4 +169,7 @@ export type ElectronBridge = {
     payload: LessonPlansPdfExportPayload
   ) => Promise<LessonPlansPdfExportResult>;
   quitApp: () => void;
+  revealDataFolder?: () => Promise<void>;
+  exportAppData?: () => Promise<{ canceled: boolean; errorMessage?: string; ok: boolean }>;
+  importAppData?: () => Promise<{ canceled: boolean; errorMessage?: string; ok: boolean }>;
 };

@@ -4,8 +4,9 @@ import { createPortal } from 'react-dom';
 import type { LessonDocumentSelection, LessonPlansPdfEntry, LessonPlansPdfExportOptions } from '../electron-types';
 import { useColorModeAppearance } from '../app/colorMode';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
-import { formatDateKey, formatLongDate, getDateUtcDayValue, getDaysUntilDateKey, getTodayDateKey, normalizeDateKey, parseDateKey, shiftDateKey } from '../shared/dates';
+import { formatDateKey, formatLongDate, getDaysUntilDateKey, getMinutesSinceMidnight, getTodayDateKey, normalizeDateKey, parseDateKey, shiftDateKey } from '../shared/dates';
 import { usePersistentState } from '../shared/persistence';
+import { showUndoToast, useToday, WidgetDialog } from '../shared/uiKit';
 import { clampNumber, createStickyNoteId } from '../shared/utils';
 import type { BellScheduleDayKey, BellScheduleSlotDefinition, BellTimelineEntry } from './bellSchedule';
 import { BELL_SCHEDULE_DAY_KEYS, BELL_SCHEDULE_DAY_LABELS, BELL_SCHEDULE_SLOT_DEFINITIONS, formatBellTime, formatBellTimeRange, getBellScheduleDayKey, useBellScheduleController } from './bellSchedule';
@@ -23,6 +24,8 @@ export type PlannerDocument = {
   name: string;
   path: string;
   addedAt: number;
+  /** Session-only decoration set by the controller when opening the file failed. Never persisted. */
+  missing?: boolean;
 };
 
 export type LessonPlanEntry = {
@@ -46,6 +49,14 @@ export type DeletedLessonPlanEntry = LessonPlanEntry & {
   deletedAt: number;
   id: string;
   reason: 'deleted' | 'replaced';
+  /** Bell-schedule slot the entry was keyed to, or null for the date-level entry. */
+  slotId: string | null;
+};
+
+export type SchoolTermDefinition = {
+  endDateKey: string;
+  number: number;
+  startDateKey: string;
 };
 
 export type LessonPlanExportRangeMode =
@@ -62,17 +73,26 @@ export type PlannerSnapshot = {
   activeDateByListId: Record<string, string>;
   confirmLessonPlanMoves: boolean;
   deletedEntries: DeletedLessonPlanEntry[];
+  /** Keys are either a plain date key or `dateKey#slotId` for slot-keyed plans. */
   entriesByListId: Record<string, Record<string, LessonPlanEntry>>;
+  schoolTerms: SchoolTermDefinition[];
+  schoolTermsEnabled: boolean;
   templates: LessonPlanTemplate[];
 };
 
 export type PlannerPopoutMode = 'editor' | 'week';
 
+export type PlannerSurface = 'dashboard' | 'popout';
+
 export type PlannerLessonMoveRequest = {
   classListId: string;
   sourceDateKey: string;
+  /** Slot id the source entry is actually keyed to (null = date-level entry). */
+  sourceEntrySlotId?: string | null;
   sourceSlotLabel: string;
   targetDateKey: string;
+  /** Bell-schedule slot the plan is dropped on; the moved entry becomes slot-keyed. */
+  targetSlotId?: string | null;
   targetSlotLabel: string;
 };
 
@@ -83,12 +103,22 @@ export type PlannerWeekLessonBlock = {
   dayKey: BellScheduleDayKey;
   documentCount: number;
   endMinutes: number;
+  /** Slot id of the entry the block resolved to (null = date-level entry). */
+  entrySlotId: string | null;
   hasContent: boolean;
   id: string;
   plan: string;
+  slotId: string;
   slotLabel: string;
   slotShortLabel: string;
   startMinutes: number;
+};
+
+export type PlannerCopyForwardChoice = {
+  description: string;
+  id: string;
+  label: string;
+  targetDateKeys: string[];
 };
 
 export type PlannerWeekScheduleBlock = {
@@ -101,15 +131,51 @@ export type PlannerWeekScheduleBlock = {
   status: 'break' | 'free' | 'teaching' | 'unassigned';
 };
 
+const DEFAULT_SCHOOL_TERM_SEEDS = [
+  { end: { day: 2, monthIndex: 3 }, start: { day: 2, monthIndex: 1 }, term: 1 },
+  { end: { day: 3, monthIndex: 6 }, start: { day: 20, monthIndex: 3 }, term: 2 },
+  { end: { day: 25, monthIndex: 8 }, start: { day: 20, monthIndex: 6 }, term: 3 },
+  { end: { day: 17, monthIndex: 11 }, start: { day: 12, monthIndex: 9 }, term: 4 }
+] as const;
+
+export function buildDefaultSchoolTermDates(year = new Date().getFullYear()): SchoolTermDefinition[] {
+  return DEFAULT_SCHOOL_TERM_SEEDS.map((seed) => ({
+    endDateKey: formatDateKey(year, seed.end.monthIndex, seed.end.day),
+    number: seed.term,
+    startDateKey: formatDateKey(year, seed.start.monthIndex, seed.start.day)
+  }));
+}
+
 export const DEFAULT_PLANNER: PlannerSnapshot = {
   activeDateByListId: {},
   confirmLessonPlanMoves: true,
   deletedEntries: [],
   entriesByListId: {},
+  schoolTerms: buildDefaultSchoolTermDates(),
+  schoolTermsEnabled: true,
   templates: []
 };
 
 export const PLANNER_TEMPLATE_LIMIT = 50;
+
+export const PLANNER_DELETED_ENTRY_LIMIT = 100;
+
+export const PLANNER_CARRY_OVER_MAX_AGE_DAYS = 14;
+
+/**
+ * Module-level mirror of the configured terms so date-label helpers keep their
+ * argument-free signatures (TeacherPopover calls formatSchoolDateLabel(date)
+ * directly). Synced by usePlannerState on every render of a planner window.
+ */
+let activeSchoolTermsCache: SchoolTermDefinition[] = DEFAULT_PLANNER.schoolTerms;
+
+export function getActiveSchoolTerms() {
+  return activeSchoolTermsCache;
+}
+
+export function syncActiveSchoolTerms(snapshot: Pick<PlannerSnapshot, 'schoolTerms' | 'schoolTermsEnabled'>) {
+  activeSchoolTermsCache = snapshot.schoolTermsEnabled ? snapshot.schoolTerms : [];
+}
 
 export type PlannerCarryOverProps = {
   flagged: boolean;
@@ -123,11 +189,18 @@ export type PlannerTemplatesProps = {
   onApply: (templateId: string) => void;
   onDelete: (templateId: string) => void;
   onSave: (name: string) => void;
+  onUpdate?: (templateId: string, name: string, plan: string) => void;
+};
+
+export type PlannerCopyForwardProps = {
+  choices: PlannerCopyForwardChoice[];
+  onCopy: (choiceId: string) => void;
 };
 
 export function PlannerWidgetContent({
   carryOver,
   classLists,
+  copyForward,
   copyForwardTargetLabel,
   deletedLessonPlans,
   documents,
@@ -154,6 +227,7 @@ export function PlannerWidgetContent({
 }: {
   carryOver?: PlannerCarryOverProps;
   classLists: ClassList[];
+  copyForward?: PlannerCopyForwardProps;
   copyForwardTargetLabel?: string | null;
   deletedLessonPlans: DeletedLessonPlanEntry[];
   documents: PlannerDocument[];
@@ -183,15 +257,109 @@ export function PlannerWidgetContent({
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
+  const [isCopyMenuOpen, setIsCopyMenuOpen] = useState(false);
   const [linkDraft, setLinkDraft] = useState('');
-  const hasPlanContent = Boolean(planText.trim() || documents.length > 0);
+
+  // The textarea edits a local draft committed on blur / 500ms idle so every
+  // keystroke does not rewrite the persisted snapshot.
+  const [planDraft, setPlanDraft] = useState(planText);
+  const planDraftDirtyRef = useRef(false);
+  const planCommitTimeoutRef = useRef<number | null>(null);
+  const onUpdatePlanRef = useRef(onUpdatePlan);
+  onUpdatePlanRef.current = onUpdatePlan;
+  const planDraftRef = useRef(planDraft);
+  planDraftRef.current = planDraft;
+
+  const commitPlanDraft = () => {
+    if (planCommitTimeoutRef.current !== null) {
+      window.clearTimeout(planCommitTimeoutRef.current);
+      planCommitTimeoutRef.current = null;
+    }
+
+    if (!planDraftDirtyRef.current) {
+      return;
+    }
+
+    planDraftDirtyRef.current = false;
+    onUpdatePlanRef.current(planDraftRef.current);
+  };
+
+  const editPlanDraft = (nextDraft: string) => {
+    planDraftDirtyRef.current = true;
+    setPlanDraft(nextDraft);
+
+    if (planCommitTimeoutRef.current !== null) {
+      window.clearTimeout(planCommitTimeoutRef.current);
+    }
+    planCommitTimeoutRef.current = window.setTimeout(commitPlanDraft, 500);
+  };
+
+  // Adopt outside changes (template insert, carry-over accept, date/class
+  // switches) whenever there is no pending local edit.
+  useEffect(() => {
+    if (!planDraftDirtyRef.current) {
+      setPlanDraft(planText);
+    }
+  }, [planText]);
+
+  useEffect(() => {
+    planDraftDirtyRef.current = false;
+    if (planCommitTimeoutRef.current !== null) {
+      window.clearTimeout(planCommitTimeoutRef.current);
+      planCommitTimeoutRef.current = null;
+    }
+    setPlanDraft(planText);
+    // Reset the draft only when the lesson identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, selectedList?.id]);
+
+  useEffect(
+    () => () => {
+      if (planCommitTimeoutRef.current !== null) {
+        window.clearTimeout(planCommitTimeoutRef.current);
+      }
+      if (planDraftDirtyRef.current) {
+        planDraftDirtyRef.current = false;
+        onUpdatePlanRef.current(planDraftRef.current);
+      }
+    },
+    []
+  );
+
+  const hasPlanContent = Boolean(planDraft.trim() || documents.length > 0);
 
   useEffect(() => {
     if (!selectedList) {
       setIsExportDialogOpen(false);
       setIsTemplatesDialogOpen(false);
+      setIsCopyMenuOpen(false);
     }
   }, [selectedList]);
+
+  useEffect(() => {
+    if (!isCopyMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.planner-copy-menu')) {
+        setIsCopyMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsCopyMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isCopyMenuOpen]);
 
   const submitLinkDraft = () => {
     if (!linkDraft.trim() || !onAddLink) {
@@ -211,13 +379,11 @@ export function PlannerWidgetContent({
 
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [planText, selectedList]);
+  }, [planDraft, selectedList]);
 
   const helperCopy = !selectedList
     ? 'Choose a class first, then save lesson plans and documents by date.'
-    : planText.trim() || documents.length > 0
-      ? `Saved plan for ${selectedList.name} on ${formatLongDate(selectedDate)}.`
-      : `Select a date and start planning ${selectedList.name}.`;
+    : null;
   const showWeeklyPlannerActionInToolbar =
     weeklyPlannerActionPlacement === 'toolbar' && Boolean(onOpenWeeklyPlanner);
 
@@ -270,7 +436,41 @@ export function PlannerWidgetContent({
             />
           </div>
           <div className="planner-widget__action-row">
-            {onCopyForward ? (
+            {copyForward && copyForward.choices.length > 0 ? (
+              <div className="planner-copy-menu">
+                <button
+                  aria-expanded={isCopyMenuOpen}
+                  aria-haspopup="menu"
+                  aria-label="Copy this lesson plan forward"
+                  className="secondary-link button-tone--utility planner-widget__action-button"
+                  data-compact-icon="→"
+                  disabled={!selectedList || !hasPlanContent}
+                  onClick={() => setIsCopyMenuOpen((current) => !current)}
+                  type="button"
+                >
+                  <span className="planner-widget__action-label">Copy forward</span>
+                </button>
+                {isCopyMenuOpen ? (
+                  <div className="planner-copy-menu__list" role="menu">
+                    {copyForward.choices.map((choice) => (
+                      <button
+                        className="planner-copy-menu__item"
+                        key={choice.id}
+                        onClick={() => {
+                          setIsCopyMenuOpen(false);
+                          copyForward.onCopy(choice.id);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <span>{choice.label}</span>
+                        <small>{choice.description}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : onCopyForward ? (
               <button
                 aria-label="Copy this lesson plan to the next lesson with this class"
                 className="secondary-link button-tone--utility planner-widget__action-button"
@@ -328,17 +528,23 @@ export function PlannerWidgetContent({
           </div>
         </div>
 
-        <div className="planner-widget__copy">
-          <div className="planner-widget__copy-row">
-            <p className="helper-text">{helperCopy}</p>
+        {helperCopy || statusMessage ? (
+          <div className="planner-widget__copy">
+            {helperCopy ? (
+              <div className="planner-widget__copy-row">
+                <p className="helper-text">{helperCopy}</p>
+              </div>
+            ) : null}
+            {statusMessage ? (
+              <p className="helper-text helper-text--accent">{statusMessage}</p>
+            ) : null}
           </div>
-          {statusMessage ? <p className="helper-text helper-text--accent">{statusMessage}</p> : null}
-        </div>
+        ) : null}
 
         {carryOver?.offer ? (
           <div className="planner-widget__carry-offer">
             <span className="helper-text">
-              The {formatLongDate(carryOver.offer.dateKey)} lesson was flagged “not finished”.
+              Unfinished plan from {formatLongDate(carryOver.offer.dateKey)}.
             </span>
             <button
               className="secondary-link"
@@ -351,17 +557,16 @@ export function PlannerWidgetContent({
         ) : null}
 
         <div className="field-stack field-stack--fill planner-widget__plan">
-          <label className="field-label" htmlFor="lesson-plan-text">
-            Lesson plan
-          </label>
           <textarea
+            aria-label="Lesson plan"
             className="text-area text-area--planner"
             disabled={!selectedList}
             id="lesson-plan-text"
-            onChange={(event) => onUpdatePlan(event.target.value)}
+            onBlur={commitPlanDraft}
+            onChange={(event) => editPlanDraft(event.target.value)}
             placeholder="Outline your lesson, activities, reminders, and follow-up."
             ref={planTextareaRef}
-            value={planText}
+            value={planDraft}
           />
           {carryOver ? (
             <label
@@ -374,7 +579,7 @@ export function PlannerWidgetContent({
                 onChange={(event) => carryOver.onToggle(event.currentTarget.checked)}
                 type="checkbox"
               />
-              <span>Not finished — carry over to the next lesson</span>
+              <span>Carry over if unfinished</span>
             </label>
           ) : null}
         </div>
@@ -383,7 +588,6 @@ export function PlannerWidgetContent({
           <div className="planner-documents__header">
             <div className="planner-documents__header-copy">
               <span className="field-label">Documents</span>
-              <p className="helper-text">Attach files from your computer and reopen them from here.</p>
             </div>
           </div>
           <div className="planner-documents__toolbar">
@@ -442,35 +646,50 @@ export function PlannerWidgetContent({
 
           {documents.length > 0 ? (
             <div className="planner-documents__list">
-              {documents.map((document) => (
-                <article className="planner-document" key={document.id}>
-                  <button
-                    className="planner-document__open"
-                    onClick={() => void onOpenDocument(document)}
-                    type="button"
+              {documents.map((document) => {
+                const secondaryLabel = getPlannerDocumentSecondaryLabel(document);
+
+                return (
+                  <article
+                    className={`planner-document${document.missing ? ' planner-document--missing' : ''}`}
+                    key={document.id}
                   >
-                    <span className="planner-document__name">
-                      {isPlannerLinkDocument(document) ? '↗ ' : ''}
-                      {document.name}
-                    </span>
-                    <span className="planner-document__path">
-                      {document.path}
-                    </span>
-                  </button>
-                  <button
-                    aria-label={`Remove ${document.name}`}
-                    className="note-row__delete"
-                    onClick={() => onRemoveDocument(document.id)}
-                    type="button"
-                  >
-                    ×
-                  </button>
-                </article>
-              ))}
+                    <button
+                      className="planner-document__open"
+                      data-tooltip-content={
+                        isPlannerLinkDocument(document) ? document.path : document.name
+                      }
+                      onClick={() => void onOpenDocument(document)}
+                      type="button"
+                    >
+                      <span className="planner-document__name-row">
+                        <span className="planner-document__name">
+                          {isPlannerLinkDocument(document) ? '↗ ' : ''}
+                          {getPlannerDocumentDisplayName(document)}
+                        </span>
+                        {document.missing ? (
+                          <span className="planner-document__missing">Missing</span>
+                        ) : null}
+                      </span>
+                      {secondaryLabel ? (
+                        <span className="planner-document__path">{secondaryLabel}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      aria-label={`Remove ${document.name}`}
+                      className="note-row__delete"
+                      onClick={() => onRemoveDocument(document.id)}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="group-maker__empty">
-              <p className="empty-copy">No lesson documents attached for this date yet.</p>
+              <p className="empty-copy">No documents yet.</p>
             </div>
           )}
         </div>
@@ -495,7 +714,7 @@ export function PlannerWidgetContent({
       ) : null}
       {isTemplatesDialogOpen && templates ? (
         <LessonPlanTemplatesDialog
-          canSaveCurrentPlan={Boolean(planText.trim())}
+          canSaveCurrentPlan={Boolean(planDraft.trim())}
           onClose={() => setIsTemplatesDialogOpen(false)}
           templates={templates}
         />
@@ -515,6 +734,24 @@ export function LessonPlanTemplatesDialog({
 }) {
   const { theme } = useColorModeAppearance();
   const [templateNameDraft, setTemplateNameDraft] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingNameDraft, setEditingNameDraft] = useState('');
+  const [editingPlanDraft, setEditingPlanDraft] = useState('');
+  const editingTemplate = editingTemplateId
+    ? templates.entries.find((template) => template.id === editingTemplateId) ?? null
+    : null;
+
+  const beginEditingTemplate = (template: LessonPlanTemplate) => {
+    setEditingTemplateId(template.id);
+    setEditingNameDraft(template.name);
+    setEditingPlanDraft(template.plan);
+  };
+
+  const stopEditingTemplate = () => {
+    setEditingTemplateId(null);
+    setEditingNameDraft('');
+    setEditingPlanDraft('');
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -565,32 +802,71 @@ export function LessonPlanTemplatesDialog({
             </button>
           </header>
 
-          <div className="lesson-templates-dialog__save-row">
-            <input
-              aria-label="Template name"
-              className="text-field"
-              onChange={(event) => setTemplateNameDraft(event.target.value)}
-              placeholder="Template name (e.g. Starter / Main / Plenary)"
-              type="text"
-              value={templateNameDraft}
-            />
-            <button
-              className="primary-link"
-              data-tooltip-content={
-                canSaveCurrentPlan
-                  ? 'Saves the plan currently in the editor as a template'
-                  : 'Write a plan first, then save it as a template'
-              }
-              disabled={!canSaveCurrentPlan}
-              onClick={() => {
-                templates.onSave(templateNameDraft);
-                setTemplateNameDraft('');
-              }}
-              type="button"
-            >
-              Save current plan
-            </button>
-          </div>
+          {editingTemplate ? (
+            <div className="lesson-templates-dialog__edit">
+              <input
+                aria-label="Template name"
+                className="text-field"
+                onChange={(event) => setEditingNameDraft(event.target.value)}
+                placeholder="Template name"
+                type="text"
+                value={editingNameDraft}
+              />
+              <textarea
+                aria-label="Template plan"
+                className="text-area lesson-templates-dialog__edit-plan"
+                onChange={(event) => setEditingPlanDraft(event.target.value)}
+                value={editingPlanDraft}
+              />
+              <div className="lesson-templates-dialog__edit-actions">
+                <button
+                  className="secondary-link button-tone--utility"
+                  onClick={stopEditingTemplate}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-link"
+                  disabled={!editingPlanDraft.trim()}
+                  onClick={() => {
+                    templates.onUpdate?.(editingTemplate.id, editingNameDraft, editingPlanDraft);
+                    stopEditingTemplate();
+                  }}
+                  type="button"
+                >
+                  Save changes
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="lesson-templates-dialog__save-row">
+              <input
+                aria-label="Template name"
+                className="text-field"
+                onChange={(event) => setTemplateNameDraft(event.target.value)}
+                placeholder="Template name (e.g. Starter / Main / Plenary)"
+                type="text"
+                value={templateNameDraft}
+              />
+              <button
+                className="primary-link"
+                data-tooltip-content={
+                  canSaveCurrentPlan
+                    ? 'Saves the plan currently in the editor as a template'
+                    : 'Write a plan first, then save it as a template'
+                }
+                disabled={!canSaveCurrentPlan}
+                onClick={() => {
+                  templates.onSave(templateNameDraft);
+                  setTemplateNameDraft('');
+                }}
+                type="button"
+              >
+                Save current plan
+              </button>
+            </div>
+          )}
 
           {templates.entries.length > 0 ? (
             <div className="lesson-templates-dialog__list">
@@ -611,10 +887,25 @@ export function LessonPlanTemplatesDialog({
                     >
                       Insert
                     </button>
+                    {templates.onUpdate ? (
+                      <button
+                        aria-label={`Edit template ${template.name}`}
+                        className="secondary-link button-tone--utility"
+                        onClick={() => beginEditingTemplate(template)}
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                     <button
                       aria-label={`Delete template ${template.name}`}
                       className="danger-link"
-                      onClick={() => templates.onDelete(template.id)}
+                      onClick={() => {
+                        if (editingTemplateId === template.id) {
+                          stopEditingTemplate();
+                        }
+                        templates.onDelete(template.id);
+                      }}
                       type="button"
                     >
                       ×
@@ -651,6 +942,8 @@ export function LessonPlanPdfExportDialog({
   onClose: () => void;
 }) {
   const { theme } = useColorModeAppearance();
+  const configuredTerms = getActiveSchoolTerms();
+  const hasConfiguredTerms = configuredTerms.length > 0;
   const currentTermSelection = useMemo(
     () => getLessonPlanExportSchoolTermSelection(getTodayDateKey()),
     []
@@ -661,7 +954,9 @@ export function LessonPlanPdfExportDialog({
   const [selectedYear, setSelectedYear] = useState(
     currentTermSelection?.year ?? new Date().getFullYear()
   );
-  const [selectedTerm, setSelectedTerm] = useState<number>(currentTermSelection?.term ?? 1);
+  const [selectedTerm, setSelectedTerm] = useState<number>(
+    currentTermSelection?.term ?? configuredTerms[0]?.number ?? 1
+  );
   const [selectedWeek, setSelectedWeek] = useState<number>(currentTermSelection?.week ?? 1);
   const [customStartDate, setCustomStartDate] = useState(() => entries[0]?.dateKey ?? getTodayDateKey());
   const [customEndDate, setCustomEndDate] = useState(getTodayDateKey());
@@ -672,6 +967,7 @@ export function LessonPlanPdfExportDialog({
   const [groupBy, setGroupBy] = useState<LessonPlansPdfExportOptions['groupBy']>('date');
   const [sortOrder, setSortOrder] = useState<LessonPlansPdfExportOptions['sortOrder']>('ascending');
   const [pageBreak, setPageBreak] = useState<LessonPlansPdfExportOptions['pageBreak']>('none');
+  const [groupByAutoNote, setGroupByAutoNote] = useState<string | null>(null);
   const [pdfTitle, setPdfTitle] = useState(`${classListName} Lesson Plans`);
   const [exportStatus, setExportStatus] = useState<{
     kind: 'idle' | 'saving' | 'saved' | 'error';
@@ -908,10 +1204,14 @@ export function LessonPlanPdfExportDialog({
                   <option value="all-previous">All previous dates</option>
                   <option value="this-week">This week</option>
                   <option value="last-week">Last week</option>
-                  <option value="this-term">This term</option>
-                  <option value="term">Only one term</option>
-                  <option value="exclude-term">Everything except one term</option>
-                  <option value="term-week">A term week</option>
+                  {hasConfiguredTerms ? (
+                    <>
+                      <option value="this-term">This term</option>
+                      <option value="term">Only one term</option>
+                      <option value="exclude-term">Everything except one term</option>
+                      <option value="term-week">A term week</option>
+                    </>
+                  ) : null}
                   <option value="custom">Custom date range</option>
                 </select>
               </label>
@@ -940,11 +1240,13 @@ export function LessonPlanPdfExportDialog({
                       onChange={(event) => setSelectedTerm(Number(event.target.value))}
                       value={selectedTerm}
                     >
-                      {[1, 2, 3, 4].map((term) => (
-                        <option key={term} value={term}>
-                          Term {term}
-                        </option>
-                      ))}
+                      {(hasConfiguredTerms ? configuredTerms.map((term) => term.number) : [1, 2, 3, 4]).map(
+                        (term) => (
+                          <option key={term} value={term}>
+                            Term {term}
+                          </option>
+                        )
+                      )}
                     </select>
                   </label>
                 </>
@@ -995,9 +1297,10 @@ export function LessonPlanPdfExportDialog({
                 <span className="field-label">Group by</span>
                 <select
                   className="text-field"
-                  onChange={(event) =>
-                    setGroupBy(event.target.value as LessonPlansPdfExportOptions['groupBy'])
-                  }
+                  onChange={(event) => {
+                    setGroupBy(event.target.value as LessonPlansPdfExportOptions['groupBy']);
+                    setGroupByAutoNote(null);
+                  }}
                   value={groupBy}
                 >
                   <option value="date">Date</option>
@@ -1028,13 +1331,22 @@ export function LessonPlanPdfExportDialog({
                   onChange={(event) => {
                     const nextPageBreak = event.target.value as LessonPlansPdfExportOptions['pageBreak'];
                     setPageBreak(nextPageBreak);
-                    if (
-                      nextPageBreak === 'class' ||
-                      nextPageBreak === 'term' ||
-                      nextPageBreak === 'week'
-                    ) {
-                      setGroupBy(nextPageBreak);
+
+                    // Only adjust the grouping when it is actually incompatible
+                    // with the requested page breaks, and say so visibly.
+                    if (isLessonPlanExportGroupingCompatible(groupBy, nextPageBreak)) {
+                      setGroupByAutoNote(null);
+                      return;
                     }
+
+                    const adjustedGroupBy =
+                      nextPageBreak === 'class' || nextPageBreak === 'term' || nextPageBreak === 'week'
+                        ? nextPageBreak
+                        : groupBy;
+                    setGroupBy(adjustedGroupBy);
+                    setGroupByAutoNote(
+                      `Grouping switched to “${LESSON_PLAN_EXPORT_GROUP_LABELS[adjustedGroupBy]}” to match the page breaks.`
+                    );
                   }}
                   value={pageBreak}
                 >
@@ -1046,6 +1358,10 @@ export function LessonPlanPdfExportDialog({
                 </select>
               </label>
             </div>
+
+            {groupByAutoNote ? (
+              <p className="helper-text lesson-plan-export-dialog__group-note">{groupByAutoNote}</p>
+            ) : null}
 
             <div className="lesson-plan-export-dialog__toggle-grid">
               <label className="lesson-plan-export-dialog__toggle">
@@ -1097,8 +1413,8 @@ export function LessonPlanPdfExportDialog({
 
           <div className="lesson-plan-export-dialog__preview" role="list">
             {filteredEntries.length > 0 ? (
-              filteredEntries.map((entry) => (
-                <article className="lesson-plan-export-dialog__entry" key={`${entry.classListId}-${entry.dateKey}`} role="listitem">
+              filteredEntries.map((entry, entryIndex) => (
+                <article className="lesson-plan-export-dialog__entry" key={`${entry.classListId}-${entry.dateKey}-${entryIndex}`} role="listitem">
                   <div className="lesson-plan-export-dialog__entry-header">
                     <strong>{entry.dateLabel}</strong>
                     <span>
@@ -1194,6 +1510,17 @@ export function WeeklyLessonPlannerContent({
     (PlannerLessonMoveRequest & { className: string }) | null
   >(null);
   const [isDeletedDialogOpen, setIsDeletedDialogOpen] = useState(false);
+  const [isTermDatesDialogOpen, setIsTermDatesDialogOpen] = useState(false);
+  const todayKey = useToday();
+  const [nowMinutes, setNowMinutes] = useState(() => getMinutesSinceMidnight(new Date()));
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNowMinutes(getMinutesSinceMidnight(new Date()));
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
   const plannerWeekDragStateRef = useRef<{
     draggedBlock: PlannerWeekLessonBlock;
     hasMoved: boolean;
@@ -1211,9 +1538,13 @@ export function WeeklyLessonPlannerContent({
   } | null>(null);
   const plannerWeekDragAnimationFrameRef = useRef<number | null>(null);
   const weekDatesByDay = useMemo(() => getPlannerWeekDatesByDay(weekStartDate), [weekStartDate]);
+  const effectiveSchoolTerms = useMemo(
+    () => (planner.schoolTermsEnabled ? planner.schoolTerms : []),
+    [planner.schoolTerms, planner.schoolTermsEnabled]
+  );
   const weekOptions = useMemo(
-    () => buildPlannerWeekSelectorOptions(weekYear, weekStartDate),
-    [weekStartDate, weekYear]
+    () => buildPlannerWeekSelectorOptions(weekYear, weekStartDate, effectiveSchoolTerms),
+    [effectiveSchoolTerms, weekStartDate, weekYear]
   );
   const weekYears = useMemo(
     () => getPlannerWeekSelectorYears(weekStartDate, planner.lessonPlanHistory, planner.deletedLessonPlans),
@@ -1226,11 +1557,11 @@ export function WeeklyLessonPlannerContent({
   const lessonBlocks = useMemo(
     () =>
       buildPlannerWeekLessonBlocks({
-        getEntryForClassDate: planner.getEntryForClassDate,
+        resolveEntryForClassDateSlot: planner.resolveEntryForClassDateSlot,
         weekDatesByDay,
         weekTimelineByDay: bellSchedule.weekTimelineByDay
       }),
-    [bellSchedule.weekTimelineByDay, planner.getEntryForClassDate, weekDatesByDay]
+    [bellSchedule.weekTimelineByDay, planner.resolveEntryForClassDateSlot, weekDatesByDay]
   );
   const lessonBlocksById = useMemo(
     () => new Map(lessonBlocks.map((block) => [block.id, block])),
@@ -1276,8 +1607,10 @@ export function WeeklyLessonPlannerContent({
     const moveRequest = {
       classListId: sourceBlock.classListId,
       sourceDateKey: sourceBlock.dateKey,
+      sourceEntrySlotId: sourceBlock.entrySlotId,
       sourceSlotLabel: `${sourceBlock.slotLabel}, ${formatLongDate(sourceBlock.dateKey)}`,
       targetDateKey: targetBlock.dateKey,
+      targetSlotId: targetBlock.slotId,
       targetSlotLabel: `${targetBlock.slotLabel}, ${formatLongDate(targetBlock.dateKey)}`
     };
 
@@ -1466,7 +1799,8 @@ export function WeeklyLessonPlannerContent({
                 className="text-field"
                 onChange={(event) => {
                   const nextYear = Number(event.target.value);
-                  const nextWeek = buildPlannerWeekSelectorOptions(nextYear, weekStartDate)[0]?.options[0];
+                  const nextWeek = buildPlannerWeekSelectorOptions(nextYear, weekStartDate, effectiveSchoolTerms)[0]
+                    ?.options[0];
                   setWeekYear(nextYear);
                   if (nextWeek) {
                     setWeekStartDate(nextWeek.value);
@@ -1482,7 +1816,7 @@ export function WeeklyLessonPlannerContent({
               </select>
             </label>
             <label className="field-stack planner-week__week-field">
-              <span className="field-label">Term week</span>
+              <span className="field-label">{effectiveSchoolTerms.length > 0 ? 'Term week' : 'Week'}</span>
               <select
                 className="text-field"
                 onChange={(event) => updateWeekStartDate(event.target.value)}
@@ -1510,6 +1844,15 @@ export function WeeklyLessonPlannerContent({
           </div>
 
           <div className="planner-week__actions">
+            <button
+              aria-haspopup="dialog"
+              aria-label="Edit school term dates"
+              className="secondary-link button-tone--utility"
+              onClick={() => setIsTermDatesDialogOpen(true)}
+              type="button"
+            >
+              Term dates
+            </button>
             <button
               className="secondary-link"
               onClick={() => setIsDeletedDialogOpen(true)}
@@ -1567,9 +1910,17 @@ export function WeeklyLessonPlannerContent({
             {BELL_SCHEDULE_DAY_KEYS.map((dayKey) => {
               const dayScheduleBlocks = scheduleBlocks.filter((block) => block.dayKey === dayKey);
               const dayBlocks = lessonBlocks.filter((block) => block.dayKey === dayKey);
+              const isToday = weekDatesByDay[dayKey] === todayKey;
+              const showNowLine =
+                isToday &&
+                nowMinutes >= timeRange.startMinutes &&
+                nowMinutes <= timeRange.endMinutes;
 
               return (
-                <section className="planner-week__day" key={dayKey}>
+                <section
+                  className={`planner-week__day${isToday ? ' planner-week__day--today' : ''}`}
+                  key={dayKey}
+                >
                   <header className="planner-week__day-header">
                     <span>{BELL_SCHEDULE_DAY_LABELS[dayKey].slice(0, 3)}</span>
                     <strong>{formatPlannerWeekDayLabel(weekDatesByDay[dayKey])}</strong>
@@ -1598,6 +1949,13 @@ export function WeeklyLessonPlannerContent({
                         style={getPlannerWeekTimeMarkStyle(mark, timeRange)}
                       />
                     ))}
+                    {showNowLine ? (
+                      <span
+                        aria-hidden="true"
+                        className="planner-week__now-line"
+                        style={getPlannerWeekTimeMarkStyle(nowMinutes, timeRange)}
+                      />
+                    ) : null}
                     {dayBlocks.map((block) => {
                       const isOtherClassDragging =
                         Boolean(draggedBlock) && draggedBlock?.classListId !== block.classListId;
@@ -1649,7 +2007,7 @@ export function WeeklyLessonPlannerContent({
                                 className="planner-week-lesson__delete"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  planner.deleteLessonPlan(block.classListId, block.dateKey);
+                                  planner.deleteLessonPlan(block.classListId, block.dateKey, block.entrySlotId);
                                 }}
                                 onDoubleClick={(event) => event.stopPropagation()}
                                 onDragStart={(event) => event.preventDefault()}
@@ -1739,7 +2097,167 @@ export function WeeklyLessonPlannerContent({
           onRestore={planner.restoreDeletedLessonPlan}
         />
       ) : null}
+
+      {isTermDatesDialogOpen ? (
+        <SchoolTermDatesDialog
+          enabled={planner.schoolTermsEnabled}
+          onClose={() => setIsTermDatesDialogOpen(false)}
+          onSave={(configuration) => {
+            planner.setSchoolTermConfiguration(configuration);
+            setIsTermDatesDialogOpen(false);
+          }}
+          terms={planner.schoolTerms}
+        />
+      ) : null}
     </>
+  );
+}
+
+export function SchoolTermDatesDialog({
+  enabled,
+  onClose,
+  onSave,
+  terms
+}: {
+  enabled: boolean;
+  onClose: () => void;
+  onSave: (configuration: { enabled: boolean; terms: SchoolTermDefinition[] }) => void;
+  terms: SchoolTermDefinition[];
+}) {
+  const { theme } = useColorModeAppearance();
+  const [termsDisabled, setTermsDisabled] = useState(!enabled);
+  const [termDrafts, setTermDrafts] = useState<Array<{ endDateKey: string; startDateKey: string }>>(
+    () =>
+      (terms.length > 0 ? terms : buildDefaultSchoolTermDates()).map((term) => ({
+        endDateKey: term.endDateKey,
+        startDateKey: term.startDateKey
+      }))
+  );
+  const hasInvalidDraft =
+    !termsDisabled &&
+    termDrafts.some(
+      (draft) => !normalizeDateKey(draft.startDateKey) || !normalizeDateKey(draft.endDateKey)
+    );
+
+  const updateDraft = (index: number, field: 'endDateKey' | 'startDateKey', value: string) => {
+    setTermDrafts((current) =>
+      current.map((draft, draftIndex) =>
+        draftIndex === index ? { ...draft, [field]: value } : draft
+      )
+    );
+  };
+
+  const submit = () => {
+    if (hasInvalidDraft) {
+      return;
+    }
+
+    onSave({
+      enabled: !termsDisabled,
+      terms: termDrafts.map((draft, index) => ({
+        endDateKey: normalizeDateKey(draft.endDateKey) ?? draft.endDateKey,
+        number: index + 1,
+        startDateKey: normalizeDateKey(draft.startDateKey) ?? draft.startDateKey
+      }))
+    });
+  };
+
+  return (
+    <WidgetDialog
+      className="school-terms-dialog"
+      kicker="School calendar"
+      onClose={onClose}
+      theme={theme}
+      title="Term dates"
+    >
+      <p className="helper-text">
+        Terms repeat every year. Week labels, the week selector, and PDF exports follow these dates.
+      </p>
+
+      <label className="lesson-plan-export-dialog__toggle school-terms-dialog__disable-toggle">
+        <input
+          checked={termsDisabled}
+          onChange={(event) => setTermsDisabled(event.currentTarget.checked)}
+          type="checkbox"
+        />
+        <span>No terms — use plain dates</span>
+      </label>
+
+      {!termsDisabled ? (
+        <div className="school-terms-dialog__rows">
+          {termDrafts.map((draft, index) => (
+            <div className="school-terms-dialog__row" key={`school-term-${index}`}>
+              <span className="school-terms-dialog__row-label">Term {index + 1}</span>
+              <label className="field-stack">
+                <span className="field-label">Starts</span>
+                <input
+                  aria-label={`Term ${index + 1} start date`}
+                  className="text-field"
+                  onChange={(event) => updateDraft(index, 'startDateKey', event.target.value)}
+                  type="date"
+                  value={draft.startDateKey}
+                />
+              </label>
+              <label className="field-stack">
+                <span className="field-label">Ends</span>
+                <input
+                  aria-label={`Term ${index + 1} end date`}
+                  className="text-field"
+                  onChange={(event) => updateDraft(index, 'endDateKey', event.target.value)}
+                  type="date"
+                  value={draft.endDateKey}
+                />
+              </label>
+              <button
+                aria-label={`Remove term ${index + 1}`}
+                className="note-row__delete school-terms-dialog__remove"
+                disabled={termDrafts.length <= 1}
+                onClick={() =>
+                  setTermDrafts((current) => current.filter((_draft, draftIndex) => draftIndex !== index))
+                }
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            className="secondary-link button-tone--utility school-terms-dialog__add"
+            disabled={termDrafts.length >= 12}
+            onClick={() =>
+              setTermDrafts((current) => {
+                const lastDraft = current.at(-1);
+                const lastEnd = lastDraft ? normalizeDateKey(lastDraft.endDateKey) : null;
+
+                return [
+                  ...current,
+                  {
+                    endDateKey: lastEnd ? shiftDateKey(lastEnd, 70) : getTodayDateKey(),
+                    startDateKey: lastEnd ? shiftDateKey(lastEnd, 15) : getTodayDateKey()
+                  }
+                ];
+              })
+            }
+            type="button"
+          >
+            Add term
+          </button>
+        </div>
+      ) : (
+        <p className="helper-text">
+          Dates will show as plain dates, and the week selector lists calendar weeks.
+        </p>
+      )}
+
+      <footer className="planner-week-dialog__actions">
+        <button className="secondary-link button-tone--utility" onClick={onClose} type="button">
+          Cancel
+        </button>
+        <button className="primary-link" disabled={hasInvalidDraft} onClick={submit} type="button">
+          Save term dates
+        </button>
+      </footer>
+    </WidgetDialog>
   );
 }
 
@@ -1962,28 +2480,38 @@ export function DeletedLessonPlansDialog({
                       </div>
                     </div>
                     <div className="deleted-lesson__restore">
-                      <label className="field-stack">
-                        <span className="field-label">Restore date</span>
-                        <input
-                          className="text-field"
-                          onChange={(event) =>
-                            setRestoreDatesById((current) => ({
-                              ...current,
-                              [entry.id]: event.target.value
-                            }))
-                          }
-                          type="date"
-                          value={restoreDate}
-                        />
-                      </label>
                       <button
-                        className="primary-link"
-                        disabled={!normalizeDateKey(restoreDate)}
-                        onClick={() => onRestore(entry.id, restoreDate)}
+                        aria-label={`Restore ${className} to ${formatLongDate(entry.dateKey)}`}
+                        className="primary-link deleted-lesson__restore-original"
+                        onClick={() => onRestore(entry.id, entry.dateKey)}
                         type="button"
                       >
-                        Restore
+                        Restore to original date
                       </button>
+                      <div className="deleted-lesson__restore-custom">
+                        <label className="field-stack">
+                          <span className="field-label">Other date</span>
+                          <input
+                            className="text-field"
+                            onChange={(event) =>
+                              setRestoreDatesById((current) => ({
+                                ...current,
+                                [entry.id]: event.target.value
+                              }))
+                            }
+                            type="date"
+                            value={restoreDate}
+                          />
+                        </label>
+                        <button
+                          className="secondary-link"
+                          disabled={!normalizeDateKey(restoreDate)}
+                          onClick={() => onRestore(entry.id, restoreDate)}
+                          type="button"
+                        >
+                          Restore
+                        </button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -2012,11 +2540,22 @@ export function PlannerWidgetPopoutCard({
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
   const planner = useLessonPlannerController(picker.selectedListId, picker.lists);
   const bellSchedule = useBellScheduleController(picker.lists);
-  const [popoutMode, setPopoutMode] = usePlannerPopoutModeState();
+  const [popoutMode, setPopoutMode] = usePlannerPopoutModeState('popout');
   const showWeekPlanner = popoutMode === 'week';
   const nextLessonDateKey = selectedList
     ? findNextLessonDateKey(bellSchedule.weekTimelineByDay, selectedList.id, planner.selectedDate)
     : null;
+  const copyForwardChoices = useMemo(
+    () =>
+      selectedList
+        ? buildPlannerCopyForwardChoices(
+            bellSchedule.weekTimelineByDay,
+            selectedList.id,
+            planner.selectedDate
+          )
+        : [],
+    [bellSchedule.weekTimelineByDay, planner.selectedDate, selectedList]
+  );
 
   return (
     <WidgetCard
@@ -2065,6 +2604,15 @@ export function PlannerWidgetPopoutCard({
             onToggle: planner.toggleCarryOver
           }}
           classLists={picker.lists}
+          copyForward={{
+            choices: copyForwardChoices,
+            onCopy: (choiceId) => {
+              const choice = copyForwardChoices.find((candidate) => candidate.id === choiceId);
+              if (choice) {
+                planner.copyLessonForwardToDates(choice.targetDateKeys);
+              }
+            }
+          }}
           copyForwardTargetLabel={nextLessonDateKey ? formatLongDate(nextLessonDateKey) : null}
           deletedLessonPlans={planner.deletedLessonPlans}
           documents={planner.documents}
@@ -2089,7 +2637,8 @@ export function PlannerWidgetPopoutCard({
             entries: planner.templates,
             onApply: planner.applyTemplate,
             onDelete: planner.deleteTemplate,
-            onSave: planner.saveTemplate
+            onSave: planner.saveTemplate,
+            onUpdate: planner.updateTemplate
           }}
           weeklyPlannerActionAriaLabel="Back to weekly lesson planner"
           weeklyPlannerActionLabel="Back"
@@ -2101,15 +2650,27 @@ export function PlannerWidgetPopoutCard({
 }
 
 export function usePlannerState() {
-  return usePersistentState<PlannerSnapshot>('teacher-tools.planner', DEFAULT_PLANNER, {
+  const plannerState = usePersistentState<PlannerSnapshot>('teacher-tools.planner', DEFAULT_PLANNER, {
     normalize: normalizePlannerSnapshot
   });
+
+  // Keep the module-level term mirror in sync so argument-free helpers
+  // (formatSchoolDateLabel and friends) see the configured terms.
+  syncActiveSchoolTerms(plannerState[0]);
+
+  return plannerState;
 }
 
-export function usePlannerPopoutModeState() {
+/**
+ * Last-used planner view, persisted per surface. Both surfaces default to the
+ * day editor.
+ */
+export function usePlannerPopoutModeState(surface: PlannerSurface = 'popout') {
   return usePersistentState<PlannerPopoutMode>(
-    'teacher-tools.planner-popout-mode',
-    'week',
+    surface === 'popout'
+      ? 'teacher-tools.planner-popout-mode'
+      : 'teacher-tools.planner-dashboard-mode',
+    'editor',
     {
       normalize: normalizePlannerPopoutMode
     }
@@ -2119,11 +2680,21 @@ export function usePlannerPopoutModeState() {
 export function useLessonPlannerController(selectedListId: string | null, classLists: ClassList[]) {
   const [planner, setPlanner] = usePlannerState();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [missingDocumentIds, setMissingDocumentIds] = useState<Record<string, true>>({});
   const selectedDate = getPlannerSelectedDate(planner, selectedListId);
   const entry = getPlannerEntry(planner, selectedListId, selectedDate);
-  const documents = entry?.documents ?? [];
+  const storedDocuments = entry?.documents ?? [];
+  const documents = storedDocuments.map((document) =>
+    missingDocumentIds[document.id] ? { ...document, missing: true } : document
+  );
   const plan = entry?.plan ?? '';
-  const entryDates = Object.keys(planner.entriesByListId[getDashboardLayoutKey(selectedListId)] ?? {});
+  const entryDates = Array.from(
+    new Set(
+      Object.keys(planner.entriesByListId[getDashboardLayoutKey(selectedListId)] ?? {}).map(
+        (entryKey) => parsePlannerEntryKey(entryKey).dateKey
+      )
+    )
+  );
   const deletedLessonPlans = planner.deletedEntries;
   const confirmLessonPlanMoves = planner.confirmLessonPlanMoves;
   const lessonPlanHistory = useMemo(
@@ -2158,6 +2729,10 @@ export function useLessonPlannerController(selectedListId: string | null, classL
   };
 
   const removeDocument = (documentId: string) => {
+    const removedDocument = storedDocuments.find((document) => document.id === documentId) ?? null;
+    const removedFromListId = selectedListId;
+    const removedFromDate = selectedDate;
+
     setPlanner((current) =>
       updatePlannerEntry(current, selectedListId, selectedDate, (existing) => ({
         ...existing,
@@ -2165,6 +2740,20 @@ export function useLessonPlannerController(selectedListId: string | null, classL
         updatedAt: Date.now()
       }))
     );
+
+    if (removedDocument) {
+      showUndoToast(`Removed ${getPlannerDocumentDisplayName(removedDocument)}.`, () => {
+        setPlanner((current) =>
+          updatePlannerEntry(current, removedFromListId, removedFromDate, (existing) => ({
+            ...existing,
+            documents: existing.documents.some((document) => document.id === removedDocument.id)
+              ? existing.documents
+              : [...existing.documents, removedDocument],
+            updatedAt: Date.now()
+          }))
+        );
+      });
+    }
   };
 
   const attachDocuments = async () => {
@@ -2198,15 +2787,34 @@ export function useLessonPlannerController(selectedListId: string | null, classL
 
     const errorMessage = await window.electronAPI.openLessonDocument(document.path);
     if (errorMessage) {
+      setMissingDocumentIds((current) =>
+        current[document.id] ? current : { ...current, [document.id]: true }
+      );
       setStatusMessage(`Couldn't open ${document.name}. ${errorMessage}`);
       return;
     }
 
+    setMissingDocumentIds((current) => {
+      if (!current[document.id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[document.id];
+      return next;
+    });
     setStatusMessage(`Opened ${document.name}.`);
   };
 
   const moveLessonPlan = (request: PlannerLessonMoveRequest) => {
-    const sourceEntry = getPlannerEntry(planner, request.classListId, request.sourceDateKey);
+    const sourceSlotId = request.sourceEntrySlotId ?? null;
+    const targetSlotId = request.targetSlotId ?? null;
+    const sourceEntry = getPlannerEntryAtKey(
+      planner,
+      request.classListId,
+      request.sourceDateKey,
+      sourceSlotId
+    );
     const className = getPlannerClassName(request.classListId, classLists);
 
     if (!sourceEntry) {
@@ -2214,12 +2822,17 @@ export function useLessonPlannerController(selectedListId: string | null, classL
       return;
     }
 
-    if (request.sourceDateKey === request.targetDateKey) {
+    if (request.sourceDateKey === request.targetDateKey && sourceSlotId === targetSlotId) {
       setStatusMessage(`${className} is already planned for ${formatLongDate(request.targetDateKey)}.`);
       return;
     }
 
-    const targetEntry = getPlannerEntry(planner, request.classListId, request.targetDateKey);
+    const targetEntry = getPlannerEntryAtKey(
+      planner,
+      request.classListId,
+      request.targetDateKey,
+      targetSlotId
+    );
 
     setPlanner((current) => movePlannerLessonEntry(current, request, classLists));
     setStatusMessage(
@@ -2229,8 +2842,8 @@ export function useLessonPlannerController(selectedListId: string | null, classL
     );
   };
 
-  const deleteLessonPlan = (classListId: string, dateKey: string) => {
-    const entryToDelete = getPlannerEntry(planner, classListId, dateKey);
+  const deleteLessonPlan = (classListId: string, dateKey: string, slotId: string | null = null) => {
+    const entryToDelete = getPlannerEntryAtKey(planner, classListId, dateKey, slotId);
     const className = getPlannerClassName(classListId, classLists);
 
     if (!entryToDelete) {
@@ -2238,7 +2851,7 @@ export function useLessonPlannerController(selectedListId: string | null, classL
       return;
     }
 
-    setPlanner((current) => deletePlannerLessonEntry(current, classListId, dateKey, classLists));
+    setPlanner((current) => deletePlannerLessonEntry(current, classListId, dateKey, classLists, slotId));
     setStatusMessage(`Moved ${className}'s ${formatLongDate(dateKey)} plan to Deleted plans.`);
   };
 
@@ -2250,10 +2863,18 @@ export function useLessonPlannerController(selectedListId: string | null, classL
       return;
     }
 
-    const existingEntry = getPlannerEntry(planner, deletedEntry.classListId, normalizedDate);
+    // Restoring to the original date puts the entry back at its original slot
+    // key; restoring anywhere else lands date-level.
+    const restoreSlotId = normalizedDate === deletedEntry.dateKey ? deletedEntry.slotId ?? null : null;
+    const existingEntry = getPlannerEntryAtKey(
+      planner,
+      deletedEntry.classListId,
+      normalizedDate,
+      restoreSlotId
+    );
 
     setPlanner((current) =>
-      restoreDeletedPlannerLessonEntry(current, deletedEntryId, normalizedDate, classLists)
+      restoreDeletedPlannerLessonEntry(current, deletedEntryId, normalizedDate, classLists, restoreSlotId)
     );
     setStatusMessage(
       existingEntry
@@ -2359,6 +2980,49 @@ export function useLessonPlannerController(selectedListId: string | null, classL
     );
   };
 
+  const copyLessonForwardToDates = (targetDateKeys: string[]) => {
+    if (!selectedListId) {
+      return;
+    }
+
+    const sourceEntry = getPlannerEntry(planner, selectedListId, selectedDate);
+
+    if (!sourceEntry) {
+      setStatusMessage('Save a plan or attach documents first, then copy it forward.');
+      return;
+    }
+
+    const normalizedTargets = Array.from(
+      new Set(
+        targetDateKeys
+          .map((dateKey) => normalizeDateKey(dateKey))
+          .filter((dateKey): dateKey is string => Boolean(dateKey) && dateKey !== selectedDate)
+      )
+    );
+
+    if (normalizedTargets.length === 0) {
+      return;
+    }
+
+    if (normalizedTargets.length === 1) {
+      copyLessonForward(normalizedTargets[0]);
+      return;
+    }
+
+    setPlanner((current) =>
+      normalizedTargets.reduce(
+        (snapshot, targetDateKey) =>
+          copyPlannerLessonEntry(snapshot, selectedListId, selectedDate, targetDateKey, classLists),
+        current
+      )
+    );
+    setStatusMessage(
+      `Copied this lesson to ${normalizedTargets.length} dates (${normalizedTargets
+        .map((dateKey) => formatLongDate(dateKey))
+        .join(', ')}).`
+    );
+  };
+
   const addLinkDocument = (rawUrl: string) => {
     const url = normalizePlannerLinkUrl(rawUrl);
 
@@ -2428,10 +3092,64 @@ export function useLessonPlannerController(selectedListId: string | null, classL
     setStatusMessage(`Inserted the “${template.name}” template.`);
   };
 
+  const updateTemplate = (templateId: string, name: string, nextPlan: string) => {
+    if (!nextPlan.trim()) {
+      return;
+    }
+
+    setPlanner((current) => ({
+      ...current,
+      templates: current.templates.map((template) =>
+        template.id === templateId
+          ? {
+              ...template,
+              name: name.trim() || template.name,
+              plan: nextPlan
+            }
+          : template
+      )
+    }));
+    setStatusMessage('Updated the template.');
+  };
+
   const deleteTemplate = (templateId: string) => {
+    const removedIndex = planner.templates.findIndex((template) => template.id === templateId);
+    const removedTemplate = removedIndex === -1 ? null : planner.templates[removedIndex];
+
     setPlanner((current) => ({
       ...current,
       templates: current.templates.filter((template) => template.id !== templateId)
+    }));
+
+    if (removedTemplate) {
+      showUndoToast(`Deleted the “${removedTemplate.name}” template.`, () => {
+        setPlanner((current) => {
+          if (current.templates.some((template) => template.id === removedTemplate.id)) {
+            return current;
+          }
+
+          const nextTemplates = [...current.templates];
+          nextTemplates.splice(Math.min(removedIndex, nextTemplates.length), 0, removedTemplate);
+          return {
+            ...current,
+            templates: nextTemplates.slice(0, PLANNER_TEMPLATE_LIMIT)
+          };
+        });
+      });
+    }
+  };
+
+  const setSchoolTermConfiguration = ({
+    enabled,
+    terms
+  }: {
+    enabled: boolean;
+    terms: SchoolTermDefinition[];
+  }) => {
+    setPlanner((current) => ({
+      ...current,
+      schoolTerms: normalizeSchoolTermList(terms) ?? current.schoolTerms,
+      schoolTermsEnabled: enabled
     }));
   };
 
@@ -2444,6 +3162,7 @@ export function useLessonPlannerController(selectedListId: string | null, classL
     carryOverSource,
     confirmLessonPlanMoves,
     copyLessonForward,
+    copyLessonForwardToDates,
     deleteLessonPlan,
     deleteTemplate,
     deletedLessonPlans,
@@ -2458,16 +3177,22 @@ export function useLessonPlannerController(selectedListId: string | null, classL
     permanentlyDeleteLessonPlans,
     plan,
     removeDocument,
+    resolveEntryForClassDateSlot: (classListId: string, dateKey: string, slotId: string | null) =>
+      resolvePlannerEntryForSlot(planner, classListId, dateKey, slotId),
     restoreDeletedLessonPlan,
     saveTemplate,
+    schoolTerms: planner.schoolTerms,
+    schoolTermsEnabled: planner.schoolTermsEnabled,
     selectedDate,
+    setSchoolTermConfiguration,
     setSelectedDate,
     setSelectedDateForClass,
     setConfirmLessonPlanMoves,
     statusMessage,
     templates: planner.templates,
     toggleCarryOver,
-    updatePlan
+    updatePlan,
+    updateTemplate
   };
 }
 
@@ -2478,29 +3203,46 @@ export function normalizePlannerPopoutMode(
   return raw === 'editor' || raw === 'week' ? raw : initialValue;
 }
 
-export const SCHOOL_TERMS = [
-  { end: { day: 2, monthIndex: 3 }, start: { day: 2, monthIndex: 1 }, term: 1 },
-  { end: { day: 3, monthIndex: 6 }, start: { day: 20, monthIndex: 3 }, term: 2 },
-  { end: { day: 25, monthIndex: 8 }, start: { day: 20, monthIndex: 6 }, term: 3 },
-  { end: { day: 17, monthIndex: 11 }, start: { day: 12, monthIndex: 9 }, term: 4 }
-] as const;
+/** Legacy hardcoded seeds — configured terms now live in planner state. */
+export const SCHOOL_TERMS = DEFAULT_SCHOOL_TERM_SEEDS;
 
-export function getSchoolTermWeek(date: Date) {
-  const year = date.getFullYear();
-  const todayDayValue = getDateUtcDayValue(year, date.getMonth(), date.getDate());
+/**
+ * Terms recur annually: the stored dates supply the month/day pattern, and a
+ * term whose end falls before its start spans the year boundary.
+ */
+export function projectSchoolTermToYear(term: SchoolTermDefinition, year: number) {
+  const start = parseDateKey(term.startDateKey);
+  const end = parseDateKey(term.endDateKey);
 
-  for (const schoolTerm of SCHOOL_TERMS) {
-    const startDayValue = getDateUtcDayValue(
-      year,
-      schoolTerm.start.monthIndex,
-      schoolTerm.start.day
-    );
-    const endDayValue = getDateUtcDayValue(year, schoolTerm.end.monthIndex, schoolTerm.end.day);
+  if (!start || !end) {
+    return null;
+  }
 
-    if (todayDayValue >= startDayValue && todayDayValue <= endDayValue) {
+  const crossesYearBoundary =
+    end.monthIndex < start.monthIndex ||
+    (end.monthIndex === start.monthIndex && end.day < start.day);
+
+  return {
+    endDateKey: formatDateKey(crossesYearBoundary ? year + 1 : year, end.monthIndex, end.day),
+    number: term.number,
+    startDateKey: formatDateKey(year, start.monthIndex, start.day)
+  };
+}
+
+export function getSchoolTermWeek(date: Date, terms: SchoolTermDefinition[] = getActiveSchoolTerms()) {
+  const dateKey = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
+
+  for (const year of [date.getFullYear() - 1, date.getFullYear()]) {
+    for (const schoolTerm of terms) {
+      const projected = projectSchoolTermToYear(schoolTerm, year);
+
+      if (!projected || dateKey < projected.startDateKey || dateKey > projected.endDateKey) {
+        continue;
+      }
+
       return {
-        term: schoolTerm.term,
-        week: Math.floor((todayDayValue - startDayValue) / 7) + 1
+        term: projected.number,
+        week: Math.floor(getDaysUntilDateKey(projected.startDateKey, dateKey) / 7) + 1
       };
     }
   }
@@ -2508,15 +3250,92 @@ export function getSchoolTermWeek(date: Date) {
   return null;
 }
 
-export function formatSchoolDateLabel(date: Date) {
-  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date);
-  const schoolTermWeek = getSchoolTermWeek(date);
+export function formatSchoolDateLabel(date: Date, terms: SchoolTermDefinition[] = getActiveSchoolTerms()) {
+  const schoolTermWeek = terms.length > 0 ? getSchoolTermWeek(date, terms) : null;
 
   if (!schoolTermWeek) {
-    return `${weekday}, School holidays`;
+    return new Intl.DateTimeFormat(undefined, {
+      day: 'numeric',
+      month: 'long',
+      weekday: 'long'
+    }).format(date);
   }
 
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date);
   return `${weekday}, Week ${schoolTermWeek.week}, Term ${schoolTermWeek.term}`;
+}
+
+export function normalizeSchoolTermDefinition(raw: unknown): SchoolTermDefinition | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const nextRaw = raw as { endDateKey?: unknown; number?: unknown; startDateKey?: unknown };
+  const startDateKey =
+    typeof nextRaw.startDateKey === 'string' ? normalizeDateKey(nextRaw.startDateKey) : null;
+  const endDateKey =
+    typeof nextRaw.endDateKey === 'string' ? normalizeDateKey(nextRaw.endDateKey) : null;
+
+  if (!startDateKey || !endDateKey) {
+    return null;
+  }
+
+  return {
+    endDateKey,
+    number:
+      typeof nextRaw.number === 'number' && Number.isInteger(nextRaw.number) && nextRaw.number > 0
+        ? nextRaw.number
+        : 1,
+    startDateKey
+  };
+}
+
+export function normalizeSchoolTermList(raw: unknown): SchoolTermDefinition[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+
+  const terms = raw
+    .map((term) => normalizeSchoolTermDefinition(term))
+    .filter((term): term is SchoolTermDefinition => term !== null)
+    .slice(0, 12)
+    .map((term, index) => ({ ...term, number: index + 1 }));
+
+  return terms;
+}
+
+export const LESSON_PLAN_EXPORT_GROUP_LABELS: Record<
+  NonNullable<LessonPlansPdfExportOptions['groupBy']>,
+  string
+> = {
+  class: 'Class',
+  date: 'Date',
+  term: 'Term',
+  week: 'School week'
+};
+
+/**
+ * Page breaks per class/term/week only make sense when lessons are grouped so
+ * those boundaries are contiguous. Term breaks also work with week grouping
+ * because week sort order nests inside terms.
+ */
+export function isLessonPlanExportGroupingCompatible(
+  groupBy: LessonPlansPdfExportOptions['groupBy'],
+  pageBreak: LessonPlansPdfExportOptions['pageBreak']
+) {
+  if (pageBreak === 'class') {
+    return groupBy === 'class';
+  }
+
+  if (pageBreak === 'term') {
+    return groupBy === 'term' || groupBy === 'week';
+  }
+
+  if (pageBreak === 'week') {
+    return groupBy === 'week';
+  }
+
+  return true;
 }
 
 export function formatLessonPlanExportDate(dateKey: string) {
@@ -2543,13 +3362,16 @@ export function formatLessonPlanExportGeneratedAtLabel() {
   }).format(new Date());
 }
 
-export function getLessonPlanExportSchoolTermSelection(dateKey: string) {
+export function getLessonPlanExportSchoolTermSelection(
+  dateKey: string,
+  terms: SchoolTermDefinition[] = getActiveSchoolTerms()
+) {
   const parsed = parseDateKey(dateKey);
   if (!parsed) {
     return null;
   }
 
-  const schoolTermWeek = getSchoolTermWeek(new Date(parsed.year, parsed.monthIndex, parsed.day));
+  const schoolTermWeek = getSchoolTermWeek(new Date(parsed.year, parsed.monthIndex, parsed.day), terms);
   if (!schoolTermWeek) {
     return null;
   }
@@ -2838,7 +3660,8 @@ export function createDeletedLessonPlanEntry(
   classListId: string,
   dateKey: string,
   classLists: ClassList[],
-  reason: DeletedLessonPlanEntry['reason']
+  reason: DeletedLessonPlanEntry['reason'],
+  slotId: string | null = null
 ): DeletedLessonPlanEntry {
   return {
     ...copyLessonPlanEntry(entry),
@@ -2847,25 +3670,38 @@ export function createDeletedLessonPlanEntry(
     dateKey,
     deletedAt: Date.now(),
     id: `deleted-lesson-plan-${createStickyNoteId()}`,
-    reason
+    reason,
+    slotId
   };
+}
+
+export function capDeletedLessonPlanEntries(entries: DeletedLessonPlanEntry[]) {
+  if (entries.length <= PLANNER_DELETED_ENTRY_LIMIT) {
+    return entries;
+  }
+
+  return [...entries]
+    .sort((left, right) => left.deletedAt - right.deletedAt)
+    .slice(-PLANNER_DELETED_ENTRY_LIMIT);
 }
 
 export function setPlannerEntryForClassDate(
   snapshot: PlannerSnapshot,
   classListId: string,
   dateKey: string,
-  entry: LessonPlanEntry | null
+  entry: LessonPlanEntry | null,
+  slotId: string | null = null
 ) {
   const normalizedDate = normalizeDateKey(dateKey) ?? getTodayDateKey();
+  const entryKey = makePlannerEntryKey(normalizedDate, slotId);
   const listKey = getDashboardLayoutKey(classListId);
   const nextEntriesByListId = { ...snapshot.entriesByListId };
   const nextEntriesForList = { ...(nextEntriesByListId[listKey] ?? {}) };
 
   if (entry) {
-    nextEntriesForList[normalizedDate] = normalizeLessonPlanEntry(entry) ?? copyLessonPlanEntry(entry);
+    nextEntriesForList[entryKey] = normalizeLessonPlanEntry(entry) ?? copyLessonPlanEntry(entry);
   } else {
-    delete nextEntriesForList[normalizedDate];
+    delete nextEntriesForList[entryKey];
   }
 
   if (Object.keys(nextEntriesForList).length > 0) {
@@ -2887,29 +3723,45 @@ export function movePlannerLessonEntry(
 ) {
   const sourceDate = normalizeDateKey(request.sourceDateKey);
   const targetDate = normalizeDateKey(request.targetDateKey);
+  const sourceSlotId = request.sourceEntrySlotId ?? null;
+  const targetSlotId = request.targetSlotId ?? null;
 
-  if (!sourceDate || !targetDate || sourceDate === targetDate) {
+  if (!sourceDate || !targetDate || (sourceDate === targetDate && sourceSlotId === targetSlotId)) {
     return snapshot;
   }
 
-  const sourceEntry = getPlannerEntry(snapshot, request.classListId, sourceDate);
+  const sourceEntry = getPlannerEntryAtKey(snapshot, request.classListId, sourceDate, sourceSlotId);
   if (!sourceEntry) {
     return snapshot;
   }
 
-  const targetEntry = getPlannerEntry(snapshot, request.classListId, targetDate);
+  const targetEntry = getPlannerEntryAtKey(snapshot, request.classListId, targetDate, targetSlotId);
   const deletedEntries = targetEntry
-    ? [
+    ? capDeletedLessonPlanEntries([
         ...snapshot.deletedEntries,
-        createDeletedLessonPlanEntry(targetEntry, request.classListId, targetDate, classLists, 'replaced')
-      ]
+        createDeletedLessonPlanEntry(
+          targetEntry,
+          request.classListId,
+          targetDate,
+          classLists,
+          'replaced',
+          targetSlotId
+        )
+      ])
     : snapshot.deletedEntries;
-  const withoutSource = setPlannerEntryForClassDate(snapshot, request.classListId, sourceDate, null);
+  const withoutSource = setPlannerEntryForClassDate(
+    snapshot,
+    request.classListId,
+    sourceDate,
+    null,
+    sourceSlotId
+  );
   const withTarget = setPlannerEntryForClassDate(
     withoutSource,
     request.classListId,
     targetDate,
-    copyLessonPlanEntry(sourceEntry)
+    copyLessonPlanEntry(sourceEntry),
+    targetSlotId
   );
 
   return {
@@ -2940,10 +3792,10 @@ export function copyPlannerLessonEntry(
 
   const targetEntry = getPlannerEntry(snapshot, classListId, targetDate);
   const deletedEntries = targetEntry
-    ? [
+    ? capDeletedLessonPlanEntries([
         ...snapshot.deletedEntries,
         createDeletedLessonPlanEntry(targetEntry, classListId, targetDate, classLists, 'replaced')
-      ]
+      ])
     : snapshot.deletedEntries;
 
   return {
@@ -2966,7 +3818,13 @@ export function getPlannerCarryOverSource(
 ) {
   const entriesForList = snapshot.entriesByListId[getDashboardLayoutKey(listId)] ?? {};
   const flaggedDates = Object.keys(entriesForList)
-    .filter((dateKey) => dateKey < beforeDateKey && entriesForList[dateKey].carryOver)
+    .filter(
+      (entryKey) =>
+        !entryKey.includes('#') &&
+        entryKey < beforeDateKey &&
+        entriesForList[entryKey].carryOver &&
+        getDaysUntilDateKey(entryKey, beforeDateKey) <= PLANNER_CARRY_OVER_MAX_AGE_DAYS
+    )
     .sort();
   const sourceDateKey = flaggedDates.at(-1);
 
@@ -3010,6 +3868,124 @@ export function findNextLessonDateKey(
   }
 
   return shiftDateKey(afterDateKey, 7);
+}
+
+/**
+ * Teaching dates for this class after `afterDateKey`, scanning up to two weeks
+ * ahead. Unlike findNextLessonDateKey there is no same-weekday fallback.
+ */
+export function findNextLessonDateKeys(
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>,
+  classListId: string,
+  afterDateKey: string,
+  count: number
+) {
+  const dateKeys: string[] = [];
+
+  for (let offset = 1; offset <= 14 && dateKeys.length < count; offset += 1) {
+    const dateKey = shiftDateKey(afterDateKey, offset);
+    const parsed = parseDateKey(dateKey);
+
+    if (!parsed) {
+      continue;
+    }
+
+    const dayKey = getBellScheduleDayKey(new Date(parsed.year, parsed.monthIndex, parsed.day));
+
+    if (
+      dayKey &&
+      weekTimelineByDay[dayKey]?.some(
+        (entry) => entry.status === 'teaching' && entry.classList?.id === classListId
+      )
+    ) {
+      dateKeys.push(dateKey);
+    }
+  }
+
+  return dateKeys;
+}
+
+/** Teaching dates for this class strictly after `fromDateKey` within its Mon-Fri week. */
+export function getRemainingWeekLessonDateKeys(
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>,
+  classListId: string,
+  fromDateKey: string
+) {
+  const weekStartDate = getPlannerWeekStartDateKey(fromDateKey);
+  const weekEndDate = shiftDateKey(weekStartDate, 4);
+
+  return findNextLessonDateKeys(weekTimelineByDay, classListId, fromDateKey, 5).filter(
+    (dateKey) => dateKey <= weekEndDate
+  );
+}
+
+export function buildPlannerCopyForwardChoices(
+  weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>,
+  classListId: string,
+  fromDateKey: string
+): PlannerCopyForwardChoice[] {
+  const nextTwo = findNextLessonDateKeys(weekTimelineByDay, classListId, fromDateKey, 2);
+  const nextLessonDateKey = nextTwo[0] ?? shiftDateKey(fromDateKey, 7);
+  const restOfWeek = getRemainingWeekLessonDateKeys(weekTimelineByDay, classListId, fromDateKey);
+  const sameDayNextWeek = shiftDateKey(fromDateKey, 7);
+  const choices: Array<PlannerCopyForwardChoice | null> = [
+    {
+      description: formatLongDate(nextLessonDateKey),
+      id: 'next-lesson',
+      label: 'Next lesson',
+      targetDateKeys: [nextLessonDateKey]
+    },
+    nextTwo.length >= 2
+      ? {
+          description: `${formatLongDate(nextTwo[0])} + ${formatLongDate(nextTwo[1])}`,
+          id: 'next-2-lessons',
+          label: 'Next 2 lessons',
+          targetDateKeys: nextTwo
+        }
+      : null,
+    restOfWeek.length > 0
+      ? {
+          description: `${restOfWeek.length} lesson${restOfWeek.length === 1 ? '' : 's'}`,
+          id: 'rest-of-week',
+          label: 'Rest of this week',
+          targetDateKeys: restOfWeek
+        }
+      : null,
+    {
+      description: formatLongDate(sameDayNextWeek),
+      id: 'same-day-next-week',
+      label: 'Same day next week',
+      targetDateKeys: [sameDayNextWeek]
+    }
+  ];
+
+  return choices.filter((choice): choice is PlannerCopyForwardChoice => choice !== null);
+}
+
+/** Cleaned attachment label: extension stripped, dashes to spaces, ~40 chars. */
+export function getPlannerDocumentDisplayName(document: PlannerDocument) {
+  if (isPlannerLinkDocument(document)) {
+    return document.name;
+  }
+
+  const withoutExtension = document.name.replace(/\.[A-Za-z0-9]{1,8}$/, '');
+  const cleaned = withoutExtension.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || document.name;
+
+  return cleaned.length > 40 ? `${cleaned.slice(0, 39).trimEnd()}…` : cleaned;
+}
+
+/** Secondary attachment text: parent folder (or hostname for links), never the full path. */
+export function getPlannerDocumentSecondaryLabel(document: PlannerDocument) {
+  if (isPlannerLinkDocument(document)) {
+    try {
+      return new URL(document.path).hostname.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  }
+
+  const segments = document.path.split(/[\\/]/).filter(Boolean);
+  return segments.length > 1 ? segments[segments.length - 2] : '';
 }
 
 export function normalizePlannerLinkUrl(rawUrl: string) {
@@ -3058,7 +4034,8 @@ export function deletePlannerLessonEntry(
   snapshot: PlannerSnapshot,
   classListId: string,
   dateKey: string,
-  classLists: ClassList[]
+  classLists: ClassList[],
+  slotId: string | null = null
 ) {
   const normalizedDate = normalizeDateKey(dateKey);
 
@@ -3066,17 +4043,17 @@ export function deletePlannerLessonEntry(
     return snapshot;
   }
 
-  const entry = getPlannerEntry(snapshot, classListId, normalizedDate);
+  const entry = getPlannerEntryAtKey(snapshot, classListId, normalizedDate, slotId);
   if (!entry) {
     return snapshot;
   }
 
   return {
-    ...setPlannerEntryForClassDate(snapshot, classListId, normalizedDate, null),
-    deletedEntries: [
+    ...setPlannerEntryForClassDate(snapshot, classListId, normalizedDate, null, slotId),
+    deletedEntries: capDeletedLessonPlanEntries([
       ...snapshot.deletedEntries,
-      createDeletedLessonPlanEntry(entry, classListId, normalizedDate, classLists, 'deleted')
-    ]
+      createDeletedLessonPlanEntry(entry, classListId, normalizedDate, classLists, 'deleted', slotId)
+    ])
   };
 }
 
@@ -3084,7 +4061,8 @@ export function restoreDeletedPlannerLessonEntry(
   snapshot: PlannerSnapshot,
   deletedEntryId: string,
   restoreDateKey: string,
-  classLists: ClassList[]
+  classLists: ClassList[],
+  slotId: string | null = null
 ) {
   const restoreDate = normalizeDateKey(restoreDateKey);
   const deletedEntry = snapshot.deletedEntries.find((entry) => entry.id === deletedEntryId);
@@ -3093,25 +4071,27 @@ export function restoreDeletedPlannerLessonEntry(
     return snapshot;
   }
 
-  const existingEntry = getPlannerEntry(snapshot, deletedEntry.classListId, restoreDate);
+  const existingEntry = getPlannerEntryAtKey(snapshot, deletedEntry.classListId, restoreDate, slotId);
   const deletedEntries = snapshot.deletedEntries.filter((entry) => entry.id !== deletedEntryId);
   const nextDeletedEntries = existingEntry
-    ? [
+    ? capDeletedLessonPlanEntries([
         ...deletedEntries,
         createDeletedLessonPlanEntry(
           existingEntry,
           deletedEntry.classListId,
           restoreDate,
           classLists,
-          'replaced'
+          'replaced',
+          slotId
         )
-      ]
+      ])
     : deletedEntries;
   const withRestoredEntry = setPlannerEntryForClassDate(
     snapshot,
     deletedEntry.classListId,
     restoreDate,
-    copyLessonPlanEntry(deletedEntry)
+    copyLessonPlanEntry(deletedEntry),
+    slotId
   );
 
   return {
@@ -3198,25 +4178,43 @@ export function getPlannerWeekSelectorYears(
   return Array.from(years).sort((left, right) => left - right);
 }
 
-export function buildPlannerWeekSelectorOptions(year: number, selectedWeekStart: string) {
-  const groups = SCHOOL_TERMS.map((schoolTerm) => {
-    const termStart = formatDateKey(year, schoolTerm.start.monthIndex, schoolTerm.start.day);
-    const termEnd = formatDateKey(year, schoolTerm.end.monthIndex, schoolTerm.end.day);
-    const termDays = Math.max(getDaysUntilDateKey(termStart, termEnd) + 1, 1);
-    const weekCount = Math.ceil(termDays / 7);
+export function buildPlannerWeekSelectorOptions(
+  year: number,
+  selectedWeekStart: string,
+  terms: SchoolTermDefinition[] = getActiveSchoolTerms()
+) {
+  const groups =
+    terms.length > 0
+      ? terms
+          .map((schoolTerm) => {
+            const projected = projectSchoolTermToYear(schoolTerm, year);
 
-    return {
-      label: `Term ${schoolTerm.term}`,
-      options: Array.from({ length: weekCount }, (_value, index) => {
-        const weekStartDate = getPlannerWeekStartDateKey(shiftDateKey(termStart, index * 7));
+            if (!projected) {
+              return null;
+            }
 
-        return {
-          label: `Week ${index + 1}: ${formatPlannerWeekSelectorRange(weekStartDate)}`,
-          value: weekStartDate
-        };
-      })
-    };
-  });
+            const termDays = Math.max(
+              getDaysUntilDateKey(projected.startDateKey, projected.endDateKey) + 1,
+              1
+            );
+            const weekCount = Math.ceil(termDays / 7);
+
+            return {
+              label: `Term ${projected.number}`,
+              options: Array.from({ length: weekCount }, (_value, index) => {
+                const weekStartDate = getPlannerWeekStartDateKey(
+                  shiftDateKey(projected.startDateKey, index * 7)
+                );
+
+                return {
+                  label: `Week ${index + 1}: ${formatPlannerWeekSelectorRange(weekStartDate)}`,
+                  value: weekStartDate
+                };
+              })
+            };
+          })
+          .filter((group): group is { label: string; options: Array<{ label: string; value: string }> } => group !== null)
+      : [buildPlannerPlainWeekSelectorGroup(year)];
   const optionValues = new Set(groups.flatMap((group) => group.options.map((option) => option.value)));
 
   if (getPlannerWeekYear(selectedWeekStart) === year && !optionValues.has(selectedWeekStart)) {
@@ -3237,12 +4235,42 @@ export function buildPlannerWeekSelectorOptions(year: number, selectedWeekStart:
   return groups;
 }
 
+/** Week list for a whole year, used when no school terms are configured. */
+export function buildPlannerPlainWeekSelectorGroup(year: number) {
+  const firstWeekStart = getPlannerWeekStartDateKey(formatDateKey(year, 0, 1));
+  const options: Array<{ label: string; value: string }> = [];
+
+  for (let index = 0; index < 54; index += 1) {
+    const weekStartDate = shiftDateKey(firstWeekStart, index * 7);
+    const weekYear = getPlannerWeekYear(weekStartDate);
+
+    if (weekYear > year) {
+      break;
+    }
+
+    if (weekYear < year) {
+      continue;
+    }
+
+    options.push({
+      label: `Week of ${formatPlannerWeekSelectorRange(weekStartDate)}`,
+      value: weekStartDate
+    });
+  }
+
+  return { label: 'Weeks', options };
+}
+
 export function buildPlannerWeekLessonBlocks({
-  getEntryForClassDate,
+  resolveEntryForClassDateSlot,
   weekDatesByDay,
   weekTimelineByDay
 }: {
-  getEntryForClassDate: (classListId: string, dateKey: string) => LessonPlanEntry | null;
+  resolveEntryForClassDateSlot: (
+    classListId: string,
+    dateKey: string,
+    slotId: string | null
+  ) => { entry: LessonPlanEntry | null; entrySlotId: string | null };
   weekDatesByDay: Record<BellScheduleDayKey, string>;
   weekTimelineByDay: Record<BellScheduleDayKey, BellTimelineEntry[]>;
 }) {
@@ -3253,7 +4281,11 @@ export function buildPlannerWeekLessonBlocks({
       .filter((entry) => entry.status === 'teaching' && entry.classList)
       .map((entry) => {
         const classList = entry.classList as ClassList;
-        const plannerEntry = getEntryForClassDate(classList.id, dateKey);
+        const { entry: plannerEntry, entrySlotId } = resolveEntryForClassDateSlot(
+          classList.id,
+          dateKey,
+          entry.definition.id
+        );
 
         return {
           classListId: classList.id,
@@ -3262,9 +4294,11 @@ export function buildPlannerWeekLessonBlocks({
           dayKey,
           documentCount: plannerEntry?.documents.length ?? 0,
           endMinutes: entry.definition.endMinutes,
+          entrySlotId: plannerEntry ? entrySlotId : null,
           hasContent: Boolean(plannerEntry?.plan.trim() || plannerEntry?.documents.length),
           id: `${dayKey}-${entry.definition.id}-${classList.id}`,
           plan: plannerEntry?.plan ?? '',
+          slotId: entry.definition.id,
           slotLabel: entry.definition.label,
           slotShortLabel: entry.definition.shortLabel,
           startMinutes: entry.definition.startMinutes
@@ -3384,13 +4418,63 @@ export function getPlannerSelectedDate(snapshot: PlannerSnapshot, listId: string
   return snapshot.activeDateByListId[getDashboardLayoutKey(listId)] ?? getTodayDateKey();
 }
 
-export function getPlannerEntry(snapshot: PlannerSnapshot, listId: string | null, dateKey: string) {
+export function makePlannerEntryKey(dateKey: string, slotId: string | null = null) {
+  return slotId ? `${dateKey}#${slotId}` : dateKey;
+}
+
+export function parsePlannerEntryKey(entryKey: string) {
+  const separatorIndex = entryKey.indexOf('#');
+
+  if (separatorIndex === -1) {
+    return { dateKey: entryKey, slotId: null as string | null };
+  }
+
+  const slotId = entryKey.slice(separatorIndex + 1);
+  return {
+    dateKey: entryKey.slice(0, separatorIndex),
+    slotId: slotId ? slotId : null
+  };
+}
+
+/** Exact-key lookup: the date-level entry when slotId is null, else the slot entry only. */
+export function getPlannerEntryAtKey(
+  snapshot: PlannerSnapshot,
+  listId: string | null,
+  dateKey: string,
+  slotId: string | null = null
+) {
   const normalizedDate = normalizeDateKey(dateKey);
   if (!normalizedDate) {
     return null;
   }
 
-  return snapshot.entriesByListId[getDashboardLayoutKey(listId)]?.[normalizedDate] ?? null;
+  return (
+    snapshot.entriesByListId[getDashboardLayoutKey(listId)]?.[
+      makePlannerEntryKey(normalizedDate, slotId)
+    ] ?? null
+  );
+}
+
+export function getPlannerEntry(snapshot: PlannerSnapshot, listId: string | null, dateKey: string) {
+  return getPlannerEntryAtKey(snapshot, listId, dateKey, null);
+}
+
+/** Week-view resolution: prefer the slot-keyed entry, fall back to the date-level one. */
+export function resolvePlannerEntryForSlot(
+  snapshot: PlannerSnapshot,
+  listId: string | null,
+  dateKey: string,
+  slotId: string | null
+) {
+  if (slotId) {
+    const slotEntry = getPlannerEntryAtKey(snapshot, listId, dateKey, slotId);
+
+    if (slotEntry) {
+      return { entry: slotEntry, entrySlotId: slotId as string | null };
+    }
+  }
+
+  return { entry: getPlannerEntryAtKey(snapshot, listId, dateKey, null), entrySlotId: null as string | null };
 }
 
 export function getPlannerEntriesForClassLists(snapshot: PlannerSnapshot, classLists: ClassList[]): LessonPlansPdfEntry[] {
@@ -3398,7 +4482,8 @@ export function getPlannerEntriesForClassLists(snapshot: PlannerSnapshot, classL
     .flatMap((classList) => {
       const entriesForList = snapshot.entriesByListId[getDashboardLayoutKey(classList.id)] ?? {};
 
-      return Object.entries(entriesForList).map(([dateKey, entry]) => {
+      return Object.entries(entriesForList).map(([entryKey, entry]) => {
+        const { dateKey } = parsePlannerEntryKey(entryKey);
         const parsed = parseDateKey(dateKey);
         const termSelection = getLessonPlanExportSchoolTermSelection(dateKey);
         const termLabel = termSelection
@@ -3470,8 +4555,10 @@ export function updatePlannerEntry(
     delete nextEntriesByListId[listKey];
   }
 
+  // Editing a plan must never move the class's current-date pointer — only
+  // explicit navigation (setSelectedDate / move / restore) does that.
   return {
-    ...setPlannerDateForList(snapshot, listId, normalizedDate),
+    ...snapshot,
     entriesByListId: nextEntriesByListId
   };
 }
@@ -3486,15 +4573,19 @@ export function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnap
     confirmLessonPlanMoves?: unknown;
     deletedEntries?: unknown[];
     entriesByListId?: Record<string, Record<string, unknown>>;
+    schoolTerms?: unknown;
+    schoolTermsEnabled?: unknown;
     templates?: unknown[];
   };
   const activeDateByListId: Record<string, string> = {};
   const entriesByListId: Record<string, Record<string, LessonPlanEntry>> = {};
-  const deletedEntries = Array.isArray(nextRaw.deletedEntries)
-    ? nextRaw.deletedEntries
-        .map((entry) => normalizeDeletedLessonPlanEntry(entry))
-        .filter((entry): entry is DeletedLessonPlanEntry => entry !== null)
-    : [];
+  const deletedEntries = capDeletedLessonPlanEntries(
+    Array.isArray(nextRaw.deletedEntries)
+      ? nextRaw.deletedEntries
+          .map((entry) => normalizeDeletedLessonPlanEntry(entry))
+          .filter((entry): entry is DeletedLessonPlanEntry => entry !== null)
+      : []
+  );
 
   if (nextRaw.activeDateByListId && typeof nextRaw.activeDateByListId === 'object') {
     for (const [listId, dateValue] of Object.entries(nextRaw.activeDateByListId)) {
@@ -3517,12 +4608,13 @@ export function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnap
 
       const nextEntriesForList: Record<string, LessonPlanEntry> = {};
 
-      for (const [dateKey, entryRaw] of Object.entries(entriesRaw)) {
+      for (const [entryKeyRaw, entryRaw] of Object.entries(entriesRaw)) {
+        const { dateKey, slotId } = parsePlannerEntryKey(entryKeyRaw);
         const normalizedDate = normalizeDateKey(dateKey);
         const normalizedEntry = normalizeLessonPlanEntry(entryRaw);
 
         if (normalizedDate && normalizedEntry) {
-          nextEntriesForList[normalizedDate] = normalizedEntry;
+          nextEntriesForList[makePlannerEntryKey(normalizedDate, slotId)] = normalizedEntry;
         }
       }
 
@@ -3540,6 +4632,11 @@ export function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnap
         : initialValue.confirmLessonPlanMoves,
     deletedEntries,
     entriesByListId,
+    schoolTerms: normalizeSchoolTermList(nextRaw.schoolTerms) ?? initialValue.schoolTerms,
+    schoolTermsEnabled:
+      typeof nextRaw.schoolTermsEnabled === 'boolean'
+        ? nextRaw.schoolTermsEnabled
+        : initialValue.schoolTermsEnabled,
     templates: Array.isArray(nextRaw.templates)
       ? nextRaw.templates
           .map((template) => normalizeLessonPlanTemplate(template))
@@ -3632,6 +4729,7 @@ export function normalizeDeletedLessonPlanEntry(raw: unknown): DeletedLessonPlan
     deletedAt?: unknown;
     id?: unknown;
     reason?: unknown;
+    slotId?: unknown;
   };
   const classListId = typeof nextRaw.classListId === 'string' ? nextRaw.classListId.trim() : '';
   const className = typeof nextRaw.className === 'string' ? nextRaw.className.trim() : '';
@@ -3652,7 +4750,11 @@ export function normalizeDeletedLessonPlanEntry(raw: unknown): DeletedLessonPlan
         ? nextRaw.deletedAt
         : Date.now(),
     id,
-    reason: nextRaw.reason === 'replaced' ? 'replaced' : 'deleted'
+    reason: nextRaw.reason === 'replaced' ? 'replaced' : 'deleted',
+    slotId:
+      typeof nextRaw.slotId === 'string' && nextRaw.slotId.trim() && !nextRaw.slotId.includes('#')
+        ? nextRaw.slotId.trim()
+        : null
   };
 }
 

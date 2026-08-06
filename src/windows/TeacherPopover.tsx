@@ -6,6 +6,8 @@ import { getAppUpdateActionErrorMessage, getAppUpdateButtonLabel, getAppUpdateSt
 import type { ColorModePaletteTarget, ColorModeSwatchId } from '../app/colorMode';
 import { ColorModeAppearanceContext, ColorModePalette, ColorModeTriggerButton, getColorModePanelStyle, useColorModePreferencesState } from '../app/colorMode';
 import { useInterfaceScaleControls } from '../app/interfaceScale';
+import { useOrphanedClassDataCleanup } from '../shared/classDataCleanup';
+import { useToday } from '../shared/uiKit';
 import { SettingsCogIcon, getNextThemePreference, useResolvedTheme, useThemePreferenceState } from '../app/theme';
 import { useWidgetPopoutIds } from '../app/windowContext';
 import { formatLongDate } from '../shared/dates';
@@ -14,14 +16,14 @@ import { clampNumber, haveSameStudents } from '../shared/utils';
 import { MIN_POPOVER_HEIGHT, MIN_POPOVER_WIDTH, useWindowResizeHandles } from '../shared/windowSizing';
 import { BellScheduleWidgetContent, getActiveBellScheduleClassListId, useBellScheduleController } from '../widgets/bellSchedule';
 import { WidgetCard, WidgetPopoutButton } from '../widgets/chrome';
-import { activateClassList } from '../widgets/classLists';
+import { activateClassList, isClassListVisible } from '../widgets/classLists';
 import type { DashboardMetrics, WidgetHeightModels, WidgetLayout, WidgetSizeTier } from '../widgets/dashboard';
 import { DASHBOARD_FIT_SCALE_MIN, DASHBOARD_SHELL_SHADOW_PAD, WIDGET_SIZE_MAX, WIDGET_SIZE_MIN, WIDGET_SIZE_TIER_ZOOM, buildResponsiveDashboardLayout, computeDashboardMetrics, getWidgetDashboardHeight, getWidgetLayoutForList, reorderWidgetIds, toggleWidgetIdInList, updateWidgetLayoutForList, useDashboardLayoutsState } from '../widgets/dashboard';
 import { GroupMakerWidgetContent, useGroupMakerWidgetState } from '../widgets/groupMaker';
 import { getGroupRulesForList, useGroupRulesState } from '../widgets/groupRules';
 import { NotesWidgetContent, useNotesWidgetState } from '../widgets/notes';
 import { PickerWidgetContent, usePickerWidgetState } from '../widgets/picker';
-import { PlannerWidgetContent, findNextLessonDateKey, formatSchoolDateLabel, useLessonPlannerController, usePlannerPopoutModeState } from '../widgets/planner';
+import { PlannerWidgetContent, buildPlannerCopyForwardChoices, findNextLessonDateKey, formatSchoolDateLabel, useLessonPlannerController, usePlannerPopoutModeState } from '../widgets/planner';
 import { QrGeneratorWidgetContent, useQrWidgetState } from '../widgets/qr';
 import type { WidgetId } from '../widgets/registry';
 import { WIDGET_DETAILS, isWidgetId } from '../widgets/registry';
@@ -32,6 +34,57 @@ import { SettingsPopover } from './SettingsPopover';
 
 function normalizeSeatingFollowFlag(raw: unknown, initialValue: boolean) {
   return typeof raw === 'boolean' ? raw : initialValue;
+}
+
+// The timer's per-second tick lives inside this wrapper so a running timer
+// re-renders only its own card, not all nine widget subtrees.
+function TimerDashboardCard({
+  collapsed,
+  dragProps,
+  headerActions,
+  isDragOver,
+  isDragging,
+  onToggleCollapsed,
+  sizeTier,
+  targetHeight
+}: {
+  collapsed: boolean;
+  dragProps: {
+    onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  };
+  headerActions: React.ReactNode;
+  isDragOver: boolean;
+  isDragging: boolean;
+  onToggleCollapsed: () => void;
+  sizeTier: WidgetSizeTier;
+  targetHeight?: number;
+}) {
+  const timerController = useTimerWidgetState();
+
+  return (
+    <WidgetCard
+      badge={timerController.timerStatusLabel}
+      badgeTone={timerController.isTimerFinished ? 'alert' : 'default'}
+      collapsed={collapsed}
+      description={WIDGET_DETAILS.timer.description}
+      headerDragMode="interactive"
+      isDragOver={isDragOver}
+      isDragging={isDragging}
+      onDoubleClick={onToggleCollapsed}
+      onToggleCollapsed={onToggleCollapsed}
+      title={WIDGET_DETAILS.timer.title}
+      widgetId="timer"
+      sizeTier={sizeTier}
+      headerActions={headerActions}
+      targetHeight={targetHeight}
+      {...dragProps}
+    >
+      <TimerWidgetContent controller={timerController} />
+    </WidgetCard>
+  );
 }
 
 export function TeacherPopover() {
@@ -50,11 +103,11 @@ export function TeacherPopover() {
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
-  const timerController = useTimerWidgetState();
   const pickerController = usePickerWidgetState();
   const { picker, setPicker } = pickerController;
   const groupMakerController = useGroupMakerWidgetState(picker);
   const [groupRulesSnapshot] = useGroupRulesState();
+  useOrphanedClassDataCleanup(picker.lists.map((list) => list.id));
   const [seatingFollowsTimetable, setSeatingFollowsTimetable] = usePersistentState<boolean>(
     'teacher-tools.seating-follow-timetable',
     true,
@@ -101,7 +154,7 @@ export function TeacherPopover() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLaunchAtLoginSaving, setIsLaunchAtLoginSaving] = useState(false);
   const openWidgetPopouts = useWidgetPopoutIds();
-  const now = timerController.now;
+  const todayKey = useToday();
   const resolvedTheme = useResolvedTheme(themePreference);
   const nextThemePreference = getNextThemePreference(themePreference);
   const selectedList = picker.lists.find((list) => list.id === picker.selectedListId) ?? null;
@@ -147,19 +200,21 @@ export function TeacherPopover() {
     ]
   );
 
+  // With follow-timetable on, the active class tracks every period change;
+  // otherwise the scheduled class is applied once when the panel opens.
   useLayoutEffect(() => {
-    if (didApplyScheduledClassRef.current) {
+    if (!scheduledClassListId) {
+      didApplyScheduledClassRef.current = true;
+      return;
+    }
+
+    if (!seatingFollowsTimetable && didApplyScheduledClassRef.current) {
       return;
     }
 
     didApplyScheduledClassRef.current = true;
-
-    if (!scheduledClassListId) {
-      return;
-    }
-
     setPicker((current) => activateClassList(current, scheduledClassListId));
-  }, [scheduledClassListId, setPicker]);
+  }, [scheduledClassListId, seatingFollowsTimetable, setPicker]);
 
   const dashboardColumns = dashboardLayoutFit.columns;
   const dashboardColumnKey = dashboardColumns.map((column) => column.widgetIds.join(',')).join('|');
@@ -179,13 +234,23 @@ export function TeacherPopover() {
   const nextLessonDateKey = selectedList
     ? findNextLessonDateKey(bellSchedule.weekTimelineByDay, selectedList.id, planner.selectedDate)
     : null;
-  const todayLabel = formatSchoolDateLabel(new Date(now));
+  const todayLabel = useMemo(() => formatSchoolDateLabel(new Date()), [todayKey]);
+  const plannerCopyForwardChoices = useMemo(
+    () =>
+      selectedList
+        ? buildPlannerCopyForwardChoices(
+            bellSchedule.weekTimelineByDay,
+            selectedList.id,
+            planner.selectedDate
+          )
+        : [],
+    [bellSchedule.weekTimelineByDay, planner.selectedDate, selectedList]
+  );
   const appUpdateButtonLabel = getAppUpdateButtonLabel(appUpdate);
   const appUpdateStatusLabel = getAppUpdateStatusLabel(appUpdate);
   const appUpdateStatusTone = getAppUpdateStatusTone(appUpdate);
   const appUpdateActionDisabled =
     appUpdate.status === 'checking' ||
-    appUpdate.status === 'available' ||
     appUpdate.status === 'downloading' ||
     appUpdate.status === 'unsupported';
   const plannerBadgeLabel = planner.documents.length > 0 ? `${planner.documents.length}` : null;
@@ -198,6 +263,26 @@ export function TeacherPopover() {
       ? `Saved for ${formatLongDate(planner.selectedDate)}.`
       : `Plan ${selectedList.name} for ${formatLongDate(planner.selectedDate)}.`;
   const handleAppUpdateAction = () => {
+    if (appUpdate.status === 'available') {
+      const downloadAppUpdate = window.electronAPI?.downloadAppUpdate;
+
+      if (downloadAppUpdate) {
+        void downloadAppUpdate()
+          .then((nextState) => {
+            setAppUpdate(nextState);
+          })
+          .catch((error) => {
+            setAppUpdate((current) => ({
+              ...current,
+              message: getAppUpdateActionErrorMessage(error),
+              progressPercent: null,
+              status: 'error'
+            }));
+          });
+        return;
+      }
+    }
+
     if (appUpdate.status === 'downloaded') {
       const installAppUpdate = window.electronAPI?.installAppUpdate;
 
@@ -1131,26 +1216,17 @@ export function TeacherPopover() {
 
     if (widgetId === 'timer') {
       return (
-        <WidgetCard
-          badge={timerController.timerStatusLabel}
-          badgeTone={timerController.isTimerFinished ? 'alert' : 'default'}
+        <TimerDashboardCard
           collapsed={collapsed}
-          description={WIDGET_DETAILS.timer.description}
-          headerDragMode="interactive"
+          headerActions={headerActions}
           isDragOver={isDragOver}
           isDragging={isDragging}
           key={widgetId}
-          onDoubleClick={() => toggleWidgetCollapsed(widgetId)}
           onToggleCollapsed={() => toggleWidgetCollapsed(widgetId)}
-          title={WIDGET_DETAILS[widgetId].title}
-          widgetId={widgetId}
           sizeTier={sizeTier}
-          headerActions={headerActions}
           targetHeight={targetHeight}
-          {...dragProps}
-        >
-          <TimerWidgetContent controller={timerController} />
-        </WidgetCard>
+          dragProps={dragProps}
+        />
       );
     }
 
@@ -1272,6 +1348,17 @@ export function TeacherPopover() {
               onToggle: planner.toggleCarryOver
             }}
             classLists={picker.lists}
+            copyForward={{
+              choices: plannerCopyForwardChoices,
+              onCopy: (choiceId) => {
+                const choice = plannerCopyForwardChoices.find(
+                  (candidate) => candidate.id === choiceId
+                );
+                if (choice) {
+                  planner.copyLessonForwardToDates(choice.targetDateKeys);
+                }
+              }
+            }}
             copyForwardTargetLabel={nextLessonDateKey ? formatLongDate(nextLessonDateKey) : null}
             deletedLessonPlans={planner.deletedLessonPlans}
             documents={planner.documents}
@@ -1296,7 +1383,8 @@ export function TeacherPopover() {
               entries: planner.templates,
               onApply: planner.applyTemplate,
               onDelete: planner.deleteTemplate,
-              onSave: planner.saveTemplate
+              onSave: planner.saveTemplate,
+              onUpdate: planner.updateTemplate
             }}
           />
         </WidgetCard>
@@ -1464,25 +1552,63 @@ export function TeacherPopover() {
                 <div className="picker-select picker-select--toolbar" ref={classMenuRef}>
                   <span className="toolbar-caption">Class</span>
                   <button
+                    aria-controls="class-list-menu"
+                    aria-expanded={isClassMenuOpen}
+                    aria-haspopup="listbox"
                     className={`picker-select__trigger ${isClassMenuOpen ? 'picker-select__trigger--open' : ''}`}
                     disabled={isPickerSpinning || picker.lists.length === 0}
                     onClick={() => setIsClassMenuOpen((current) => !current)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown' && !isClassMenuOpen) {
+                        event.preventDefault();
+                        setIsClassMenuOpen(true);
+                      }
+                    }}
                     type="button"
                   >
                     <span>{selectedList?.name ?? 'Choose a list'}</span>
-                    <span className="picker-select__chevron">{isClassMenuOpen ? '–' : '+'}</span>
+                    <span aria-hidden="true" className="picker-select__chevron">
+                      {isClassMenuOpen ? '–' : '+'}
+                    </span>
                   </button>
 
                   {isClassMenuOpen && (
-                    <div className="picker-select__menu picker-select__menu--toolbar">
+                    <div
+                      className="picker-select__menu picker-select__menu--toolbar"
+                      id="class-list-menu"
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        const options = Array.from(
+                          event.currentTarget.querySelectorAll<HTMLButtonElement>('.picker-select__option')
+                        );
+                        if (options.length === 0) {
+                          return;
+                        }
+                        const activeIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+                        const nextIndex =
+                          event.key === 'ArrowDown'
+                            ? (activeIndex + 1) % options.length
+                            : (activeIndex - 1 + options.length) % options.length;
+                        options[nextIndex]?.focus();
+                      }}
+                      role="listbox"
+                    >
                       {picker.lists.length > 0 ? (
-                        picker.lists.map((list) => (
+                        picker.lists
+                          .filter((list) => isClassListVisible(list) || list.id === selectedList?.id)
+                          .map((list) => (
                           <button
+                            aria-selected={list.id === selectedList?.id}
                             className={`picker-select__option ${
                               list.id === selectedList?.id ? 'picker-select__option--active' : ''
                             }`}
                             key={list.id}
                             onClick={() => selectClassList(list.id)}
+                            role="option"
                             type="button"
                           >
                             <span>{list.name}</span>

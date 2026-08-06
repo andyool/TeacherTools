@@ -5,7 +5,12 @@ export type ClassList = {
   id: string;
   name: string;
   students: string[];
+  archived?: boolean;
 };
+
+export function isClassListVisible(list: ClassList) {
+  return list.archived !== true;
+}
 
 export const DEFAULT_CLASS_LIST: ClassList = {
   id: 'default-class-list',
@@ -22,6 +27,7 @@ export function normalizeClassList(raw: unknown): ClassList | null {
     id?: unknown;
     name?: unknown;
     students?: unknown[];
+    archived?: unknown;
   };
 
   if (
@@ -40,7 +46,8 @@ export function normalizeClassList(raw: unknown): ClassList | null {
   return {
     id: nextRaw.id,
     name: nextRaw.name.trim(),
-    students
+    students,
+    ...(nextRaw.archived === true ? { archived: true } : {})
   };
 }
 
@@ -78,12 +85,15 @@ export function upsertClassList(
     students: string[];
   }
 ) {
+  const existingIndex = snapshot.lists.findIndex((list) => list.id === entry.listId);
+  const existingList = existingIndex >= 0 ? snapshot.lists[existingIndex] : null;
   const nextList: ClassList = {
     id: entry.listId,
     name: entry.name.trim(),
-    students: dedupeNames(entry.students)
+    students: dedupeNames(entry.students),
+    // Saving a list must not silently drop its archived flag.
+    ...(existingList?.archived ? { archived: true } : {})
   };
-  const existingIndex = snapshot.lists.findIndex((list) => list.id === entry.listId);
   const nextLists =
     existingIndex >= 0
       ? snapshot.lists.map((list) => (list.id === entry.listId ? nextList : list))

@@ -112,7 +112,7 @@
 
 .seating-chart__stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -497,4 +497,92 @@
 
 .seating-chart__follow-toggle input {
   accent-color: var(--tone-action);
+}
+
+/* Teacher's-eye view: rotate the grid 180° and counter-rotate each cell so
+   positions flip while labels stay readable. */
+.seating-chart__grid--flipped {
+  transform: rotate(180deg);
+}
+
+.seating-chart__grid--flipped .seating-chart__cell {
+  transform: rotate(180deg);
+}
+
+.seating-chart__history-button {
+  min-width: 34px;
+  padding-inline: 8px;
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+
+.seating-chart__history-button:disabled {
+  opacity: 0.45;
+}
+
+.seating-chart__copy-menu-wrap {
+  position: relative;
+}
+
+.seating-chart__copy-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--field-border);
+  background: var(--menu-surface);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.24);
+}
+
+.seating-chart__copy-menu-item {
+  padding: 6px 10px;
+  border-radius: calc(var(--radius-card) - 3px);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-align: left;
+}
+
+.seating-chart__copy-menu-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.seating-chart__front-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.seating-chart__front-toggle input {
+  accent-color: var(--tone-action);
+}
+
+.seating-chart__row-builder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seating-chart__row-builder .secondary-link {
+  flex: 1 1 auto;
+}
+
+.seating-chart__row-count {
+  width: 58px;
+  flex: 0 0 auto;
+}
+
+.seating-chart__cell:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 62%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AppUpdateState, TimerChimeSound, TimerSpeechVoice } from '../electron-types';
 import { getAppUpdateTooltip } from '../app/appUpdate';
 import type { ColorModePaletteTarget, ColorModePreferences } from '../app/colorMode';
@@ -68,6 +69,31 @@ export function SettingsPopover({
   timerVoiceEnabled: boolean;
   timerSpeechVoice: TimerSpeechVoice;
 }) {
+  const [dataActionStatus, setDataActionStatus] = useState('');
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+
+  const runDataAction = (
+    action: (() => Promise<{ canceled: boolean; errorMessage?: string; ok: boolean }>) | undefined,
+    successMessage: string
+  ) => {
+    if (!action) {
+      return;
+    }
+
+    setDataActionStatus('');
+    void action()
+      .then((result) => {
+        if (result.ok) {
+          setDataActionStatus(successMessage);
+        } else if (!result.canceled) {
+          setDataActionStatus(result.errorMessage ?? 'That did not work. Try again.');
+        }
+      })
+      .catch(() => {
+        setDataActionStatus('That did not work. Try again.');
+      });
+  };
+
   return (
     <div aria-label="Settings" className="settings-popout" role="dialog">
       <div className="settings-popout__header">
@@ -204,6 +230,37 @@ export function SettingsPopover({
       </div>
 
       <div className="settings-section">
+        <span className="card-label">Data</span>
+        <div className="settings-row__cluster settings-row__cluster--wrap">
+          <button
+            className="toolbar-link"
+            disabled={!window.electronAPI?.exportAppData}
+            onClick={() => runDataAction(window.electronAPI?.exportAppData, 'Backup saved.')}
+            type="button"
+          >
+            Export backup
+          </button>
+          <button
+            className="toolbar-link"
+            disabled={!window.electronAPI?.importAppData}
+            onClick={() => runDataAction(window.electronAPI?.importAppData, 'Backup restored.')}
+            type="button"
+          >
+            Import backup
+          </button>
+          <button
+            className="toolbar-link"
+            disabled={!window.electronAPI?.revealDataFolder}
+            onClick={() => void window.electronAPI?.revealDataFolder?.()}
+            type="button"
+          >
+            Show data folder
+          </button>
+        </div>
+        {dataActionStatus ? <p className="settings-copy" role="status">{dataActionStatus}</p> : null}
+      </div>
+
+      <div className="settings-section">
         <span className="card-label">Updates</span>
         <p className="settings-copy">{getAppUpdateTooltip(appUpdate)}</p>
         <button
@@ -222,6 +279,21 @@ export function SettingsPopover({
         >
           {appUpdateButtonLabel}
         </button>
+        {appUpdate.releaseNotes ? (
+          <>
+            <button
+              aria-expanded={showReleaseNotes}
+              className="secondary-link"
+              onClick={() => setShowReleaseNotes((current) => !current)}
+              type="button"
+            >
+              {showReleaseNotes ? 'Hide release notes' : "What's new"}
+            </button>
+            {showReleaseNotes ? (
+              <p className="settings-copy settings-release-notes">{appUpdate.releaseNotes}</p>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </div>
   );

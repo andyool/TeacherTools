@@ -1,11 +1,27 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { WindowBounds } from '../electron-types';
 import { getTodayDateKey } from '../shared/dates';
-import { useClockNow, useNow, usePersistentState } from '../shared/persistence';
+import { useNow, usePersistentState } from '../shared/persistence';
 import { getLiveBellScheduleStatus, useBellScheduleState } from '../widgets/bellSchedule';
 import type { TimerSnapshot } from '../widgets/timer';
 import { DEFAULT_TIMER, hasUnacknowledgedTimerCompletion, normalizeTimerSnapshot, useTimerSoundAlerts } from '../widgets/timer';
+
+/**
+ * Ticks every second only while a live period needs a countdown; otherwise a
+ * lazy 15s tick keeps the dot cheap — it previously re-rendered 1×/sec forever.
+ */
+function useAdaptiveClockNow(bellSchedule: ReturnType<typeof useBellScheduleState>[0]) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const isHot = Boolean(getLiveBellScheduleStatus(bellSchedule, now)?.isActive);
+    const interval = window.setInterval(() => setNow(Date.now()), isHot ? 1000 : 15_000);
+    return () => window.clearInterval(interval);
+  }, [bellSchedule, now]);
+
+  return now;
+}
 
 export function OverlayDot() {
   const overlayBoundsRef = useRef<WindowBounds>({
@@ -28,7 +44,7 @@ export function OverlayDot() {
   const overlayDragAnimationFrameRef = useRef<number | null>(null);
   const notifiedPeriodAlertsRef = useRef<Set<string>>(new Set());
   const [bellSchedule] = useBellScheduleState();
-  const clockNow = useClockNow();
+  const clockNow = useAdaptiveClockNow(bellSchedule);
   const now = useNow(timer.endsAt);
   const remainingMs = timer.endsAt ? Math.max(timer.endsAt - now, 0) : timer.pausedRemainingMs;
   const isTimerAlertActive = hasUnacknowledgedTimerCompletion(timer);
@@ -339,11 +355,15 @@ export function OverlayDot() {
         </button>
 
         <button
-          aria-label="Exit TeacherTools"
+          aria-label="Hide or quit TeacherTools"
           className="overlay-exit"
           onClick={(event) => {
             event.stopPropagation();
-            window.electronAPI?.quitApp();
+            if (window.electronAPI?.showOverlayMenu) {
+              window.electronAPI.showOverlayMenu();
+            } else {
+              window.electronAPI?.quitApp();
+            }
           }}
           type="button"
         >

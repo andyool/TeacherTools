@@ -47,7 +47,7 @@ export const WIDGET_DETAILS: Record<
 > = {
   timer: {
     title: 'Timer',
-    description: 'Countdown presets, stopwatch mode, and named class timers.'
+    description: 'Countdown presets, repeat rounds, stopwatch mode, and a class display.'
   },
   picker: {
     title: 'Student Picker',

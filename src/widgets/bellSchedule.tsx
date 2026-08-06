@@ -3,6 +3,7 @@ import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { returnToTeacherTools } from '../app/windowContext';
 import { formatDateKey, formatLongDate, getDaysUntilDateKey, getMinutesSinceMidnight, getTimestampForMinutes, getTodayDateKey, normalizeDateKey, shiftDateKey } from '../shared/dates';
 import { useClockNow, usePersistentState } from '../shared/persistence';
+import { requestConfirm, showUndoToast } from '../shared/uiKit';
 import { clampNumber, createStickyNoteId, formatDuration } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
@@ -52,6 +53,7 @@ export type BellScheduleSnapshot = {
   activeProfileId: string | null;
   dayOverrides: Record<string, string>;
   endOfPeriodAlert: BellScheduleEndOfPeriodAlert;
+  holidayDateKeys: string[];
   profiles: BellScheduleProfile[];
   rotation: BellScheduleRotation;
 };
@@ -125,9 +127,12 @@ export const DEFAULT_BELL_SCHEDULE: BellScheduleSnapshot = {
   activeProfileId: DEFAULT_BELL_SCHEDULE_PROFILE.id,
   dayOverrides: {},
   endOfPeriodAlert: DEFAULT_BELL_SCHEDULE_END_OF_PERIOD_ALERT,
+  holidayDateKeys: [],
   profiles: [DEFAULT_BELL_SCHEDULE_PROFILE],
   rotation: DEFAULT_BELL_SCHEDULE_ROTATION
 };
+
+const BELL_SCHEDULE_NO_SCHOOL_OPTION = 'no-school';
 
 export function BellScheduleWidgetContent({
   controller,
@@ -142,15 +147,24 @@ export function BellScheduleWidgetContent({
 }) {
   const activeProfileId = controller.activeProfile?.id ?? '';
   const todayHeading = controller.todayDayKey ? BELL_SCHEDULE_DAY_LABELS[controller.todayDayKey] : 'Weekend';
-  const visibleUpcomingEntries = controller.upcomingEntries;
+  const visibleUpcomingEntries = controller.upcomingEntries.slice(0, 3);
+  const previewEntries =
+    visibleUpcomingEntries.length > 0 ? visibleUpcomingEntries : controller.mondayPreviewEntries;
+  const previewHeading = controller.currentEntry
+    ? 'Up next'
+    : controller.todayDayKey
+      ? 'Later today'
+      : 'Monday';
   const focusEntry = controller.currentEntry ?? controller.nextEntry;
   const heroTitle = controller.currentEntry
     ? controller.currentEntry.definition.label
     : controller.nextEntry
       ? controller.nextEntry.definition.label
-      : controller.todayDayKey
-        ? 'No live period'
-        : 'No school period today';
+      : controller.isTodayNoSchool
+        ? 'No school'
+        : controller.todayDayKey
+          ? 'No live period'
+          : 'No school period today';
   const heroEyebrow = controller.currentEntry
     ? `Now · ${todayHeading} · ${controller.liveScheduleLabel}`
     : controller.nextEntry
@@ -162,9 +176,11 @@ export function BellScheduleWidgetContent({
       ? `${formatBellScheduleEntryDetail(controller.nextEntry)} · starts in ${formatDuration(
           controller.timeUntilNextEntryMs
         )}`
-      : controller.todayDayKey
-        ? 'All configured blocks for today are finished.'
-        : 'Weekend mode. Live tracking resumes on weekdays.';
+      : controller.isTodayNoSchool
+        ? 'No school today.'
+        : controller.todayDayKey
+          ? 'Done for today.'
+          : 'Weekend — back on Monday.';
   const liveRemainingLabel = controller.currentEntry
     ? `${formatDuration(controller.currentRemainingMs)} remaining`
     : null;
@@ -278,14 +294,14 @@ export function BellScheduleWidgetContent({
         ) : null}
       </section>
 
-      {visibleUpcomingEntries.length > 0 ? (
+      {previewEntries.length > 0 ? (
         <section className="bell-schedule__upcoming">
           <div className="bell-schedule__upcoming-header">
-            <span className="field-label">{controller.currentEntry ? 'Up next' : 'Later today'}</span>
+            <span className="field-label">{previewHeading}</span>
           </div>
 
           <div className="bell-schedule__upcoming-list">
-            {visibleUpcomingEntries.map((entry) => (
+            {previewEntries.map((entry) => (
               <article className="bell-schedule__upcoming-item" key={`${entry.dayKey}-${entry.definition.id}`}>
                 <div className="bell-schedule__upcoming-copy">
                   <span className="bell-schedule__upcoming-period">{entry.definition.label}</span>
@@ -326,9 +342,24 @@ export function BellScheduleEditorPanel({
   const otherWeekLetter: BellScheduleWeekLetter = controller.liveWeekLetter === 'A' ? 'B' : 'A';
   const overrideProfileId =
     overrideProfileDraft || controller.activeProfile?.id || controller.bellSchedule.profiles[0]?.id || '';
+  const overrideListItems = [
+    ...overrideEntries.map(([dateKey, profileId]) => ({ dateKey, profileId })),
+    ...controller.bellSchedule.holidayDateKeys.map((dateKey) => ({ dateKey, profileId: null }))
+  ].sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+  const isEditingOtherProfile =
+    controller.activeProfile !== null &&
+    controller.liveProfile !== null &&
+    controller.activeProfile.id !== controller.liveProfile.id;
 
   return (
     <section className="bell-schedule-editor">
+      {isEditingOtherProfile ? (
+        <span className="bell-schedule-editor__live-warning">
+          Editing {controller.activeProfileDisplayName} — today runs{' '}
+          {controller.liveProfileDisplayName}
+        </span>
+      ) : null}
+
       <div className="bell-schedule-editor__toolbar">
         <div className="field-stack bell-schedule__profile-name">
           <label className="field-label" htmlFor="bell-schedule-profile-name">
@@ -444,30 +475,44 @@ export function BellScheduleEditorPanel({
                   {getBellScheduleProfileDisplayName(profile)}
                 </option>
               ))}
+              <option value={BELL_SCHEDULE_NO_SCHOOL_OPTION}>No school</option>
             </select>
             <button
               className="secondary-link"
               disabled={!normalizeDateKey(overrideDateDraft) || !overrideProfileId}
-              onClick={() => controller.addDayOverride(overrideDateDraft, overrideProfileId)}
+              onClick={() => {
+                if (overrideProfileId === BELL_SCHEDULE_NO_SCHOOL_OPTION) {
+                  controller.addHolidayDate(overrideDateDraft);
+                  return;
+                }
+
+                controller.addDayOverride(overrideDateDraft, overrideProfileId);
+              }}
               type="button"
             >
               Add
             </button>
           </div>
-          {overrideEntries.length > 0 ? (
+          {overrideListItems.length > 0 ? (
             <div className="bell-schedule-editor__override-list">
-              {overrideEntries.map(([dateKey, profileId]) => (
+              {overrideListItems.map(({ dateKey, profileId }) => (
                 <div className="bell-schedule-editor__override-item" key={dateKey}>
                   <span>
                     {formatLongDate(dateKey)} →{' '}
-                    {profileById.get(profileId)
-                      ? getBellScheduleProfileDisplayName(profileById.get(profileId)!)
-                      : 'Missing profile'}
+                    {profileId === null
+                      ? 'No school'
+                      : profileById.get(profileId)
+                        ? getBellScheduleProfileDisplayName(profileById.get(profileId)!)
+                        : 'Missing profile'}
                   </span>
                   <button
                     aria-label={`Remove override for ${formatLongDate(dateKey)}`}
                     className="icon-button"
-                    onClick={() => controller.removeDayOverride(dateKey)}
+                    onClick={() =>
+                      profileId === null
+                        ? controller.removeHolidayDate(dateKey)
+                        : controller.removeDayOverride(dateKey)
+                    }
                     type="button"
                   >
                     ×
@@ -565,16 +610,7 @@ export function BellScheduleEditorPanel({
                     +
                   </button>
                   <button
-                    aria-label={`Remove last block from ${BELL_SCHEDULE_DAY_LABELS[dayKey]}`}
-                    className="icon-button"
-                    disabled={dayEntries.length === 0}
-                    onClick={() => controller.removeDaySlot(dayKey)}
-                    type="button"
-                  >
-                    -
-                  </button>
-                  <button
-                    aria-label={`Edit ${BELL_SCHEDULE_DAY_LABELS[dayKey]} times`}
+                    aria-label={`Edit ${BELL_SCHEDULE_DAY_LABELS[dayKey]} blocks`}
                     className={`icon-button button-tone--utility ${
                       isTimeEditorOpen ? 'icon-button--active' : ''
                     }`}
@@ -620,6 +656,16 @@ export function BellScheduleEditorPanel({
                           </button>
                         )
                       )}
+                      <button
+                        className="secondary-link button-tone--utility"
+                        onClick={() => {
+                          controller.copyDayScheduleToAll(dayKey);
+                          setCopyMenuDayKey(null);
+                        }}
+                        type="button"
+                      >
+                        → All weekdays
+                      </button>
                     </div>
                   ) : null}
                   {isAddMenuOpen ? (
@@ -664,40 +710,93 @@ export function BellScheduleEditorPanel({
                           {formatBellTimeRange(entry.definition)}
                         </span>
                         {isTimeEditorOpen ? (
-                          <div className="bell-schedule-editor__time-row">
-                            <label>
-                              <span>Start</span>
-                              <input
-                                className="text-field"
-                                onChange={(event) =>
-                                  controller.updateDaySlotTime(
-                                    dayKey,
-                                    entry.definition.id,
-                                    'startMinutes',
-                                    event.target.value
-                                  )
+                          <>
+                            <input
+                              aria-label={`Rename ${entry.definition.label}`}
+                              className="text-field bell-schedule-editor__slot-label-input"
+                              defaultValue={entry.definition.label}
+                              key={`${entry.definition.id}-${entry.definition.label}`}
+                              onBlur={(event) => {
+                                const nextLabel = event.target.value.trim();
+
+                                if (nextLabel && nextLabel !== entry.definition.label) {
+                                  controller.renameDaySlot(dayKey, entry.definition.id, nextLabel);
                                 }
-                                type="time"
-                                value={formatBellTimeInputValue(entry.definition.startMinutes)}
-                              />
-                            </label>
-                            <label>
-                              <span>End</span>
-                              <input
-                                className="text-field"
-                                onChange={(event) =>
-                                  controller.updateDaySlotTime(
-                                    dayKey,
-                                    entry.definition.id,
-                                    'endMinutes',
-                                    event.target.value
-                                  )
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.currentTarget.blur();
                                 }
-                                type="time"
-                                value={formatBellTimeInputValue(entry.definition.endMinutes)}
-                              />
-                            </label>
-                          </div>
+                              }}
+                              type="text"
+                            />
+                            <div className="bell-schedule-editor__time-row">
+                              <label>
+                                <span>Start</span>
+                                <input
+                                  className="text-field"
+                                  onChange={(event) =>
+                                    controller.updateDaySlotTime(
+                                      dayKey,
+                                      entry.definition.id,
+                                      'startMinutes',
+                                      event.target.value
+                                    )
+                                  }
+                                  type="time"
+                                  value={formatBellTimeInputValue(entry.definition.startMinutes)}
+                                />
+                              </label>
+                              <label>
+                                <span>End</span>
+                                <input
+                                  className="text-field"
+                                  onChange={(event) =>
+                                    controller.updateDaySlotTime(
+                                      dayKey,
+                                      entry.definition.id,
+                                      'endMinutes',
+                                      event.target.value
+                                    )
+                                  }
+                                  type="time"
+                                  value={formatBellTimeInputValue(entry.definition.endMinutes)}
+                                />
+                              </label>
+                            </div>
+                            <div className="bell-schedule-editor__slot-tools">
+                              <button
+                                aria-label={`Insert lesson after ${entry.definition.label}`}
+                                className="secondary-link button-tone--utility"
+                                onClick={() =>
+                                  controller.insertDaySlotAfter(dayKey, entry.definition.id, 'teaching')
+                                }
+                                type="button"
+                              >
+                                + Lesson
+                              </button>
+                              <button
+                                aria-label={`Insert break after ${entry.definition.label}`}
+                                className="secondary-link button-tone--utility"
+                                onClick={() =>
+                                  controller.insertDaySlotAfter(dayKey, entry.definition.id, 'break')
+                                }
+                                type="button"
+                              >
+                                + Break
+                              </button>
+                              <button
+                                aria-label={`Delete ${entry.definition.label}`}
+                                className="icon-button"
+                                onClick={() =>
+                                  controller.removeDaySlotById(dayKey, entry.definition.id)
+                                }
+                                type="button"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </>
                         ) : null}
                       </div>
                       <span
@@ -747,9 +846,7 @@ export function BellScheduleEditorPanel({
                           ))}
                         </select>
                       </>
-                    ) : (
-                      <p className="helper-text">This break block stays fixed in every profile.</p>
-                    )}
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -846,6 +943,12 @@ export function useBellScheduleController(classLists: ClassList[]) {
     : 'Timetable';
   const todayDate = new Date(now);
   const todayDayKey = getBellScheduleDayKey(todayDate);
+  const todayDateKey = formatDateKey(
+    todayDate.getFullYear(),
+    todayDate.getMonth(),
+    todayDate.getDate()
+  );
+  const isTodayNoSchool = bellSchedule.holidayDateKeys.includes(todayDateKey);
   const currentMinutes = getMinutesSinceMidnight(todayDate);
   const liveResolution = resolveBellScheduleProfileForDate(bellSchedule, todayDate);
   const liveProfile = liveResolution.profile ?? activeProfile;
@@ -867,7 +970,36 @@ export function useBellScheduleController(classLists: ClassList[]) {
       ) as Record<BellScheduleDayKey, BellTimelineEntry[]>
     : createEmptyBellTimelineByDay();
   const todayTimeline =
-    todayDayKey && liveProfile ? buildBellTimelineEntries(liveProfile, todayDayKey, classLists) : [];
+    !isTodayNoSchool && todayDayKey && liveProfile
+      ? buildBellTimelineEntries(liveProfile, todayDayKey, classLists)
+      : [];
+  const mondayPreviewEntries = (() => {
+    if (todayDayKey) {
+      return [] as BellTimelineEntry[];
+    }
+
+    const daysUntilMonday = ((1 - todayDate.getDay()) + 7) % 7 || 7;
+    const mondayDate = new Date(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate() + daysUntilMonday
+    );
+    const mondayDateKey = formatDateKey(
+      mondayDate.getFullYear(),
+      mondayDate.getMonth(),
+      mondayDate.getDate()
+    );
+
+    if (bellSchedule.holidayDateKeys.includes(mondayDateKey)) {
+      return [] as BellTimelineEntry[];
+    }
+
+    const mondayProfile = resolveBellScheduleProfileForDate(bellSchedule, mondayDate).profile;
+
+    return mondayProfile
+      ? buildBellTimelineEntries(mondayProfile, 'monday', classLists).slice(0, 3)
+      : [];
+  })();
   const todayTeachingTimeline = todayTimeline.filter((entry) => entry.status === 'teaching');
   const currentEntry =
     todayTimeline.find(
@@ -913,7 +1045,10 @@ export function useBellScheduleController(classLists: ClassList[]) {
     return count + weekTimelineByDay[dayKey].filter((entry) => entry.status === 'teaching').length;
   }, 0);
   const badgeLabel = currentEntry
-    ? currentEntry.definition.shortLabel
+    ? `${currentEntry.definition.shortLabel} · ${Math.max(
+        1,
+        Math.ceil(currentRemainingMs / 60000)
+      )}m`
     : nextEntry
       ? `Next ${nextEntry.definition.shortLabel}`
       : null;
@@ -926,12 +1061,59 @@ export function useBellScheduleController(classLists: ClassList[]) {
     setBellSchedule((current) => addBellScheduleProfile(current, current.activeProfileId));
   };
 
-  const deleteActiveProfile = () => {
-    setBellSchedule((current) =>
-      current.activeProfileId
-        ? removeBellScheduleProfile(current, current.activeProfileId)
-        : current
-    );
+  const deleteActiveProfile = async () => {
+    const profileToDelete = activeProfile;
+
+    if (!profileToDelete || bellSchedule.profiles.length <= 1) {
+      return;
+    }
+
+    const displayName = getBellScheduleProfileDisplayName(profileToDelete);
+    const confirmed = await requestConfirm({
+      confirmLabel: 'Delete',
+      message: `${displayName} and its week layout will be removed.`,
+      title: 'Delete this week profile?',
+      tone: 'danger'
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const previous = bellSchedule;
+
+    setBellSchedule((current) => removeBellScheduleProfile(current, profileToDelete.id));
+    showUndoToast(`Deleted ${displayName}`, () => {
+      setBellSchedule((current) => {
+        if (current.profiles.some((profile) => profile.id === profileToDelete.id)) {
+          return current;
+        }
+
+        const restoredOverrides = { ...current.dayOverrides };
+
+        Object.entries(previous.dayOverrides).forEach(([dateKey, profileId]) => {
+          if (profileId === profileToDelete.id && !restoredOverrides[dateKey]) {
+            restoredOverrides[dateKey] = profileId;
+          }
+        });
+
+        return {
+          ...current,
+          activeProfileId: profileToDelete.id,
+          dayOverrides: restoredOverrides,
+          profiles: [...current.profiles, profileToDelete],
+          rotation: {
+            ...current.rotation,
+            profileAId:
+              current.rotation.profileAId ??
+              (previous.rotation.profileAId === profileToDelete.id ? profileToDelete.id : null),
+            profileBId:
+              current.rotation.profileBId ??
+              (previous.rotation.profileBId === profileToDelete.id ? profileToDelete.id : null)
+          }
+        };
+      });
+    });
   };
 
   const renameActiveProfile = (name: string) => {
@@ -1000,6 +1182,34 @@ export function useBellScheduleController(classLists: ClassList[]) {
     );
   };
 
+  const removeDaySlotById = (dayKey: BellScheduleDayKey, slotId: BellScheduleSlotId) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? removeBellScheduleDaySlotById(current, current.activeProfileId, dayKey, slotId)
+        : current
+    );
+  };
+
+  const insertDaySlotAfter = (
+    dayKey: BellScheduleDayKey,
+    slotId: BellScheduleSlotId,
+    kind: BellScheduleSlotKind
+  ) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? insertBellScheduleDaySlotAfter(current, current.activeProfileId, dayKey, slotId, kind)
+        : current
+    );
+  };
+
+  const renameDaySlot = (dayKey: BellScheduleDayKey, slotId: BellScheduleSlotId, label: string) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? updateBellScheduleDaySlotLabel(current, current.activeProfileId, dayKey, slotId, label)
+        : current
+    );
+  };
+
   const updateDaySlotTime = (
     dayKey: BellScheduleDayKey,
     slotId: BellScheduleSlotId,
@@ -1025,6 +1235,14 @@ export function useBellScheduleController(classLists: ClassList[]) {
     setBellSchedule((current) =>
       current.activeProfileId
         ? copyBellScheduleDay(current, current.activeProfileId, fromDayKey, toDayKey)
+        : current
+    );
+  };
+
+  const copyDayScheduleToAll = (fromDayKey: BellScheduleDayKey) => {
+    setBellSchedule((current) =>
+      current.activeProfileId
+        ? copyBellScheduleDayToAllDays(current, current.activeProfileId, fromDayKey)
         : current
     );
   };
@@ -1086,7 +1304,10 @@ export function useBellScheduleController(classLists: ClassList[]) {
             dayOverrides: {
               ...current.dayOverrides,
               [normalizedDate]: profileId
-            }
+            },
+            holidayDateKeys: current.holidayDateKeys.filter(
+              (holidayKey) => holidayKey !== normalizedDate
+            )
           }
         : current
     );
@@ -1102,6 +1323,34 @@ export function useBellScheduleController(classLists: ClassList[]) {
         dayOverrides: nextOverrides
       };
     });
+  };
+
+  const addHolidayDate = (dateKey: string) => {
+    const normalizedDate = normalizeDateKey(dateKey);
+
+    if (!normalizedDate) {
+      return;
+    }
+
+    setBellSchedule((current) => {
+      const nextOverrides = { ...current.dayOverrides };
+      delete nextOverrides[normalizedDate];
+
+      return {
+        ...current,
+        dayOverrides: nextOverrides,
+        holidayDateKeys: current.holidayDateKeys.includes(normalizedDate)
+          ? current.holidayDateKeys
+          : [...current.holidayDateKeys, normalizedDate].sort()
+      };
+    });
+  };
+
+  const removeHolidayDate = (dateKey: string) => {
+    setBellSchedule((current) => ({
+      ...current,
+      holidayDateKeys: current.holidayDateKeys.filter((holidayKey) => holidayKey !== dateKey)
+    }));
   };
 
   const setEndOfPeriodAlertEnabled = (enabled: boolean) => {
@@ -1133,15 +1382,21 @@ export function useBellScheduleController(classLists: ClassList[]) {
     activeProfileDisplayName,
     addDayOverride,
     addDaySlot,
+    addHolidayDate,
     badgeLabel,
     copyDaySchedule,
+    copyDayScheduleToAll,
+    insertDaySlotAfter,
+    isTodayNoSchool,
     liveProfile,
     liveProfileDisplayName,
     liveScheduleLabel,
     liveSource: liveResolution.source,
     liveWeekLetter: liveResolution.weekLetter,
     markThisWeek,
+    mondayPreviewEntries,
     removeDayOverride,
+    removeHolidayDate,
     setEndOfPeriodAlertEnabled,
     setEndOfPeriodAlertMinutes,
     setRotationEnabled,
@@ -1160,6 +1415,7 @@ export function useBellScheduleController(classLists: ClassList[]) {
     nextEntry,
     popoutMode,
     renameActiveProfile,
+    renameDaySlot,
     selectProfile,
     setPopoutMode,
     timeUntilNextEntryMs,
@@ -1167,6 +1423,7 @@ export function useBellScheduleController(classLists: ClassList[]) {
     todayTimeline,
     upcomingEntries,
     removeDaySlot,
+    removeDaySlotById,
     updateDaySlotTime,
     updateSlotClassList,
     updateSlotEnabled,
@@ -1181,16 +1438,19 @@ export function normalizeBellSchedulePopoutMode(
   return raw === 'editor' || raw === 'summary' ? raw : initialValue;
 }
 
-export function formatBellTime(minutes: number) {
-  const normalizedHours = Math.floor(minutes / 60);
-  const hours = normalizedHours % 12 || 12;
-  const mins = minutes % 60;
+const bellTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: '2-digit'
+});
 
-  return `${hours}:${mins.toString().padStart(2, '0')}`;
+export function formatBellTime(minutes: number) {
+  return bellTimeFormatter.format(
+    new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)
+  );
 }
 
 export function formatBellTimeRange(definition: Pick<BellScheduleSlotDefinition, 'endMinutes' | 'startMinutes'>) {
-  return `${formatBellTime(definition.startMinutes)}-${formatBellTime(definition.endMinutes)}`;
+  return `${formatBellTime(definition.startMinutes)}–${formatBellTime(definition.endMinutes)}`;
 }
 
 export function formatBellTimeInputValue(minutes: number) {
@@ -1304,9 +1564,10 @@ export function resolveBellScheduleProfileForDate(
 export function getLiveBellScheduleStatus(snapshot: BellScheduleSnapshot, now: number) {
   const date = new Date(now);
   const dayKey = getBellScheduleDayKey(date);
+  const dateKey = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
   const resolution = resolveBellScheduleProfileForDate(snapshot, date);
 
-  if (!dayKey || !resolution.profile) {
+  if (!dayKey || !resolution.profile || snapshot.holidayDateKeys.includes(dateKey)) {
     return null;
   }
 
@@ -1370,6 +1631,20 @@ export function copyBellScheduleDay(
   };
 }
 
+export function copyBellScheduleDayToAllDays(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  fromDayKey: BellScheduleDayKey
+) {
+  return BELL_SCHEDULE_DAY_KEYS.reduce(
+    (result, targetDayKey) =>
+      targetDayKey === fromDayKey
+        ? result
+        : copyBellScheduleDay(result, profileId, fromDayKey, targetDayKey),
+    snapshot
+  );
+}
+
 export function getDefaultBellScheduleSlotAssignment(): BellScheduleSlotAssignment {
   return {
     classListId: null,
@@ -1382,9 +1657,12 @@ export function getBellScheduleDefaultSlotDefinitions() {
 }
 
 export function getBellScheduleDaySlotDefinitions(day: BellScheduleDay) {
-  return day.slotDefinitions.length > 0
-    ? day.slotDefinitions
-    : getBellScheduleDefaultSlotDefinitions();
+  const slotDefinitions =
+    day.slotDefinitions.length > 0 ? day.slotDefinitions : getBellScheduleDefaultSlotDefinitions();
+
+  return [...slotDefinitions].sort(
+    (left, right) => left.startMinutes - right.startMinutes || left.endMinutes - right.endMinutes
+  );
 }
 
 export function createBellScheduleDay(source?: BellScheduleDay): BellScheduleDay {
@@ -1604,12 +1882,17 @@ export function getNextBellScheduleTeachingPeriodNumber(slotDefinitions: BellSch
 
 export function createBellScheduleSlotDefinition(
   slotDefinitions: BellScheduleSlotDefinition[],
-  kind: BellScheduleSlotKind
+  kind: BellScheduleSlotKind,
+  requestedStartMinutes?: number
 ): BellScheduleSlotDefinition {
   const previousSlot = slotDefinitions[slotDefinitions.length - 1] ?? null;
-  const startMinutes = previousSlot ? previousSlot.endMinutes : 8 * 60 + 45;
   const durationMinutes = kind === 'teaching' ? 60 : 20;
-  const endMinutes = Math.min(startMinutes + durationMinutes, 24 * 60 - 1);
+  const requestedStart =
+    requestedStartMinutes ?? (previousSlot ? previousSlot.endMinutes : 8 * 60 + 45);
+  const endMinutes = Math.min(requestedStart + durationMinutes, 24 * 60 - 1);
+  // Never produce a zero-length block: keep at least 5 minutes, shifting the
+  // start earlier when the day already runs up against midnight.
+  const startMinutes = Math.max(0, Math.min(requestedStart, endMinutes - 5));
 
   if (kind === 'teaching') {
     const periodNumber = getNextBellScheduleTeachingPeriodNumber(slotDefinitions);
@@ -1714,6 +1997,166 @@ export function removeBellScheduleDaySlot(
   };
 }
 
+export function removeBellScheduleDaySlotById(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey,
+  slotId: BellScheduleSlotId
+) {
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+      const slotDefinitions = getBellScheduleDaySlotDefinitions(day);
+
+      if (!slotDefinitions.some((slot) => slot.id === slotId)) {
+        return profile;
+      }
+
+      const assignmentsBySlotId = { ...day.assignmentsBySlotId };
+
+      delete assignmentsBySlotId[slotId];
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            assignmentsBySlotId,
+            slotDefinitions: slotDefinitions.filter((slot) => slot.id !== slotId)
+          }
+        }
+      };
+    })
+  };
+}
+
+export function insertBellScheduleDaySlotAfter(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey,
+  afterSlotId: BellScheduleSlotId,
+  kind: BellScheduleSlotKind
+) {
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+      const slotDefinitions = getBellScheduleDaySlotDefinitions(day);
+      const anchorIndex = slotDefinitions.findIndex((slot) => slot.id === afterSlotId);
+
+      if (anchorIndex === -1) {
+        return profile;
+      }
+
+      const anchorSlot = slotDefinitions[anchorIndex];
+      const nextSlot = createBellScheduleSlotDefinition(
+        slotDefinitions,
+        kind,
+        anchorSlot.endMinutes
+      );
+      const assignmentsBySlotId = { ...day.assignmentsBySlotId };
+
+      if (nextSlot.kind === 'teaching') {
+        assignmentsBySlotId[nextSlot.id] = getDefaultBellScheduleSlotAssignment();
+      }
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            assignmentsBySlotId,
+            slotDefinitions: [
+              ...slotDefinitions.slice(0, anchorIndex + 1),
+              nextSlot,
+              ...slotDefinitions.slice(anchorIndex + 1)
+            ]
+          }
+        }
+      };
+    })
+  };
+}
+
+export function deriveBellScheduleShortLabel(label: string) {
+  const trimmed = label.trim();
+  const periodMatch = /^period\s+(\d+)$/i.exec(trimmed);
+
+  if (periodMatch) {
+    return `P${periodMatch[1]}`;
+  }
+
+  const breakMatch = /^break(?:\s+(\d+))?$/i.exec(trimmed);
+
+  if (breakMatch) {
+    return breakMatch[1] ? `B${breakMatch[1]}` : 'Break';
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+
+  if (words.length >= 2) {
+    return words
+      .slice(0, 3)
+      .map((word) => word[0]!.toUpperCase())
+      .join('');
+  }
+
+  return trimmed.slice(0, 6);
+}
+
+export function updateBellScheduleDaySlotLabel(
+  snapshot: BellScheduleSnapshot,
+  profileId: string,
+  dayKey: BellScheduleDayKey,
+  slotId: BellScheduleSlotId,
+  label: string
+) {
+  const trimmed = label.trim();
+
+  if (!trimmed) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    profiles: snapshot.profiles.map((profile) => {
+      if (profile.id !== profileId) {
+        return profile;
+      }
+
+      const day = profile.days[dayKey];
+
+      return {
+        ...profile,
+        days: {
+          ...profile.days,
+          [dayKey]: {
+            ...day,
+            slotDefinitions: getBellScheduleDaySlotDefinitions(day).map((slot) =>
+              slot.id === slotId
+                ? {
+                    ...slot,
+                    label: trimmed,
+                    shortLabel: deriveBellScheduleShortLabel(trimmed)
+                  }
+                : slot
+            )
+          }
+        }
+      };
+    })
+  };
+}
+
 export function updateBellScheduleDaySlotTimes(
   snapshot: BellScheduleSnapshot,
   profileId: string,
@@ -1736,14 +2179,25 @@ export function updateBellScheduleDaySlotTimes(
           ...profile.days,
           [dayKey]: {
             ...day,
-            slotDefinitions: getBellScheduleDaySlotDefinitions(day).map((slot) =>
-              slot.id === slotId
-                ? {
-                    ...slot,
-                    ...times
-                  }
-                : slot
-            )
+            slotDefinitions: getBellScheduleDaySlotDefinitions(day).map((slot) => {
+              if (slot.id !== slotId) {
+                return slot;
+              }
+
+              const merged = { ...slot, ...times };
+              // Keep end strictly after start: bump end to start + 5 min if needed.
+              const startMinutes = clampNumber(merged.startMinutes, 0, 24 * 60 - 6);
+              const endMinutes =
+                merged.endMinutes > startMinutes
+                  ? Math.min(merged.endMinutes, 24 * 60 - 1)
+                  : Math.min(startMinutes + 5, 24 * 60 - 1);
+
+              return {
+                ...merged,
+                endMinutes,
+                startMinutes
+              };
+            })
           }
         }
       };
@@ -1828,6 +2282,7 @@ export function normalizeBellScheduleSnapshot(
     activeProfileId?: unknown;
     dayOverrides?: Record<string, unknown>;
     endOfPeriodAlert?: unknown;
+    holidayDateKeys?: unknown;
     profiles?: unknown[];
     rotation?: unknown;
   };
@@ -1844,21 +2299,44 @@ export function normalizeBellScheduleSnapshot(
       ? nextRaw.activeProfileId
       : nextProfiles[0]?.id ?? null;
   const dayOverrides: Record<string, string> = {};
+  // Prune anything dated more than a week in the past so one-off overrides and
+  // holidays never pile up in storage.
+  const staleCutoffDateKey = shiftDateKey(getTodayDateKey(), -7);
 
   if (nextRaw.dayOverrides && typeof nextRaw.dayOverrides === 'object') {
     for (const [dateKeyRaw, profileIdRaw] of Object.entries(nextRaw.dayOverrides)) {
       const dateKey = normalizeDateKey(dateKeyRaw);
 
-      if (dateKey && typeof profileIdRaw === 'string' && profileIds.has(profileIdRaw)) {
+      if (
+        dateKey &&
+        dateKey >= staleCutoffDateKey &&
+        typeof profileIdRaw === 'string' &&
+        profileIds.has(profileIdRaw)
+      ) {
         dayOverrides[dateKey] = profileIdRaw;
       }
     }
   }
 
+  const holidayDateKeys = Array.isArray(nextRaw.holidayDateKeys)
+    ? Array.from(
+        new Set(
+          nextRaw.holidayDateKeys
+            .map((dateKeyRaw) =>
+              typeof dateKeyRaw === 'string' ? normalizeDateKey(dateKeyRaw) : null
+            )
+            .filter(
+              (dateKey): dateKey is string => dateKey !== null && dateKey >= staleCutoffDateKey
+            )
+        )
+      ).sort()
+    : [];
+
   return {
     activeProfileId,
     dayOverrides,
     endOfPeriodAlert: normalizeBellScheduleEndOfPeriodAlert(nextRaw.endOfPeriodAlert),
+    holidayDateKeys,
     profiles: nextProfiles,
     rotation: normalizeBellScheduleRotation(nextRaw.rotation, profileIds)
   };
@@ -2011,8 +2489,11 @@ export function normalizeBellScheduleSlotDefinition(raw: unknown): BellScheduleS
     return null;
   }
 
+  const safeStartMinutes = Math.min(startMinutes, 24 * 60 - 6);
+
   return {
-    endMinutes,
+    endMinutes:
+      endMinutes > safeStartMinutes ? endMinutes : Math.min(safeStartMinutes + 5, 24 * 60 - 1),
     id: nextRaw.id,
     kind: nextRaw.kind,
     label: nextRaw.label,
@@ -2020,7 +2501,7 @@ export function normalizeBellScheduleSlotDefinition(raw: unknown): BellScheduleS
       typeof nextRaw.shortLabel === 'string' && nextRaw.shortLabel.trim()
         ? nextRaw.shortLabel
         : nextRaw.label,
-    startMinutes
+    startMinutes: safeStartMinutes
   };
 }
 

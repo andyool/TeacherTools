@@ -1,3 +1,4 @@
+import { useId, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { usePersistentState } from '../shared/persistence';
 import { isString } from '../shared/utils';
 
@@ -231,6 +232,131 @@ export function countApartViolationsInGroup(group: string[], apartPairs: GroupPa
 
 export function countApartViolationsInGroups(groups: string[][], apartPairs: GroupPairRule[]) {
   return groups.reduce((total, group) => total + countApartViolationsInGroup(group, apartPairs), 0);
+}
+
+/**
+ * Type-ahead student picker for the rules dialog. Typing filters the roster;
+ * arrow keys move the highlight, Enter picks the highlighted student. Pressing
+ * Enter again with the list closed calls onSubmit (used to add the rule).
+ */
+export function StudentCombobox({
+  label,
+  onSelect,
+  onSubmit,
+  selected,
+  students
+}: {
+  label: string;
+  onSelect: (student: string) => void;
+  onSubmit?: () => void;
+  selected: string;
+  students: string[];
+}) {
+  const listboxId = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const query = draft?.trim().toLowerCase() ?? '';
+  const filteredStudents = query
+    ? students.filter((student) => student.toLowerCase().includes(query))
+    : students;
+  const activeIndex = Math.min(highlightIndex, Math.max(filteredStudents.length - 1, 0));
+
+  const commitStudent = (student: string) => {
+    onSelect(student);
+    setDraft(null);
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+
+      if (!isOpen) {
+        setIsOpen(true);
+        return;
+      }
+
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      setHighlightIndex(
+        Math.min(Math.max(activeIndex + delta, 0), Math.max(filteredStudents.length - 1, 0))
+      );
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+
+      if (isOpen && filteredStudents.length > 0) {
+        commitStudent(filteredStudents[activeIndex]);
+        return;
+      }
+
+      onSubmit?.();
+      return;
+    }
+
+    if (event.key === 'Escape' && isOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setDraft(null);
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <label className="field-stack group-rules__combobox">
+      <span className="field-label">{label}</span>
+      <input
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-expanded={isOpen}
+        className="text-field"
+        onBlur={() => {
+          setDraft(null);
+          setIsOpen(false);
+        }}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setHighlightIndex(0);
+          setIsOpen(true);
+        }}
+        onFocus={(event) => {
+          event.target.select();
+          setIsOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder="Type a name"
+        role="combobox"
+        type="text"
+        value={draft ?? selected}
+      />
+      {isOpen ? (
+        <ul className="group-rules__combobox-menu" id={listboxId} role="listbox">
+          {filteredStudents.length > 0 ? (
+            filteredStudents.map((student, index) => (
+              <li aria-selected={student === selected} key={student} role="option">
+                <button
+                  className={`group-rules__combobox-option${
+                    index === activeIndex ? ' group-rules__combobox-option--active' : ''
+                  }`}
+                  onClick={() => commitStudent(student)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setHighlightIndex(index)}
+                  tabIndex={-1}
+                  type="button"
+                >
+                  {student}
+                </button>
+              </li>
+            ))
+          ) : (
+            <li className="group-rules__combobox-empty">No matching students</li>
+          )}
+        </ul>
+      ) : null}
+    </label>
+  );
 }
 
 export function groupsSatisfyTogetherRules(groups: string[][], togetherPairs: GroupPairRule[]) {

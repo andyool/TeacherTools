@@ -146,30 +146,8 @@
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-documents__list,
 .dashboard-shell .widget-card[data-size-tier='2'] .planner-documents__list,
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-documents > .group-maker__empty,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents > .group-maker__empty,
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__eyebrow,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__eyebrow,
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__summary,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__summary {
+.dashboard-shell .widget-card[data-size-tier='2'] .planner-documents > .group-maker__empty {
   display: none;
-}
-
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar::before,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar::before {
-  display: none;
-}
-
-.dashboard-shell .widget-card[data-size-tier='1'] .planner-calendar__header,
-.dashboard-shell .widget-card[data-size-tier='2'] .planner-calendar__header {
-  justify-content: flex-start;
 }
 
 .dashboard-shell .widget-card[data-size-tier='1'] .planner-documents,

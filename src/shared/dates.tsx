@@ -55,24 +55,69 @@ export function normalizeDateKey(dateKey: string) {
   return formatDateKey(parsed.year, parsed.monthIndex, parsed.day);
 }
 
+let cachedDayBeforeMonth: boolean | null = null;
+
+/** Whether the user's locale writes the day before the month (dd/mm vs mm/dd). */
+export function localeWritesDayFirst() {
+  if (cachedDayBeforeMonth !== null) {
+    return cachedDayBeforeMonth;
+  }
+
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      day: 'numeric',
+      month: 'numeric',
+      year: 'numeric'
+    }).formatToParts(new Date(2000, 11, 31));
+    const dayIndex = parts.findIndex((part) => part.type === 'day');
+    const monthIndex = parts.findIndex((part) => part.type === 'month');
+    cachedDayBeforeMonth = dayIndex !== -1 && monthIndex !== -1 ? dayIndex < monthIndex : true;
+  } catch {
+    cachedDayBeforeMonth = true;
+  }
+
+  return cachedDayBeforeMonth;
+}
+
+export function getDateInputPlaceholder() {
+  return localeWritesDayFirst() ? 'dd/mm/yyyy' : 'mm/dd/yyyy';
+}
+
 export function formatDateKeyForInput(dateKey: string) {
   const parsed = parseDateKey(dateKey);
   if (!parsed) {
     return '';
   }
 
-  return `${`${parsed.day}`.padStart(2, '0')}/${`${parsed.monthIndex + 1}`.padStart(2, '0')}/${parsed.year}`;
+  const dayPart = `${parsed.day}`.padStart(2, '0');
+  const monthPart = `${parsed.monthIndex + 1}`.padStart(2, '0');
+  return localeWritesDayFirst()
+    ? `${dayPart}/${monthPart}/${parsed.year}`
+    : `${monthPart}/${dayPart}/${parsed.year}`;
 }
 
 export function parseDateInputValue(value: string) {
-  const match = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/.exec(value);
+  const match = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/.exec(value);
   if (!match) {
     return null;
   }
 
-  const day = Number(match[1]);
-  const monthIndex = Number(match[2]) - 1;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
   const year = Number(match[3]);
+  const dayFirst = localeWritesDayFirst();
+  let day = dayFirst ? first : second;
+  let monthIndex = (dayFirst ? second : first) - 1;
+
+  // If the literal reading is impossible but the swapped one works (e.g. a
+  // dd/mm value like 25/12 typed in an mm/dd locale), accept the swap rather
+  // than silently corrupting the date.
+  if (monthIndex > 11 && day <= 12 && first !== second) {
+    const swappedDay = dayFirst ? second : first;
+    const swappedMonth = (dayFirst ? first : second) - 1;
+    day = swappedDay;
+    monthIndex = swappedMonth;
+  }
 
   return normalizeDateKey(formatDateKey(year, monthIndex, day));
 }

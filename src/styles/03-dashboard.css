@@ -22,18 +22,10 @@
   margin: -6px -6px 0 -8px;
 }
 
-.dashboard-shell--stacked {
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 6px 8px 7px;
-  margin: -6px -6px 0 -8px;
-}
-
 /* The widget-card halo reaches ~23px above the card but the scrollport can
    only be widened 6px before it would overlap the panel header, so fade the
    remaining hard clip edge out instead of cutting the halo flat. */
-.dashboard-shell--scrolling,
-.dashboard-shell--stacked {
+.dashboard-shell--scrolling {
   mask-image: linear-gradient(to bottom, transparent, #000 10px);
 }
 
@@ -52,12 +44,6 @@
 .dashboard-shell--scrolling .dashboard-columns {
   height: auto;
   min-height: 0;
-}
-
-.dashboard-columns--stacked {
-  height: auto;
-  min-height: auto;
-  display: block;
 }
 
 .dashboard-column {
@@ -88,14 +74,6 @@
   overflow: visible;
 }
 
-.dashboard-column--stacked {
-  width: 100%;
-  height: auto;
-  overflow: visible;
-  padding-right: 0;
-  padding-bottom: 0;
-}
-
 .dashboard-column::-webkit-scrollbar,
 .dashboard-shell::-webkit-scrollbar {
   width: 8px;
@@ -107,22 +85,6 @@
   background:rgba(255, 255, 255, 0.12);
 }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 6px;
-  position: relative;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--card-border);
-  background: transparent;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-    0 1px 2px rgba(8, 12, 18, 0.06);
-}
-
-.card,
 .widget-card,
 .stepper,
 .picker-select__menu,
@@ -148,7 +110,6 @@
   overflow: hidden;
 }
 
-.card::before,
 .widget-card::before,
 .stepper::before,
 .picker-select__menu::before,
@@ -172,9 +133,6 @@
 
 .widget-card {
   --widget-card-border: var(--card-border);
-  --widget-splash-a: rgba(255, 255, 255, 0);
-  --widget-splash-b: rgba(255, 255, 255, 0);
-  --widget-splash-c: rgba(255, 255, 255, 0);
   --widget-body-gap: 5px;
   --widget-highlight: var(--accent);
   --widget-highlight-soft: var(--accent-soft);

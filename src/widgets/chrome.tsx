@@ -87,7 +87,7 @@ export function WidgetCard({
       >
         <div className="widget-card__title-group">
           <div className="widget-card__title-copy">
-            <span className="widget-card__title-row">
+            <span className="widget-card__title-row" data-tooltip-content={description || undefined}>
               <WidgetTitleIcon widgetId={widgetId} />
               <span className="widget-card__title" ref={fittedTitleRef}>
                 {title}
@@ -114,7 +114,16 @@ export function WidgetCard({
               }}
               type="button"
             >
-              ^
+              <svg aria-hidden="true" className="widget-card__collapse-icon" viewBox="0 0 12 12">
+                <path
+                  d="M2.5 7.5 6 4l3.5 3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.6"
+                />
+              </svg>
             </button>
           ) : null}
         </div>

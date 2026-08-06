@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent
+} from 'react';
 import type { AppSettings, TimerChimeSound, TimerSpeechVoice, WindowBounds } from '../electron-types';
 import { useAppSettingsState } from '../app/appSettings';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { useNow, usePersistentState } from '../shared/persistence';
+import { announce } from '../shared/uiKit';
 import { clampNumber, formatDuration } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { WidgetSizeTier } from './dashboard';
@@ -15,11 +21,17 @@ export type TimerSnapshot = {
   endsAt: number | null;
   lastCompletionAcknowledgedAt: number | null;
   pausedRemainingMs: number;
+  isPaused: boolean;
   lastCompletedAt: number | null;
   label: string;
   mode: TimerMode;
   stopwatchStartedAt: number | null;
   stopwatchAccumulatedMs: number;
+  presetsMinutes: number[];
+  repeatCount: number;
+  currentRound: number;
+  finalWarningMinutes: number;
+  halfwayWarningEnabled: boolean;
 };
 
 export type TimerSoundAlertKind = 'done' | 'half' | 'ten-percent';
@@ -29,12 +41,15 @@ export type TimerAlertPreferences = Pick<
   'timerChimeEnabled' | 'timerChimeSound' | 'timerSpeechVoice' | 'timerVoiceEnabled'
 >;
 
-export const TIMER_PRESETS = [
-  { label: '2m', ms: 2 * 60 * 1000 },
-  { label: '5m', ms: 5 * 60 * 1000 },
-  { label: '10m', ms: 10 * 60 * 1000 },
-  { label: '15m', ms: 15 * 60 * 1000 }
-];
+export const DEFAULT_TIMER_PRESET_MINUTES = [2, 5, 10, 15];
+
+export const TIMER_PRESET_MIN_MINUTES = 1;
+
+export const TIMER_REPEAT_MAX_ROUNDS = 12;
+
+export const TIMER_FINAL_WARNING_MAX_MINUTES = 10;
+
+export const DEFAULT_TIMER_FINAL_WARNING_MINUTES = 2;
 
 export const CUSTOM_TIMER_MAX_MINUTES = 60;
 
@@ -54,11 +69,17 @@ export const DEFAULT_TIMER: TimerSnapshot = {
   endsAt: null,
   lastCompletionAcknowledgedAt: null,
   pausedRemainingMs: 5 * 60 * 1000,
+  isPaused: false,
   lastCompletedAt: null,
   label: '',
   mode: 'countdown',
   stopwatchStartedAt: null,
-  stopwatchAccumulatedMs: 0
+  stopwatchAccumulatedMs: 0,
+  presetsMinutes: DEFAULT_TIMER_PRESET_MINUTES,
+  repeatCount: 1,
+  currentRound: 1,
+  finalWarningMinutes: DEFAULT_TIMER_FINAL_WARNING_MINUTES,
+  halfwayWarningEnabled: true
 };
 
 export function normalizeTimerChimeSound(value: unknown): TimerChimeSound {
@@ -79,21 +100,40 @@ export function normalizeTimerSnapshot(raw: unknown, initialValue: TimerSnapshot
     typeof nextRaw.pausedRemainingMs === 'number' && Number.isFinite(nextRaw.pausedRemainingMs)
       ? nextRaw.pausedRemainingMs
       : baseDurationMs;
+  const endsAt =
+    typeof nextRaw.endsAt === 'number' && Number.isFinite(nextRaw.endsAt) ? nextRaw.endsAt : null;
+  const lastCompletedAt =
+    typeof nextRaw.lastCompletedAt === 'number' && Number.isFinite(nextRaw.lastCompletedAt)
+      ? nextRaw.lastCompletedAt
+      : null;
+  const presetsMinutes = DEFAULT_TIMER_PRESET_MINUTES.map((fallbackMinutes, index) => {
+    const value = Array.isArray(nextRaw.presetsMinutes) ? nextRaw.presetsMinutes[index] : undefined;
+    return typeof value === 'number' && Number.isFinite(value)
+      ? clampNumber(Math.round(value), TIMER_PRESET_MIN_MINUTES, CUSTOM_TIMER_MAX_MINUTES)
+      : fallbackMinutes;
+  });
+  const repeatCount =
+    typeof nextRaw.repeatCount === 'number' && Number.isFinite(nextRaw.repeatCount)
+      ? clampNumber(Math.round(nextRaw.repeatCount), 1, TIMER_REPEAT_MAX_ROUNDS)
+      : 1;
 
   return {
     baseDurationMs,
-    endsAt:
-      typeof nextRaw.endsAt === 'number' && Number.isFinite(nextRaw.endsAt) ? nextRaw.endsAt : null,
+    endsAt,
     lastCompletionAcknowledgedAt:
       typeof nextRaw.lastCompletionAcknowledgedAt === 'number' &&
       Number.isFinite(nextRaw.lastCompletionAcknowledgedAt)
         ? nextRaw.lastCompletionAcknowledgedAt
         : null,
     pausedRemainingMs,
-    lastCompletedAt:
-      typeof nextRaw.lastCompletedAt === 'number' && Number.isFinite(nextRaw.lastCompletedAt)
-        ? nextRaw.lastCompletedAt
-        : null,
+    isPaused:
+      typeof nextRaw.isPaused === 'boolean'
+        ? nextRaw.isPaused
+        : endsAt === null &&
+          lastCompletedAt === null &&
+          pausedRemainingMs > 0 &&
+          pausedRemainingMs < baseDurationMs,
+    lastCompletedAt,
     label: typeof nextRaw.label === 'string' ? nextRaw.label.slice(0, TIMER_LABEL_MAX_LENGTH) : '',
     mode: nextRaw.mode === 'stopwatch' ? 'stopwatch' : 'countdown',
     stopwatchStartedAt:
@@ -104,7 +144,19 @@ export function normalizeTimerSnapshot(raw: unknown, initialValue: TimerSnapshot
       typeof nextRaw.stopwatchAccumulatedMs === 'number' &&
       Number.isFinite(nextRaw.stopwatchAccumulatedMs)
         ? Math.max(nextRaw.stopwatchAccumulatedMs, 0)
-        : 0
+        : 0,
+    presetsMinutes,
+    repeatCount,
+    currentRound:
+      typeof nextRaw.currentRound === 'number' && Number.isFinite(nextRaw.currentRound)
+        ? clampNumber(Math.round(nextRaw.currentRound), 1, repeatCount)
+        : 1,
+    finalWarningMinutes:
+      typeof nextRaw.finalWarningMinutes === 'number' && Number.isFinite(nextRaw.finalWarningMinutes)
+        ? clampNumber(Math.round(nextRaw.finalWarningMinutes), 0, TIMER_FINAL_WARNING_MAX_MINUTES)
+        : DEFAULT_TIMER_FINAL_WARNING_MINUTES,
+    halfwayWarningEnabled:
+      typeof nextRaw.halfwayWarningEnabled === 'boolean' ? nextRaw.halfwayWarningEnabled : true
   };
 }
 
@@ -505,6 +557,7 @@ export function useTimerSoundAlerts(
 ) {
   const [appSettings] = useAppSettingsState();
   const isRunning = timer.endsAt !== null && remainingMs > 0;
+  const announcedAlertsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (appSettings.timerVoiceEnabled || !('speechSynthesis' in window)) {
@@ -525,15 +578,30 @@ export function useTimerSoundAlerts(
       return;
     }
 
-    const tenPercentRemainingMs = timer.baseDurationMs * 0.1;
+    const finalWarningRemainingMs = timer.finalWarningMinutes * 60 * 1000;
     const halfwayRemainingMs = timer.baseDurationMs * 0.5;
 
-    if (remainingMs <= tenPercentRemainingMs && claimTimerSoundAlert(runKey, 'ten-percent')) {
-      triggerTimerAlert('ten-percent', appSettings, tenPercentRemainingMs);
+    if (
+      finalWarningRemainingMs > 0 &&
+      finalWarningRemainingMs < timer.baseDurationMs &&
+      remainingMs <= finalWarningRemainingMs
+    ) {
+      if (claimTimerSoundAlert(runKey, 'ten-percent')) {
+        triggerTimerAlert('ten-percent', appSettings, finalWarningRemainingMs);
+      }
+
+      if (!announcedAlertsRef.current.has(`${runKey}:final`)) {
+        announcedAlertsRef.current.add(`${runKey}:final`);
+        announce(getTimerSpeechMessage('ten-percent', finalWarningRemainingMs));
+      }
       return;
     }
 
-    if (remainingMs <= halfwayRemainingMs && claimTimerSoundAlert(runKey, 'half')) {
+    if (
+      timer.halfwayWarningEnabled &&
+      remainingMs <= halfwayRemainingMs &&
+      claimTimerSoundAlert(runKey, 'half')
+    ) {
       triggerTimerAlert('half', appSettings, halfwayRemainingMs);
     }
   }, [appSettings, isRunning, remainingMs, timer]);
@@ -548,16 +616,41 @@ export function useTimerSoundAlerts(
       triggerTimerAlert('done', appSettings, undefined, timer.label);
     }
 
-    setTimer((current) =>
-      current.endsAt === null
-        ? current
-        : {
-            ...current,
-            endsAt: null,
-            pausedRemainingMs: 0,
-            lastCompletedAt: Date.now()
-          }
-    );
+    if (runKey && !announcedAlertsRef.current.has(`${runKey}:done`)) {
+      announcedAlertsRef.current.add(`${runKey}:done`);
+      const isRepeating = timer.repeatCount > 1 && timer.currentRound < timer.repeatCount;
+      announce(
+        isRepeating
+          ? `Round ${timer.currentRound} finished. Starting round ${timer.currentRound + 1} of ${timer.repeatCount}`
+          : getTimerSpeechMessage('done', undefined, timer.label)
+      );
+    }
+
+    setTimer((current) => {
+      if (current.endsAt === null || current.endsAt > Date.now()) {
+        return current;
+      }
+
+      if (current.repeatCount > 1 && current.currentRound < current.repeatCount) {
+        return {
+          ...current,
+          endsAt: Date.now() + current.baseDurationMs,
+          pausedRemainingMs: current.baseDurationMs,
+          isPaused: false,
+          currentRound: current.currentRound + 1,
+          lastCompletedAt: null
+        };
+      }
+
+      return {
+        ...current,
+        endsAt: null,
+        pausedRemainingMs: 0,
+        isPaused: false,
+        currentRound: 1,
+        lastCompletedAt: Date.now()
+      };
+    });
   }, [appSettings, remainingMs, setTimer, timer]);
 }
 
@@ -639,11 +732,142 @@ export function getPreviousCustomTimerMinutes(customTimerMinutes: number) {
   return Math.round(totalSeconds / 60) - 1;
 }
 
+const HOLD_REPEAT_INITIAL_DELAY_MS = 400;
+
+const HOLD_REPEAT_INTERVAL_MS = 80;
+
+const HOLD_REPEAT_MIN_INTERVAL_MS = 45;
+
+function HoldRepeatButton({
+  children,
+  onStep,
+  ...buttonProps
+}: { onStep: () => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'type'>) {
+  const stepRef = useRef(onStep);
+  stepRef.current = onStep;
+  const repeatTimeoutRef = useRef<number | null>(null);
+  const didHoldRepeatRef = useRef(false);
+
+  const stopRepeat = useCallback(() => {
+    if (repeatTimeoutRef.current !== null) {
+      window.clearTimeout(repeatTimeoutRef.current);
+      repeatTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopRepeat, [stopRepeat]);
+
+  const scheduleRepeat = (delayMs: number) => {
+    repeatTimeoutRef.current = window.setTimeout(() => {
+      didHoldRepeatRef.current = true;
+      stepRef.current();
+      scheduleRepeat(
+        delayMs > HOLD_REPEAT_INTERVAL_MS
+          ? HOLD_REPEAT_INTERVAL_MS
+          : Math.max(delayMs * 0.92, HOLD_REPEAT_MIN_INTERVAL_MS)
+      );
+    }, delayMs);
+  };
+
+  return (
+    <button
+      {...buttonProps}
+      onClick={() => {
+        if (didHoldRepeatRef.current) {
+          didHoldRepeatRef.current = false;
+          return;
+        }
+
+        stepRef.current();
+      }}
+      onPointerCancel={stopRepeat}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) {
+          return;
+        }
+
+        didHoldRepeatRef.current = false;
+        stopRepeat();
+        scheduleRepeat(HOLD_REPEAT_INITIAL_DELAY_MS);
+        window.addEventListener('pointerup', stopRepeat, { once: true });
+      }}
+      onPointerLeave={stopRepeat}
+      onPointerUp={stopRepeat}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+const PRESET_LONG_PRESS_MS = 500;
+
+function TimerPresetChip({
+  active,
+  minutes,
+  onEdit,
+  onSelect
+}: {
+  active: boolean;
+  minutes: number;
+  onEdit: () => void;
+  onSelect: () => void;
+}) {
+  const longPressTimeoutRef = useRef<number | null>(null);
+  const didLongPressRef = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimeoutRef.current !== null) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLongPress, [clearLongPress]);
+
+  return (
+    <button
+      aria-label={`${minutes} minute preset`}
+      aria-pressed={active}
+      className={`text-toggle timer-preset-toggle ${active ? 'timer-preset-toggle--active' : ''}`}
+      data-tooltip-content="Right-click or hold to edit"
+      onClick={() => {
+        if (didLongPressRef.current) {
+          didLongPressRef.current = false;
+          return;
+        }
+
+        onSelect();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        clearLongPress();
+        onEdit();
+      }}
+      onPointerCancel={clearLongPress}
+      onPointerDown={() => {
+        didLongPressRef.current = false;
+        clearLongPress();
+        longPressTimeoutRef.current = window.setTimeout(() => {
+          didLongPressRef.current = true;
+          onEdit();
+        }, PRESET_LONG_PRESS_MS);
+      }}
+      onPointerLeave={clearLongPress}
+      onPointerUp={clearLongPress}
+      type="button"
+    >
+      {minutes}m
+    </button>
+  );
+}
+
 export function TimerWidgetContent({ controller }: { controller: TimerWidgetController }) {
   const {
     customTimerActive,
     customTimerMinutes,
     customTimerMs,
+    extendTimer,
     isStopwatch,
     isTimerFinished,
     isTimerPaused,
@@ -652,21 +876,92 @@ export function TimerWidgetContent({ controller }: { controller: TimerWidgetCont
     resetTimer,
     resumeTimer,
     runAgainDurationLabel,
+    setFinalWarningMinutes,
     setMode,
     setPreset,
+    setRepeatCount,
     startTimer,
     timer,
     timerLabel,
     timerProgress,
+    toggleHalfwayWarning,
+    toggleStartPause,
     updateCustomTimer,
+    updatePresetMinutes,
     updateTimerLabel
   } = controller;
   const customTimerLabel = getCustomTimerLabel(customTimerMinutes);
   const nextCustomTimerMinutes = getNextCustomTimerMinutes(customTimerMinutes);
   const previousCustomTimerMinutes = getPreviousCustomTimerMinutes(customTimerMinutes);
+  const [editingPresetIndex, setEditingPresetIndex] = useState<number | null>(null);
+  const customStepperRef = useRef<HTMLDivElement | null>(null);
+  const wheelStepsRef = useRef({ stepDown: () => {}, stepUp: () => {} });
+  wheelStepsRef.current = {
+    stepDown: () => updateCustomTimer(previousCustomTimerMinutes),
+    stepUp: () => updateCustomTimer(nextCustomTimerMinutes)
+  };
+
+  useEffect(() => {
+    const stepperElement = customStepperRef.current;
+    if (!stepperElement) {
+      return;
+    }
+
+    let accumulatedDelta = 0;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      accumulatedDelta += event.deltaY;
+      if (Math.abs(accumulatedDelta) < 25) {
+        return;
+      }
+
+      if (accumulatedDelta < 0) {
+        wheelStepsRef.current.stepUp();
+      } else {
+        wheelStepsRef.current.stepDown();
+      }
+      accumulatedDelta = 0;
+    };
+
+    stepperElement.addEventListener('wheel', onWheel, { passive: false });
+    return () => stepperElement.removeEventListener('wheel', onWheel);
+  }, [isStopwatch]);
+
+  const handleRootPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, select, textarea')) {
+      return;
+    }
+
+    event.currentTarget.focus();
+  };
+
+  const handleRootKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, select, textarea')) {
+      return;
+    }
+
+    if (event.key === ' ') {
+      event.preventDefault();
+      toggleStartPause();
+    } else if (event.key === 'r' || event.key === 'R') {
+      event.preventDefault();
+      resetTimer();
+    }
+  };
 
   return (
-    <>
+    <div
+      className="timer-widget-body"
+      onKeyDown={handleRootKeyDown}
+      onPointerDown={handleRootPointerDown}
+      tabIndex={-1}
+    >
       <div className="timer-toolbar widget-top-controls">
         <div aria-label="Timer mode" className="timer-mode-row" role="group">
           {(['countdown', 'stopwatch'] as const).map((mode) => (
@@ -694,70 +989,28 @@ export function TimerWidgetContent({ controller }: { controller: TimerWidgetCont
         />
       </div>
 
-      {!isStopwatch ? (
-        <>
-          <div className="segmented-row widget-top-controls">
-            {TIMER_PRESETS.map((preset) => (
-              <button
-                aria-pressed={timer.baseDurationMs === preset.ms}
-                className={`text-toggle timer-preset-toggle ${
-                  timer.baseDurationMs === preset.ms ? 'timer-preset-toggle--active' : ''
-                }`}
-                key={preset.label}
-                onClick={() => setPreset(preset.ms)}
-                type="button"
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="custom-row widget-top-controls">
-            <span className="helper-text">Custom</span>
-            <div className="stepper">
-              <button
-                aria-label="Decrease custom timer"
-                className="stepper__button"
-                disabled={customTimerMinutes === 0}
-                onClick={() => updateCustomTimer(previousCustomTimerMinutes)}
-                type="button"
-              >
-                −
-              </button>
-              <button
-                aria-label={getCustomTimerAriaLabel(customTimerMinutes)}
-                aria-pressed={customTimerActive}
-                className={`stepper__value timer-stepper__value ${
-                  customTimerActive ? 'timer-stepper__value--active' : ''
-                }`}
-                disabled={customTimerMinutes === 0}
-                onClick={() => {
-                  if (customTimerMinutes > 0) {
-                    setPreset(customTimerMs);
-                  }
-                }}
-                type="button"
-              >
-                {customTimerLabel}
-              </button>
-              <button
-                aria-label="Increase custom timer"
-                className="stepper__button"
-                disabled={customTimerMinutes === CUSTOM_TIMER_MAX_MINUTES}
-                onClick={() => updateCustomTimer(nextCustomTimerMinutes)}
-                type="button"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
-
       <div className="timer-display-row">
-        <div className={`timer-readout ${isTimerFinished ? 'timer-readout--overtime' : ''}`}>
+        <div
+          aria-live="off"
+          className={`timer-readout ${isTimerFinished ? 'timer-readout--overtime' : ''}`}
+          role="timer"
+        >
           {timerLabel}
         </div>
+        {!isStopwatch ? (
+          <div
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.round(clampNumber(timerProgress, 0, 1) * 100)}
+            className="progress"
+            role="progressbar"
+          >
+            <span
+              className={`progress__fill ${isTimerFinished ? 'progress__fill--overtime' : ''}`}
+              style={{ transform: `scaleX(${timerProgress})` }}
+            />
+          </div>
+        ) : null}
         <div className="action-row widget-primary-actions">
           {isTimerFinished ? (
             <button
@@ -806,6 +1059,17 @@ export function TimerWidgetContent({ controller }: { controller: TimerWidgetCont
               )}
             </>
           )}
+          {!isStopwatch && (isTimerRunning || isTimerPaused) && (
+            <button
+              aria-label="Add one minute"
+              className="secondary-link timer-extend-button"
+              data-compact-icon="+1"
+              onClick={() => extendTimer(60 * 1000)}
+              type="button"
+            >
+              +1:00
+            </button>
+          )}
           <button
             aria-label={isStopwatch ? 'Reset stopwatch' : 'Reset timer'}
             className="secondary-link"
@@ -819,14 +1083,173 @@ export function TimerWidgetContent({ controller }: { controller: TimerWidgetCont
       </div>
 
       {!isStopwatch ? (
-        <div className="progress">
-          <span
-            className={`progress__fill ${isTimerFinished ? 'progress__fill--overtime' : ''}`}
-            style={{ transform: `scaleX(${timerProgress})` }}
-          />
+        <div className="segmented-row timer-quickset widget-top-controls">
+          {timer.presetsMinutes.map((presetMinutes, index) =>
+            editingPresetIndex === index ? (
+              <div
+                className="stepper timer-preset-editor"
+                data-tooltip-content="Preset minutes"
+                key={`preset-editor-${index}`}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setEditingPresetIndex(null);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' || event.key === 'Enter') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setEditingPresetIndex(null);
+                  }
+                }}
+              >
+                <HoldRepeatButton
+                  aria-label="Decrease preset minutes"
+                  className="stepper__button"
+                  disabled={presetMinutes <= TIMER_PRESET_MIN_MINUTES}
+                  onStep={() => updatePresetMinutes(index, presetMinutes - 1)}
+                >
+                  −
+                </HoldRepeatButton>
+                <button
+                  aria-label={`Save ${presetMinutes} minute preset`}
+                  autoFocus
+                  className="stepper__value timer-preset-editor__value"
+                  onClick={() => setEditingPresetIndex(null)}
+                  type="button"
+                >
+                  {presetMinutes}m
+                </button>
+                <HoldRepeatButton
+                  aria-label="Increase preset minutes"
+                  className="stepper__button"
+                  disabled={presetMinutes >= CUSTOM_TIMER_MAX_MINUTES}
+                  onStep={() => updatePresetMinutes(index, presetMinutes + 1)}
+                >
+                  +
+                </HoldRepeatButton>
+              </div>
+            ) : (
+              <TimerPresetChip
+                active={timer.baseDurationMs === presetMinutes * 60 * 1000}
+                key={`preset-${index}`}
+                minutes={presetMinutes}
+                onEdit={() => setEditingPresetIndex(index)}
+                onSelect={() => setPreset(presetMinutes * 60 * 1000)}
+              />
+            )
+          )}
+          <div
+            className="stepper timer-quickset__stepper"
+            data-tooltip-content="Custom duration"
+            ref={customStepperRef}
+          >
+            <HoldRepeatButton
+              aria-label="Decrease custom timer"
+              className="stepper__button"
+              disabled={customTimerMinutes === 0}
+              onStep={() => updateCustomTimer(previousCustomTimerMinutes)}
+            >
+              −
+            </HoldRepeatButton>
+            <button
+              aria-label={getCustomTimerAriaLabel(customTimerMinutes)}
+              aria-pressed={customTimerActive}
+              className={`stepper__value timer-stepper__value ${
+                customTimerActive ? 'timer-stepper__value--active' : ''
+              }`}
+              disabled={customTimerMinutes === 0}
+              onClick={() => {
+                if (customTimerMinutes > 0) {
+                  setPreset(customTimerMs);
+                }
+              }}
+              type="button"
+            >
+              {customTimerLabel}
+            </button>
+            <HoldRepeatButton
+              aria-label="Increase custom timer"
+              className="stepper__button"
+              disabled={customTimerMinutes === CUSTOM_TIMER_MAX_MINUTES}
+              onStep={() => updateCustomTimer(nextCustomTimerMinutes)}
+            >
+              +
+            </HoldRepeatButton>
+          </div>
+          <div
+            aria-label="Repeat rounds"
+            className="stepper timer-quickset__stepper timer-repeat-stepper"
+            data-tooltip-content="Repeat rounds"
+            role="group"
+          >
+            <HoldRepeatButton
+              aria-label="Fewer repeat rounds"
+              className="stepper__button"
+              disabled={timer.repeatCount <= 1}
+              onStep={() => setRepeatCount(timer.repeatCount - 1)}
+            >
+              −
+            </HoldRepeatButton>
+            <span className="stepper__value timer-repeat-stepper__value">
+              ×{timer.repeatCount}
+            </span>
+            <HoldRepeatButton
+              aria-label="More repeat rounds"
+              className="stepper__button"
+              disabled={timer.repeatCount >= TIMER_REPEAT_MAX_ROUNDS}
+              onStep={() => setRepeatCount(timer.repeatCount + 1)}
+            >
+              +
+            </HoldRepeatButton>
+          </div>
         </div>
       ) : null}
-    </>
+
+      {!isStopwatch ? (
+        <div className="timer-alerts-row widget-top-controls">
+          <span className="timer-alerts-row__label">Alerts</span>
+          <div
+            aria-label="Final warning minutes"
+            className="stepper timer-alerts-row__stepper"
+            data-tooltip-content="Final warning, minutes remaining"
+            role="group"
+          >
+            <HoldRepeatButton
+              aria-label="Decrease final warning minutes"
+              className="stepper__button"
+              disabled={timer.finalWarningMinutes <= 0}
+              onStep={() => setFinalWarningMinutes(timer.finalWarningMinutes - 1)}
+            >
+              −
+            </HoldRepeatButton>
+            <span className="stepper__value timer-alerts-row__value">
+              {timer.finalWarningMinutes === 0 ? 'Off' : `${timer.finalWarningMinutes}m`}
+            </span>
+            <HoldRepeatButton
+              aria-label="Increase final warning minutes"
+              className="stepper__button"
+              disabled={timer.finalWarningMinutes >= TIMER_FINAL_WARNING_MAX_MINUTES}
+              onStep={() => setFinalWarningMinutes(timer.finalWarningMinutes + 1)}
+            >
+              +
+            </HoldRepeatButton>
+          </div>
+          <button
+            aria-label="Halfway alert"
+            aria-pressed={timer.halfwayWarningEnabled}
+            className={`text-toggle timer-alerts-row__toggle ${
+              timer.halfwayWarningEnabled ? 'timer-preset-toggle--active' : ''
+            }`}
+            data-tooltip-content="Halfway alert"
+            onClick={toggleHalfwayWarning}
+            type="button"
+          >
+            ½
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -838,6 +1261,7 @@ export function TimerClassDisplay({
   onExit: () => void;
 }) {
   const {
+    extendTimer,
     isStopwatch,
     isTimerFinished,
     isTimerPaused,
@@ -868,9 +1292,11 @@ export function TimerClassDisplay({
         </button>
       </header>
       <div
+        aria-live="off"
         className={`timer-class-display__readout ${
           isTimerFinished ? 'timer-class-display__readout--overtime' : ''
         }`}
+        role="timer"
       >
         {timerLabel}
       </div>
@@ -898,12 +1324,28 @@ export function TimerClassDisplay({
             )}
           </>
         )}
+        {!isStopwatch && (isTimerRunning || isTimerPaused) && (
+          <button
+            aria-label="Add one minute"
+            className="secondary-link"
+            onClick={() => extendTimer(60 * 1000)}
+            type="button"
+          >
+            +1:00
+          </button>
+        )}
         <button className="secondary-link" onClick={resetTimer} type="button">
           Reset
         </button>
       </div>
       {!isStopwatch ? (
-        <div className="progress timer-class-display__progress">
+        <div
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={Math.round(clampNumber(timerProgress, 0, 1) * 100)}
+          className="progress timer-class-display__progress"
+          role="progressbar"
+        >
           <span
             className={`progress__fill ${isTimerFinished ? 'progress__fill--overtime' : ''}`}
             style={{ transform: `scaleX(${timerProgress})` }}
@@ -939,6 +1381,32 @@ export function TimerWidgetPopoutCard({
   const controller = useTimerWidgetState();
   const [isClassDisplay, setIsClassDisplay] = useState(false);
   const preDisplayBoundsRef = useRef<WindowBounds | null>(null);
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (target && target.closest('button, input, select, textarea')) {
+        return;
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault();
+        controllerRef.current.toggleStartPause();
+      } else if (event.key === 'r' || event.key === 'R') {
+        event.preventDefault();
+        controllerRef.current.resetTimer();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const enterClassDisplay = () => {
     setIsClassDisplay(true);
@@ -1068,15 +1536,18 @@ export function useTimerWidgetState() {
     ? timer.stopwatchStartedAt === null && timer.stopwatchAccumulatedMs > 0
     : timer.endsAt === null &&
       timer.lastCompletedAt === null &&
-      timer.pausedRemainingMs > 0 &&
-      timer.pausedRemainingMs < timer.baseDurationMs;
+      timer.isPaused &&
+      timer.pausedRemainingMs > 0;
   const timerProgress = isTimerFinished
     ? 1
     : timer.baseDurationMs === 0
       ? 0
       : remainingMs / timer.baseDurationMs;
   const customTimerMs = getCustomTimerDurationMs(customTimerMinutes);
-  const customTimerActive = customTimerMinutes > 0 && timer.baseDurationMs === customTimerMs;
+  const customTimerActive =
+    customTimerMinutes > 0 &&
+    timer.baseDurationMs === customTimerMs &&
+    !timer.presetsMinutes.some((presetMinutes) => presetMinutes * 60 * 1000 === customTimerMs);
   useTimerSoundAlerts(timer, remainingMs, setTimer);
 
   const startTimer = () => {
@@ -1092,6 +1563,8 @@ export function useTimerWidgetState() {
             ...current,
             endsAt: Date.now() + current.baseDurationMs,
             pausedRemainingMs: current.baseDurationMs,
+            isPaused: false,
+            currentRound: 1,
             lastCompletedAt: null
           }
     );
@@ -1112,7 +1585,8 @@ export function useTimerWidgetState() {
         : {
             ...current,
             endsAt: null,
-            pausedRemainingMs: current.endsAt ? Math.max(current.endsAt - Date.now(), 0) : 0
+            pausedRemainingMs: current.endsAt ? Math.max(current.endsAt - Date.now(), 0) : 0,
+            isPaused: current.endsAt !== null
           }
     );
   };
@@ -1128,6 +1602,7 @@ export function useTimerWidgetState() {
         : {
             ...current,
             endsAt: Date.now() + current.pausedRemainingMs,
+            isPaused: false,
             lastCompletedAt: null
           }
     );
@@ -1138,6 +1613,8 @@ export function useTimerWidgetState() {
       ...current,
       endsAt: null,
       pausedRemainingMs: current.baseDurationMs,
+      isPaused: false,
+      currentRound: 1,
       lastCompletedAt: null,
       stopwatchStartedAt: null,
       stopwatchAccumulatedMs: 0
@@ -1150,6 +1627,8 @@ export function useTimerWidgetState() {
       baseDurationMs: durationMs,
       endsAt: null,
       pausedRemainingMs: durationMs,
+      isPaused: false,
+      currentRound: 1,
       lastCompletedAt: null
     }));
   };
@@ -1163,11 +1642,87 @@ export function useTimerWidgetState() {
             mode,
             endsAt: null,
             pausedRemainingMs: current.baseDurationMs,
+            isPaused: false,
+            currentRound: 1,
             lastCompletedAt: null,
             stopwatchStartedAt: null,
             stopwatchAccumulatedMs: 0
           }
     );
+  };
+
+  const toggleStartPause = () => {
+    if (isTimerRunning) {
+      pauseTimer();
+    } else if (isTimerPaused) {
+      resumeTimer();
+    } else {
+      startTimer();
+    }
+  };
+
+  const extendTimer = (extraMs: number) => {
+    setTimer((current) => {
+      if (current.mode === 'stopwatch') {
+        return current;
+      }
+
+      if (current.endsAt !== null) {
+        return {
+          ...current,
+          baseDurationMs: current.baseDurationMs + extraMs,
+          endsAt: current.endsAt + extraMs
+        };
+      }
+
+      if (current.isPaused && current.lastCompletedAt === null) {
+        return {
+          ...current,
+          baseDurationMs: current.baseDurationMs + extraMs,
+          pausedRemainingMs: current.pausedRemainingMs + extraMs
+        };
+      }
+
+      return current;
+    });
+  };
+
+  const updatePresetMinutes = (index: number, minutes: number) => {
+    const clampedMinutes = clampNumber(
+      Math.round(minutes),
+      TIMER_PRESET_MIN_MINUTES,
+      CUSTOM_TIMER_MAX_MINUTES
+    );
+    setTimer((current) => ({
+      ...current,
+      presetsMinutes: current.presetsMinutes.map((presetMinutes, presetIndex) =>
+        presetIndex === index ? clampedMinutes : presetMinutes
+      )
+    }));
+  };
+
+  const setRepeatCount = (count: number) => {
+    const clampedCount = clampNumber(Math.round(count), 1, TIMER_REPEAT_MAX_ROUNDS);
+    setTimer((current) => ({
+      ...current,
+      repeatCount: clampedCount,
+      currentRound: Math.min(current.currentRound, clampedCount)
+    }));
+  };
+
+  const setFinalWarningMinutes = (minutes: number) => {
+    const clampedMinutes = clampNumber(Math.round(minutes), 0, TIMER_FINAL_WARNING_MAX_MINUTES);
+    setTimer((current) => ({
+      ...current,
+      finalWarningMinutes: clampedMinutes
+    }));
+  };
+
+  const toggleHalfwayWarning = () => {
+    setTimer((current) => ({
+      ...current,
+      halfwayWarningEnabled: !current.halfwayWarningEnabled
+    }));
   };
 
   const updateTimerLabel = (label: string) => {
@@ -1180,15 +1735,45 @@ export function useTimerWidgetState() {
   const updateCustomTimer = (nextMinutes: number) => {
     const clampedMinutes = normalizeCustomTimerMinutes(nextMinutes);
     const previousCustomTimerMs = getCustomTimerDurationMs(customTimerMinutes);
+    const nextDurationMs = getCustomTimerDurationMs(clampedMinutes);
 
     setCustomTimerMinutes(clampedMinutes);
 
     if (clampedMinutes > 0) {
-      setPreset(clampedMinutes * 60 * 1000);
+      setTimer((current) => {
+        if (current.mode !== 'stopwatch' && current.endsAt !== null) {
+          // Adjust the live run in place instead of restarting it.
+          const durationDelta = nextDurationMs - current.baseDurationMs;
+          return {
+            ...current,
+            baseDurationMs: nextDurationMs,
+            endsAt: Math.max(current.endsAt + durationDelta, Date.now())
+          };
+        }
+
+        if (current.mode !== 'stopwatch' && current.isPaused && current.lastCompletedAt === null) {
+          const durationDelta = nextDurationMs - current.baseDurationMs;
+          return {
+            ...current,
+            baseDurationMs: nextDurationMs,
+            pausedRemainingMs: Math.max(current.pausedRemainingMs + durationDelta, 0)
+          };
+        }
+
+        return {
+          ...current,
+          baseDurationMs: nextDurationMs,
+          endsAt: null,
+          pausedRemainingMs: nextDurationMs,
+          isPaused: false,
+          currentRound: 1,
+          lastCompletedAt: null
+        };
+      });
       return;
     }
 
-    if (timer.baseDurationMs === previousCustomTimerMs) {
+    if (timer.baseDurationMs === previousCustomTimerMs && timer.endsAt === null && !timer.isPaused) {
       setPreset(DEFAULT_TIMER.baseDurationMs);
     }
   };
@@ -1197,6 +1782,7 @@ export function useTimerWidgetState() {
     customTimerActive,
     customTimerMinutes,
     customTimerMs,
+    extendTimer,
     isStopwatch,
     isTimerFinished,
     isTimerPaused,
@@ -1207,8 +1793,10 @@ export function useTimerWidgetState() {
     resetTimer,
     resumeTimer,
     runAgainDurationLabel: formatTimerRunDurationLabel(timer.baseDurationMs),
+    setFinalWarningMinutes,
     setMode,
     setPreset,
+    setRepeatCount,
     startTimer,
     timer,
     timerLabel: isStopwatch
@@ -1220,11 +1808,16 @@ export function useTimerWidgetState() {
     timerStatusLabel: isTimerFinished
       ? 'Done'
       : isTimerRunning
-        ? 'Live'
+        ? !isStopwatch && timer.repeatCount > 1
+          ? `Round ${timer.currentRound}/${timer.repeatCount}`
+          : 'Live'
         : isTimerPaused
           ? 'Paused'
           : 'Ready',
+    toggleHalfwayWarning,
+    toggleStartPause,
     updateCustomTimer,
+    updatePresetMinutes,
     updateTimerLabel
   };
 }

@@ -127,10 +127,6 @@
   opacity: calc(var(--surface-reflection-opacity) * 1.28);
 }
 
-.panel[data-reflecting='true'] .panel__gloss::before {
-  opacity: calc(var(--surface-reflection-opacity) * 0.58);
-}
-
 .panel__gloss::after,
 .widget-card::after {
   content: '';
@@ -156,10 +152,6 @@
 
 .widget-card[data-reflecting='true']::after {
   opacity: 0.416;
-}
-
-.panel[data-reflecting='true'] .panel__gloss::after {
-  opacity: 0.315;
 }
 
 .panel__glass::after,
@@ -310,24 +302,12 @@
   opacity: 0.191;
 }
 
-.panel[data-reflecting='true'] .panel__glass::after {
-  opacity: 0.141;
-}
-
 .widget-card[data-reflecting='true'] .widget-card__bezel-core::before {
   opacity: 0.349;
 }
 
-.panel[data-reflecting='true'] .panel__bezel-mid {
-  opacity: 0.27;
-}
-
 .widget-card[data-reflecting='true'] .widget-card__bezel-core {
   opacity: 0.529;
-}
-
-.panel[data-reflecting='true'] .panel__gloss::after {
-  opacity: 0.416;
 }
 
 .panel--main > .panel__gloss,
@@ -401,7 +381,6 @@
 .widget-toggle,
 .builder-sidebar,
 .builder-editor,
-.planner-calendar,
 .planner-document,
 .tracker-panel,
 .tracker-record,
@@ -434,7 +413,6 @@
   .pill,
   .badge,
   .group-card__count,
-  .planner-calendar,
   .planner-document
 ) {
   border-color: transparent;
@@ -728,7 +706,6 @@
 }
 
 :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -740,7 +717,6 @@
 }
 
 .panel[data-theme] .widget-card :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -752,7 +728,6 @@
 }
 
 .panel[data-theme='dark'] :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -761,7 +736,6 @@
   .color-mode-trigger--active
 ),
 .panel[data-theme='dark'] .widget-card :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -972,7 +946,6 @@
 }
 
 :is(
-  .planner-calendar__day,
   .planner-week-lesson__open,
   .planner-week-lesson__delete,
   .planner-widget__calendar-action,
@@ -987,21 +960,12 @@
   box-shadow: var(--button-under-shadow);
 }
 
-.planner-calendar__day--selected {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 0 0 1px color-mix(in srgb, var(--widget-highlight) 18%, transparent),
-    var(--button-under-shadow);
-}
-
-.planner-calendar__day:hover:not(:disabled),
 .tracker-date-picker__day:hover {
   box-shadow:
     0 0 0 1px var(--quiet-control-border),
     var(--button-under-shadow);
 }
 
-.planner-calendar__day:focus-visible,
 .tracker-date-picker__day:focus-visible,
 .planner-week-lesson__open:focus-visible,
 .planner-week-lesson__delete:focus-visible,
@@ -1034,7 +998,6 @@
 }
 
 .panel[data-theme='dark'] :is(
-  .planner-calendar__day,
   .tracker-date-picker__day,
   .planner-week-lesson__open,
   .planner-week-lesson__delete,
@@ -1047,7 +1010,6 @@
 }
 
 .panel[data-theme='dark'] :is(
-  .planner-calendar__day,
   .tracker-date-picker__day,
   .planner-week-lesson__open,
   .planner-week-lesson__delete,
@@ -1059,8 +1021,6 @@
 }
 
 .panel[data-theme='dark'] :is(
-  .planner-calendar__day--selected,
-  .planner-calendar__day--today,
   .tracker-date-picker__day--selected,
   .tracker-date-picker__day--today,
   .seating-chart__student-pill--active,

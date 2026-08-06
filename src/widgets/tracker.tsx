@@ -5,6 +5,7 @@ import { useColorModeAppearance } from '../app/colorMode';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { buildCalendarDays, formatDateKeyForInput, formatLongDate, formatMonthLabel, getDaysUntilDateKey, getMonthKeyFromDateKey, getTodayDateKey, normalizeDateKey, parseDateInputValue, shiftDateKey, shiftMonthKey } from '../shared/dates';
 import { usePersistentState } from '../shared/persistence';
+import { announce, showUndoToast, useToday } from '../shared/uiKit';
 import { createStickyNoteId } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
@@ -35,10 +36,13 @@ export type HomeworkTrackerEntry = HomeworkAssessmentEntryBase & {
   status: HomeworkTrackerStatus;
 };
 
+export type HomeworkCompletionStatus = 'done' | 'late' | 'absent' | 'missing';
+
 export type HomeworkAssessmentTrackerSnapshot = {
   assessments: AssessmentTrackerEntry[];
+  firedReminderKeys: string[];
   homework: HomeworkTrackerEntry[];
-  homeworkCompletionsByHomeworkId: Record<string, string[]>;
+  homeworkCompletionsByHomeworkId: Record<string, Record<string, HomeworkCompletionStatus>>;
 };
 
 export type AssessmentTrackerDraft = {
@@ -85,9 +89,65 @@ export const HOMEWORK_TRACKER_STATUS_OPTIONS = [
 
 export const DEFAULT_HOMEWORK_ASSESSMENT_TRACKER: HomeworkAssessmentTrackerSnapshot = {
   assessments: [],
+  firedReminderKeys: [],
   homework: [],
   homeworkCompletionsByHomeworkId: {}
 };
+
+export const HOMEWORK_COMPLETION_STATUS_CYCLE = [
+  'missing',
+  'done',
+  'late',
+  'absent'
+] as const satisfies ReadonlyArray<HomeworkCompletionStatus>;
+
+export function isHomeworkCompletionStatus(value: unknown): value is HomeworkCompletionStatus {
+  return value === 'done' || value === 'late' || value === 'absent' || value === 'missing';
+}
+
+export function getNextHomeworkCompletionStatus(
+  status: HomeworkCompletionStatus,
+  direction: 1 | -1
+): HomeworkCompletionStatus {
+  const cycleLength = HOMEWORK_COMPLETION_STATUS_CYCLE.length;
+  const index = HOMEWORK_COMPLETION_STATUS_CYCLE.indexOf(status);
+  return HOMEWORK_COMPLETION_STATUS_CYCLE[(index + direction + cycleLength) % cycleLength];
+}
+
+export function getHomeworkCompletionStatusLabel(status: HomeworkCompletionStatus) {
+  switch (status) {
+    case 'done':
+      return 'Done';
+    case 'late':
+      return 'Late';
+    case 'absent':
+      return 'Absent';
+    default:
+      return 'Missing';
+  }
+}
+
+export function getHomeworkCompletionStatusGlyph(status: HomeworkCompletionStatus) {
+  switch (status) {
+    case 'done':
+      return '✓';
+    case 'late':
+      return '!';
+    case 'absent':
+      return '–';
+    default:
+      return '';
+  }
+}
+
+export function truncateTrackerTitle(title: string, maxLength = 10) {
+  const trimmed = title.trim();
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength).trimEnd()}…` : trimmed;
+}
+
+export function escapeTrackerCsvValue(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
 
 export function HomeworkAssessmentTrackerWidgetContent({
   controller,
@@ -107,6 +167,10 @@ export function HomeworkAssessmentTrackerWidgetContent({
   const isPopout = mode === 'popout';
   const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
   const [editingHomeworkId, setEditingHomeworkId] = useState<string | null>(null);
+  const [entryKind, setEntryKind] = useState<'homework' | 'assessment'>('homework');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [logClassFilter, setLogClassFilter] = useState<'all' | 'active'>('all');
+  const [logSearch, setLogSearch] = useState('');
   const [completionClassListId, setCompletionClassListId] = useState(
     controller.defaultClassListId
   );
@@ -194,6 +258,7 @@ export function HomeworkAssessmentTrackerWidgetContent({
     }
 
     resetAssessmentDraft(classListId);
+    setIsFormOpen(false);
   };
 
   const saveHomework = () => {
@@ -225,6 +290,7 @@ export function HomeworkAssessmentTrackerWidgetContent({
     }
 
     resetHomeworkDraft(classListId);
+    setIsFormOpen(false);
   };
 
   const completionClassList =
@@ -239,21 +305,112 @@ export function HomeworkAssessmentTrackerWidgetContent({
           return dateDelta === 0 ? right.updatedAt - left.updatedAt : dateDelta;
         })
     : [];
-  const homeworkCompletionSets = new Map(
+  const getCompletionStatus = (homeworkId: string, studentName: string): HomeworkCompletionStatus =>
+    controller.tracker.homeworkCompletionsByHomeworkId[homeworkId]?.[studentName] ?? 'missing';
+  const completionStudents = completionClassList?.students ?? [];
+  const completionDoneCounts = new Map(
     completionHomework.map((item) => [
       item.id,
-      new Set(controller.tracker.homeworkCompletionsByHomeworkId[item.id] ?? [])
+      completionStudents.filter((studentName) => getCompletionStatus(item.id, studentName) === 'done')
+        .length
     ])
   );
   const completedCellCount = completionHomework.reduce(
-    (total, item) =>
-      total + (controller.tracker.homeworkCompletionsByHomeworkId[item.id]?.length ?? 0),
+    (total, item) => total + (completionDoneCounts.get(item.id) ?? 0),
     0
   );
 
+  const activeClassList = controller.activeClassList;
+  const normalizedLogSearch = logSearch.trim().toLowerCase();
+  const matchesLogFilters = (item: AssessmentTrackerEntry | HomeworkTrackerEntry) => {
+    if (logClassFilter === 'active' && activeClassList && item.classListId !== activeClassList.id) {
+      return false;
+    }
+
+    return !normalizedLogSearch || item.title.toLowerCase().includes(normalizedLogSearch);
+  };
+  const visibleAssessments = controller.assessments.filter(matchesLogFilters);
+  const visibleHomework = controller.homework.filter(matchesLogFilters);
+
+  const exportCompletionCsv = () => {
+    if (!completionClassList) {
+      return;
+    }
+
+    const header = [
+      'Student',
+      ...completionHomework.map((item) => `${item.title} (${formatLongDate(item.dueDate)})`)
+    ];
+    const rows = completionStudents.map((studentName) => [
+      studentName,
+      ...completionHomework.map((item) => getCompletionStatus(item.id, studentName))
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map(escapeTrackerCsvValue).join(','))
+      .join('\n');
+
+    void navigator.clipboard?.writeText(csv).catch(() => {
+      // Ignore clipboard failures; the download still happens.
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `homework-${completionClassList.name.trim().replace(/\s+/g, '-') || 'class'}.csv`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    announce(`Exported CSV for ${completionClassList.name}`);
+  };
+
+  const isAssessmentForm = entryKind === 'assessment';
+  const activeDraft = isAssessmentForm ? assessmentDraft : homeworkDraft;
+  const editingEntryId = isAssessmentForm ? editingAssessmentId : editingHomeworkId;
+  const updateEntryDraft = (
+    patch: Partial<Omit<AssessmentTrackerDraft, 'status'> & Omit<HomeworkTrackerDraft, 'status'>>
+  ) => {
+    if (isAssessmentForm) {
+      setAssessmentDraft((current) => ({ ...current, ...patch }));
+    } else {
+      setHomeworkDraft((current) => ({ ...current, ...patch }));
+    }
+  };
+
+  const showDashboardEmpty = !isPopout && controller.totalTrackedCount === 0;
+
   return (
     <div className="tracker-widget">
-      {!isPopout && (onOpenManager || onOpenCompletion) ? (
+      {showDashboardEmpty ? (
+        <div className="tracker-empty">
+          <span className="tracker-empty__copy">Nothing due.</span>
+          {onOpenManager || onOpenCompletion ? (
+            <div className="tracker-empty__actions">
+              {onOpenManager ? (
+                <button
+                  aria-label="Open homework and assessment editor"
+                  className="secondary-link button-tone--utility"
+                  onClick={onOpenManager}
+                  type="button"
+                >
+                  Open editor
+                </button>
+              ) : null}
+              {onOpenCompletion ? (
+                <button
+                  aria-label="Open homework completion tracker"
+                  className="secondary-link button-tone--selection"
+                  onClick={onOpenCompletion}
+                  type="button"
+                >
+                  Completion
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!showDashboardEmpty && !isPopout && (onOpenManager || onOpenCompletion) ? (
         <div className="tracker-summary__footer widget-top-controls">
           {onOpenManager ? (
             <button
@@ -280,7 +437,13 @@ export function HomeworkAssessmentTrackerWidgetContent({
         </div>
       ) : null}
 
+      {showDashboardEmpty ? null : (
       <section className={`tracker-summary ${isPopout ? '' : 'tracker-summary--compact'}`}>
+        {controller.overdueCount > 0 ? (
+          <div className="tracker-summary__chips">
+            <span className="pill tracker-overdue-chip">{controller.overdueCount} overdue</span>
+          </div>
+        ) : null}
         <section className="tracker-summary__section">
           <div className="tracker-summary__section-head">
             <span className="field-label">Assessments</span>
@@ -334,6 +497,7 @@ export function HomeworkAssessmentTrackerWidgetContent({
         </section>
 
       </section>
+      )}
 
       {isPopout ? (
         <>
@@ -361,11 +525,19 @@ export function HomeworkAssessmentTrackerWidgetContent({
           {popoutMode === 'completion' ? (
             <section className="tracker-panel tracker-completion-panel">
               <div className="tracker-panel__header">
-                <div>
-                  <span className="field-label">Homework completion</span>
-                  <p className="helper-text">Tick students off against each homework due date.</p>
+                <span className="field-label">Homework completion</span>
+                <div className="tracker-panel__header-actions">
+                  {completionClassList && completionHomework.length > 0 ? (
+                    <button
+                      className="secondary-link button-tone--utility"
+                      onClick={exportCompletionCsv}
+                      type="button"
+                    >
+                      Export CSV
+                    </button>
+                  ) : null}
+                  <span className="badge">{completedCellCount}</span>
                 </div>
-                <span className="badge">{completedCellCount}</span>
               </div>
 
               <div className="field-stack tracker-completion__class">
@@ -398,8 +570,30 @@ export function HomeworkAssessmentTrackerWidgetContent({
                             key={`completion-head-${item.id}`}
                             scope="col"
                           >
+                            <span className="tracker-completion-table__title">
+                              {truncateTrackerTitle(item.title)}
+                            </span>
                             <span className="tracker-completion-table__date">
                               {formatLongDate(item.dueDate)}
+                            </span>
+                            <span className="tracker-completion-table__meta">
+                              <span className="tracker-completion-table__count">
+                                {completionDoneCounts.get(item.id) ?? 0}/{completionStudents.length}
+                              </span>
+                              <button
+                                aria-label={`Mark all done for ${item.title}`}
+                                className="tracker-completion-table__mark-all"
+                                onClick={() =>
+                                  controller.markAllHomeworkDone(
+                                    item.id,
+                                    completionStudents,
+                                    item.title
+                                  )
+                                }
+                                type="button"
+                              >
+                                ✓ all
+                              </button>
                             </span>
                           </th>
                         ))}
@@ -410,25 +604,36 @@ export function HomeworkAssessmentTrackerWidgetContent({
                         <tr key={`completion-student-${studentIndex}-${studentName}`}>
                           <th scope="row">{studentName}</th>
                           {completionHomework.map((item) => {
-                            const checked = homeworkCompletionSets.get(item.id)?.has(studentName) ?? false;
+                            const status = getCompletionStatus(item.id, studentName);
+                            const statusLabel = getHomeworkCompletionStatusLabel(status);
 
                             return (
                               <td key={`completion-cell-${item.id}-${studentIndex}-${studentName}`}>
-                                <label className="tracker-completion-check">
-                                  <input
-                                    aria-label={`${studentName} completed ${item.title}`}
-                                    checked={checked}
-                                    onChange={(event) =>
-                                      controller.toggleHomeworkCompletion(
-                                        item.id,
-                                        studentName,
-                                        event.target.checked
-                                      )
-                                    }
-                                    type="checkbox"
-                                  />
-                                  <span aria-hidden="true" />
-                                </label>
+                                <button
+                                  aria-label={`${studentName}, ${item.title}: ${statusLabel}`}
+                                  className={`tracker-cell-chip tracker-cell-chip--${status}`}
+                                  data-tooltip-content={statusLabel}
+                                  onClick={() =>
+                                    controller.setHomeworkCompletionStatus(
+                                      item.id,
+                                      studentName,
+                                      getNextHomeworkCompletionStatus(status, 1)
+                                    )
+                                  }
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    controller.setHomeworkCompletionStatus(
+                                      item.id,
+                                      studentName,
+                                      getNextHomeworkCompletionStatus(status, -1)
+                                    );
+                                  }}
+                                  type="button"
+                                >
+                                  <span aria-hidden="true">
+                                    {getHomeworkCompletionStatusGlyph(status)}
+                                  </span>
+                                </button>
                               </td>
                             );
                           })}
@@ -449,313 +654,235 @@ export function HomeworkAssessmentTrackerWidgetContent({
             </section>
           ) : (
             <>
-              <div className="tracker-editor-grid">
-                <section className="tracker-panel tracker-panel--editor">
-                  <div className="tracker-panel__header">
-                    <div>
-                      <span className="field-label">
-                        {editingAssessmentId ? 'Edit assessment' : 'New assessment'}
-                      </span>
-                      <p className="helper-text">Add due dates, notes, and a status for each class.</p>
-                    </div>
-                  </div>
-
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-assessment-class">
-                  Class
-                </label>
-                <select
-                  className="text-field"
-                  id="tracker-assessment-class"
-                  onChange={(event) =>
-                    setAssessmentDraft((current) => ({
-                      ...current,
-                      classListId: event.target.value
-                    }))
-                  }
-                  value={assessmentDraft.classListId}
-                >
-                  {controller.classLists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-assessment-title">
-                  Assessment title
-                </label>
-                <input
-                  className="text-field"
-                  id="tracker-assessment-title"
-                  onChange={(event) =>
-                    setAssessmentDraft((current) => ({
-                      ...current,
-                      title: event.target.value
-                    }))
-                  }
-                  placeholder="Semester test, oral presentation, essay..."
-                  type="text"
-                  value={assessmentDraft.title}
-                />
-              </div>
-
-              <div className="tracker-form-row">
-                <div className="field-stack">
-                  <TrackerDateField
-                    id="tracker-assessment-date"
-                    label="Due date"
-                    onChange={(dueDate) =>
-                      setAssessmentDraft((current) => ({
-                        ...current,
-                        dueDate
-                      }))
-                    }
-                    value={assessmentDraft.dueDate}
-                  />
-                </div>
-
-                <div className="field-stack">
-                  <label className="field-label" htmlFor="tracker-assessment-reminder">
-                    Reminder
-                  </label>
-                  <select
-                    className="text-field"
-                    id="tracker-assessment-reminder"
-                    onChange={(event) =>
-                      setAssessmentDraft((current) => ({
-                        ...current,
-                        reminderDaysBefore: Number(event.target.value)
-                      }))
-                    }
-                    value={assessmentDraft.reminderDaysBefore}
-                  >
-                    {TRACKER_REMINDER_OPTIONS.map((option) => (
-                      <option key={`assessment-reminder-${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="field-stack">
-                  <label className="field-label" htmlFor="tracker-assessment-status">
-                    Status
-                  </label>
-                  <select
-                    className="text-field"
-                    id="tracker-assessment-status"
-                    onChange={(event) =>
-                      setAssessmentDraft((current) => ({
-                        ...current,
-                        status: event.target.value as AssessmentTrackerStatus
-                      }))
-                    }
-                    value={assessmentDraft.status}
-                  >
-                    {ASSESSMENT_TRACKER_STATUS_OPTIONS.map((option) => (
-                      <option key={`assessment-status-${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-assessment-description">
-                  Description
-                </label>
-                <textarea
-                  className="text-area text-area--tracker"
-                  id="tracker-assessment-description"
-                  onChange={(event) =>
-                    setAssessmentDraft((current) => ({
-                      ...current,
-                      description: event.target.value
-                    }))
-                  }
-                  placeholder="Add instructions, outcomes, marking notes, or preparation details."
-                  value={assessmentDraft.description}
-                />
-              </div>
-
-              <div className="action-row">
-                <button className="primary-link" onClick={saveAssessment} type="button">
-                  {editingAssessmentId ? 'Save assessment' : 'Add assessment'}
-                </button>
-                <button
-                  className="secondary-link button-tone--utility"
-                  onClick={() => resetAssessmentDraft()}
-                  type="button"
-                >
-                  {editingAssessmentId ? 'Cancel edit' : 'Clear'}
-                </button>
-              </div>
-            </section>
-
-            <section className="tracker-panel tracker-panel--editor">
-              <div className="tracker-panel__header">
-                <div>
+              <section className="tracker-panel tracker-panel--form">
+                <div className="tracker-form-head">
                   <span className="field-label">
-                    {editingHomeworkId ? 'Edit homework' : 'New homework'}
+                    {editingEntryId
+                      ? isAssessmentForm
+                        ? 'Edit assessment'
+                        : 'Edit homework'
+                      : 'Add'}
                   </span>
-                  <p className="helper-text">Track what has been set and what is due today.</p>
-                </div>
-              </div>
-
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-homework-class">
-                  Class
-                </label>
-                <select
-                  className="text-field"
-                  id="tracker-homework-class"
-                  onChange={(event) =>
-                    setHomeworkDraft((current) => ({
-                      ...current,
-                      classListId: event.target.value
-                    }))
-                  }
-                  value={homeworkDraft.classListId}
-                >
-                  {controller.classLists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-homework-title">
-                  Homework title
-                </label>
-                <input
-                  className="text-field"
-                  id="tracker-homework-title"
-                  onChange={(event) =>
-                    setHomeworkDraft((current) => ({
-                      ...current,
-                      title: event.target.value
-                    }))
-                  }
-                  placeholder="Worksheet 4, reading response, revision task..."
-                  type="text"
-                  value={homeworkDraft.title}
-                />
-              </div>
-
-              <div className="tracker-form-row">
-                <div className="field-stack">
-                  <TrackerDateField
-                    id="tracker-homework-date"
-                    label="Due date"
-                    onChange={(dueDate) =>
-                      setHomeworkDraft((current) => ({
-                        ...current,
-                        dueDate
-                      }))
-                    }
-                    value={homeworkDraft.dueDate}
-                  />
-                </div>
-
-                <div className="field-stack">
-                  <label className="field-label" htmlFor="tracker-homework-reminder">
-                    Reminder
-                  </label>
-                  <select
-                    className="text-field"
-                    id="tracker-homework-reminder"
-                    onChange={(event) =>
-                      setHomeworkDraft((current) => ({
-                        ...current,
-                        reminderDaysBefore: Number(event.target.value)
-                      }))
-                    }
-                    value={homeworkDraft.reminderDaysBefore}
+                  <button
+                    className="secondary-link button-tone--utility"
+                    onClick={() => setIsFormOpen((current) => !current)}
+                    type="button"
                   >
-                    {TRACKER_REMINDER_OPTIONS.map((option) => (
-                      <option key={`homework-reminder-${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    {isFormOpen ? 'Close' : 'New entry'}
+                  </button>
                 </div>
 
-                <div className="field-stack">
-                  <label className="field-label" htmlFor="tracker-homework-status">
-                    Status
-                  </label>
-                  <select
-                    className="text-field"
-                    id="tracker-homework-status"
-                    onChange={(event) =>
-                      setHomeworkDraft((current) => ({
-                        ...current,
-                        status: event.target.value as HomeworkTrackerStatus
-                      }))
-                    }
-                    value={homeworkDraft.status}
-                  >
-                    {HOMEWORK_TRACKER_STATUS_OPTIONS.map((option) => (
-                      <option key={`homework-status-${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                {isFormOpen ? (
+                  <>
+                    <div
+                      aria-label="Entry type"
+                      className="tracker-popout-tabs tracker-form-kind"
+                      role="tablist"
+                    >
+                      <button
+                        aria-selected={!isAssessmentForm}
+                        className={`text-toggle ${!isAssessmentForm ? 'text-toggle--active' : ''}`}
+                        onClick={() => setEntryKind('homework')}
+                        role="tab"
+                        type="button"
+                      >
+                        Homework
+                      </button>
+                      <button
+                        aria-selected={isAssessmentForm}
+                        className={`text-toggle ${isAssessmentForm ? 'text-toggle--active' : ''}`}
+                        onClick={() => setEntryKind('assessment')}
+                        role="tab"
+                        type="button"
+                      >
+                        Assessment
+                      </button>
+                    </div>
 
-              <div className="field-stack">
-                <label className="field-label" htmlFor="tracker-homework-description">
-                  Description
-                </label>
-                <textarea
-                  className="text-area text-area--tracker"
-                  id="tracker-homework-description"
-                  onChange={(event) =>
-                    setHomeworkDraft((current) => ({
-                      ...current,
-                      description: event.target.value
-                    }))
-                  }
-                  placeholder="Add task notes, expected completion, or collection reminders."
-                  value={homeworkDraft.description}
-                />
-              </div>
+                    <div className="field-stack">
+                      <label className="field-label" htmlFor="tracker-entry-class">
+                        Class
+                      </label>
+                      <select
+                        className="text-field"
+                        id="tracker-entry-class"
+                        onChange={(event) => updateEntryDraft({ classListId: event.target.value })}
+                        value={activeDraft.classListId}
+                      >
+                        {controller.classLists.map((list) => (
+                          <option key={list.id} value={list.id}>
+                            {list.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="action-row">
-                <button className="primary-link" onClick={saveHomework} type="button">
-                  {editingHomeworkId ? 'Save homework' : 'Add homework'}
-                </button>
+                    <div className="field-stack">
+                      <label className="field-label" htmlFor="tracker-entry-title">
+                        Title
+                      </label>
+                      <input
+                        className="text-field"
+                        id="tracker-entry-title"
+                        onChange={(event) => updateEntryDraft({ title: event.target.value })}
+                        placeholder={
+                          isAssessmentForm
+                            ? 'Semester test, oral presentation, essay...'
+                            : 'Worksheet 4, reading response, revision task...'
+                        }
+                        type="text"
+                        value={activeDraft.title}
+                      />
+                    </div>
+
+                    <div className="tracker-form-row">
+                      <div className="field-stack">
+                        <TrackerDateField
+                          id="tracker-entry-date"
+                          label="Due date"
+                          onChange={(dueDate) => updateEntryDraft({ dueDate })}
+                          value={activeDraft.dueDate}
+                        />
+                      </div>
+
+                      <div className="field-stack">
+                        <label className="field-label" htmlFor="tracker-entry-reminder">
+                          Reminder
+                        </label>
+                        <select
+                          className="text-field"
+                          id="tracker-entry-reminder"
+                          onChange={(event) =>
+                            updateEntryDraft({ reminderDaysBefore: Number(event.target.value) })
+                          }
+                          value={activeDraft.reminderDaysBefore}
+                        >
+                          {TRACKER_REMINDER_OPTIONS.map((option) => (
+                            <option key={`entry-reminder-${option.value}`} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="field-stack">
+                        <label className="field-label" htmlFor="tracker-entry-status">
+                          Status
+                        </label>
+                        <select
+                          className="text-field"
+                          id="tracker-entry-status"
+                          onChange={(event) => {
+                            if (isAssessmentForm) {
+                              setAssessmentDraft((current) => ({
+                                ...current,
+                                status: event.target.value as AssessmentTrackerStatus
+                              }));
+                            } else {
+                              setHomeworkDraft((current) => ({
+                                ...current,
+                                status: event.target.value as HomeworkTrackerStatus
+                              }));
+                            }
+                          }}
+                          value={activeDraft.status}
+                        >
+                          {(isAssessmentForm
+                            ? ASSESSMENT_TRACKER_STATUS_OPTIONS
+                            : HOMEWORK_TRACKER_STATUS_OPTIONS
+                          ).map((option) => (
+                            <option key={`entry-status-${option.value}`} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="field-stack">
+                      <label className="field-label" htmlFor="tracker-entry-description">
+                        Description
+                      </label>
+                      <textarea
+                        className="text-area text-area--tracker"
+                        id="tracker-entry-description"
+                        onChange={(event) => updateEntryDraft({ description: event.target.value })}
+                        value={activeDraft.description}
+                      />
+                    </div>
+
+                    <div className="action-row">
+                      <button
+                        className="primary-link"
+                        onClick={isAssessmentForm ? saveAssessment : saveHomework}
+                        type="button"
+                      >
+                        {editingEntryId ? 'Save' : 'Add'}
+                      </button>
+                      <button
+                        className="secondary-link button-tone--utility"
+                        onClick={() => {
+                          if (isAssessmentForm) {
+                            resetAssessmentDraft();
+                          } else {
+                            resetHomeworkDraft();
+                          }
+                          setIsFormOpen(false);
+                        }}
+                        type="button"
+                      >
+                        {editingEntryId ? 'Cancel edit' : 'Clear'}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </section>
+
+          <div className="tracker-log-toolbar">
+            <div aria-label="Filter log by class" className="tracker-filter-chips" role="group">
+              <button
+                aria-pressed={logClassFilter === 'all'}
+                className={`tracker-filter-chip ${
+                  logClassFilter === 'all' ? 'tracker-filter-chip--active' : ''
+                }`}
+                onClick={() => setLogClassFilter('all')}
+                type="button"
+              >
+                All classes
+              </button>
+              {activeClassList ? (
                 <button
-                  className="secondary-link button-tone--utility"
-                  onClick={() => resetHomeworkDraft()}
+                  aria-pressed={logClassFilter === 'active'}
+                  className={`tracker-filter-chip ${
+                    logClassFilter === 'active' ? 'tracker-filter-chip--active' : ''
+                  }`}
+                  onClick={() => setLogClassFilter('active')}
                   type="button"
                 >
-                  {editingHomeworkId ? 'Cancel edit' : 'Clear'}
+                  {activeClassList.name}
                 </button>
-              </div>
-            </section>
+              ) : null}
+            </div>
+            <input
+              aria-label="Search by title"
+              className="text-field tracker-log-search"
+              onChange={(event) => setLogSearch(event.target.value)}
+              placeholder="Search"
+              type="search"
+              value={logSearch}
+            />
           </div>
 
           <div className="tracker-editor-grid">
             <section className="tracker-panel">
               <div className="tracker-panel__header">
-                <div>
-                  <span className="field-label">Assessment log</span>
-                  <p className="helper-text">Update status, due dates, and details as plans change.</p>
-                </div>
-                <span className="badge">{controller.assessments.length}</span>
+                <span className="field-label">Assessment log</span>
+                <span className="badge">{visibleAssessments.length}</span>
               </div>
 
-              {controller.assessments.length > 0 ? (
+              {visibleAssessments.length > 0 ? (
                 <div className="tracker-record-list tracker-record-list--full">
-                  {controller.assessments.map((item) => (
+                  {visibleAssessments.map((item) => (
                     <TrackerItemCard
                       classLists={controller.classLists}
                       item={item}
@@ -769,6 +896,8 @@ export function HomeworkAssessmentTrackerWidgetContent({
                       }}
                       onEdit={() => {
                         setEditingAssessmentId(item.id);
+                        setEntryKind('assessment');
+                        setIsFormOpen(true);
                         setAssessmentDraft({
                           classListId: resolveTrackerDraftClassListId(
                             item.classListId ?? '',
@@ -791,23 +920,22 @@ export function HomeworkAssessmentTrackerWidgetContent({
                 </div>
               ) : (
                 <div className="group-maker__empty">
-                  <p className="empty-copy">No assessments tracked yet.</p>
+                  <p className="empty-copy">
+                    {controller.assessments.length > 0 ? 'No matches.' : 'No assessments tracked yet.'}
+                  </p>
                 </div>
               )}
             </section>
 
             <section className="tracker-panel">
               <div className="tracker-panel__header">
-                <div>
-                  <span className="field-label">Homework log</span>
-                  <p className="helper-text">Keep due dates visible and move items through collection.</p>
-                </div>
-                <span className="badge">{controller.homework.length}</span>
+                <span className="field-label">Homework log</span>
+                <span className="badge">{visibleHomework.length}</span>
               </div>
 
-              {controller.homework.length > 0 ? (
+              {visibleHomework.length > 0 ? (
                 <div className="tracker-record-list tracker-record-list--full">
-                  {controller.homework.map((item) => (
+                  {visibleHomework.map((item) => (
                     <TrackerItemCard
                       classLists={controller.classLists}
                       item={item}
@@ -821,6 +949,8 @@ export function HomeworkAssessmentTrackerWidgetContent({
                       }}
                       onEdit={() => {
                         setEditingHomeworkId(item.id);
+                        setEntryKind('homework');
+                        setIsFormOpen(true);
                         setHomeworkDraft({
                           classListId: resolveTrackerDraftClassListId(
                             item.classListId ?? '',
@@ -843,7 +973,9 @@ export function HomeworkAssessmentTrackerWidgetContent({
                 </div>
               ) : (
                 <div className="group-maker__empty">
-                  <p className="empty-copy">No homework tracked yet.</p>
+                  <p className="empty-copy">
+                    {controller.homework.length > 0 ? 'No matches.' : 'No homework tracked yet.'}
+                  </p>
                 </div>
               )}
             </section>
@@ -1155,37 +1287,29 @@ export function TrackerItemCard({
           <p className="tracker-record__description">{item.description}</p>
         ) : null}
 
-        {!compact ? (
+        {!compact && reminderLabel ? (
           <div className="pill-list">
-            <span className={`pill tracker-status-pill tracker-status-pill--${statusTone}`}>
-              {statusLabel}
+            <span className="pill tracker-status-pill tracker-status-pill--reminder">
+              {reminderLabel}
             </span>
-            {reminderLabel ? (
-              <span className="pill tracker-status-pill tracker-status-pill--reminder">
-                {reminderLabel}
-              </span>
-            ) : null}
           </div>
         ) : null}
       </div>
 
       {!compact ? (
         <div className="tracker-record__actions">
-          <select
-            className="text-field tracker-record__status-select"
-            onChange={(event) =>
-              onStatusChange?.(event.target.value as AssessmentTrackerStatus | HomeworkTrackerStatus)
-            }
-            value={item.status}
+          <button
+            aria-label={`Status: ${statusLabel}. Click for next status.`}
+            className={`pill tracker-status-pill tracker-status-pill--${statusTone} tracker-status-chip`}
+            onClick={() => onStatusChange?.(getNextTrackerEntryStatus(kind, item.status, 1))}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onStatusChange?.(getNextTrackerEntryStatus(kind, item.status, -1));
+            }}
+            type="button"
           >
-            {(isAssessment ? ASSESSMENT_TRACKER_STATUS_OPTIONS : HOMEWORK_TRACKER_STATUS_OPTIONS).map(
-              (option) => (
-                <option key={`${kind}-row-status-${option.value}`} value={option.value}>
-                  {option.label}
-                </option>
-              )
-            )}
-          </select>
+            {statusLabel}
+          </button>
           <div className="action-row tracker-record__button-row">
             <button
               className="secondary-link button-tone--utility"
@@ -1276,7 +1400,7 @@ export function useHomeworkAssessmentTrackerController(
   classLists: ClassList[]
 ) {
   const [tracker, setTracker] = useHomeworkAssessmentTrackerState();
-  const todayKey = getTodayDateKey();
+  const todayKey = useToday();
   const defaultClassListId = getTrackerDefaultClassListId(selectedListId, classLists);
   const activeClassList =
     classLists.find((list) => list.id === defaultClassListId) ?? classLists[0] ?? null;
@@ -1359,8 +1483,13 @@ export function useHomeworkAssessmentTrackerController(
       ...current,
       assessments: current.assessments.map((assessment) =>
         assessment.id === assessmentId
-          ? createAssessmentTrackerEntry(entry, classLists, assessmentId, assessment.updatedAt) ??
-            assessment
+          ? createAssessmentTrackerEntry(
+              entry,
+              classLists,
+              assessmentId,
+              assessment.updatedAt,
+              assessment.classLabel
+            ) ?? assessment
           : assessment
       )
     }));
@@ -1373,8 +1502,7 @@ export function useHomeworkAssessmentTrackerController(
         assessment.id === assessmentId
           ? {
               ...assessment,
-              status,
-              updatedAt: Date.now()
+              status
             }
           : assessment
       )
@@ -1382,10 +1510,25 @@ export function useHomeworkAssessmentTrackerController(
   };
 
   const removeAssessment = (assessmentId: string) => {
+    const removedEntry = tracker.assessments.find((assessment) => assessment.id === assessmentId);
+    if (!removedEntry) {
+      return;
+    }
+
     setTracker((current) => ({
       ...current,
       assessments: current.assessments.filter((assessment) => assessment.id !== assessmentId)
     }));
+    showUndoToast(`Deleted "${removedEntry.title}"`, () => {
+      setTracker((current) =>
+        current.assessments.some((assessment) => assessment.id === removedEntry.id)
+          ? current
+          : {
+              ...current,
+              assessments: [removedEntry, ...current.assessments]
+            }
+      );
+    });
   };
 
   const addHomework = (entry: Omit<HomeworkTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>) => {
@@ -1408,8 +1551,13 @@ export function useHomeworkAssessmentTrackerController(
       ...current,
       homework: current.homework.map((homeworkEntry) =>
         homeworkEntry.id === homeworkId
-          ? createHomeworkTrackerEntry(entry, classLists, homeworkId, homeworkEntry.updatedAt) ??
-            homeworkEntry
+          ? createHomeworkTrackerEntry(
+              entry,
+              classLists,
+              homeworkId,
+              homeworkEntry.updatedAt,
+              homeworkEntry.classLabel
+            ) ?? homeworkEntry
           : homeworkEntry
       )
     }));
@@ -1422,8 +1570,7 @@ export function useHomeworkAssessmentTrackerController(
         homeworkEntry.id === homeworkId
           ? {
               ...homeworkEntry,
-              status,
-              updatedAt: Date.now()
+              status
             }
           : homeworkEntry
       )
@@ -1431,6 +1578,12 @@ export function useHomeworkAssessmentTrackerController(
   };
 
   const removeHomework = (homeworkId: string) => {
+    const removedEntry = tracker.homework.find((homeworkEntry) => homeworkEntry.id === homeworkId);
+    if (!removedEntry) {
+      return;
+    }
+
+    const removedCompletions = tracker.homeworkCompletionsByHomeworkId[homeworkId];
     setTracker((current) => ({
       ...current,
       homework: current.homework.filter((homeworkEntry) => homeworkEntry.id !== homeworkId),
@@ -1438,12 +1591,30 @@ export function useHomeworkAssessmentTrackerController(
         Object.entries(current.homeworkCompletionsByHomeworkId).filter(([id]) => id !== homeworkId)
       )
     }));
+    showUndoToast(`Deleted "${removedEntry.title}"`, () => {
+      setTracker((current) => {
+        if (current.homework.some((homeworkEntry) => homeworkEntry.id === removedEntry.id)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          homework: [removedEntry, ...current.homework],
+          homeworkCompletionsByHomeworkId: removedCompletions
+            ? {
+                ...current.homeworkCompletionsByHomeworkId,
+                [removedEntry.id]: removedCompletions
+              }
+            : current.homeworkCompletionsByHomeworkId
+        };
+      });
+    });
   };
 
-  const toggleHomeworkCompletion = (
+  const setHomeworkCompletionStatus = (
     homeworkId: string,
     studentName: string,
-    completed: boolean
+    status: HomeworkCompletionStatus
   ) => {
     const normalizedStudentName = studentName.trim();
     if (!normalizedStudentName) {
@@ -1451,21 +1622,21 @@ export function useHomeworkAssessmentTrackerController(
     }
 
     setTracker((current) => {
-      const currentNames = current.homeworkCompletionsByHomeworkId[homeworkId] ?? [];
-      const currentNameSet = new Set(currentNames);
+      const currentStatuses = current.homeworkCompletionsByHomeworkId[homeworkId] ?? {};
+      const nextStatuses = { ...currentStatuses };
 
-      if (completed) {
-        currentNameSet.add(normalizedStudentName);
+      if (status === 'missing') {
+        delete nextStatuses[normalizedStudentName];
       } else {
-        currentNameSet.delete(normalizedStudentName);
+        nextStatuses[normalizedStudentName] = status;
       }
 
       const nextCompletions = {
         ...current.homeworkCompletionsByHomeworkId,
-        [homeworkId]: Array.from(currentNameSet)
+        [homeworkId]: nextStatuses
       };
 
-      if (nextCompletions[homeworkId].length === 0) {
+      if (Object.keys(nextStatuses).length === 0) {
         delete nextCompletions[homeworkId];
       }
 
@@ -1476,7 +1647,104 @@ export function useHomeworkAssessmentTrackerController(
     });
   };
 
+  const markAllHomeworkDone = (
+    homeworkId: string,
+    studentNames: string[],
+    homeworkTitle: string
+  ) => {
+    const previousStatuses = tracker.homeworkCompletionsByHomeworkId[homeworkId];
+    const nextStatuses: Record<string, HomeworkCompletionStatus> = {
+      ...previousStatuses
+    };
+
+    for (const studentName of studentNames) {
+      const normalizedStudentName = studentName.trim();
+      if (normalizedStudentName) {
+        nextStatuses[normalizedStudentName] = 'done';
+      }
+    }
+
+    setTracker((current) => ({
+      ...current,
+      homeworkCompletionsByHomeworkId: {
+        ...current.homeworkCompletionsByHomeworkId,
+        [homeworkId]: nextStatuses
+      }
+    }));
+    showUndoToast(`Marked all done for "${homeworkTitle}"`, () => {
+      setTracker((current) => {
+        const nextCompletions = { ...current.homeworkCompletionsByHomeworkId };
+
+        if (previousStatuses && Object.keys(previousStatuses).length > 0) {
+          nextCompletions[homeworkId] = previousStatuses;
+        } else {
+          delete nextCompletions[homeworkId];
+        }
+
+        return {
+          ...current,
+          homeworkCompletionsByHomeworkId: nextCompletions
+        };
+      });
+    });
+  };
+
+  const reminderSignature = reminderItems
+    .map((entry) => entry.id)
+    .sort()
+    .join('|');
+
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || reminderItems.length === 0) {
+      return;
+    }
+
+    const firedKeys = new Set(tracker.firedReminderKeys);
+    const dueEntries = reminderItems.filter((entry) => !firedKeys.has(`${entry.id}:${todayKey}`));
+    if (dueEntries.length === 0) {
+      return;
+    }
+
+    const fireNotifications = () => {
+      for (const entry of dueEntries) {
+        try {
+          new Notification(`Reminder: ${entry.title}`, {
+            body: `${getTrackerItemClassLabel(entry, classLists)} · due ${formatLongDate(entry.dueDate)}`
+          });
+        } catch {
+          // Notifications are best-effort; the in-app reminder pill still shows.
+        }
+      }
+    };
+
+    if (Notification.permission === 'granted') {
+      fireNotifications();
+    } else if (Notification.permission === 'default') {
+      void Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          fireNotifications();
+        }
+      });
+    }
+
+    setTracker((current) => {
+      const todaySuffix = `:${todayKey}`;
+      const nextKeys = new Set(current.firedReminderKeys.filter((key) => key.endsWith(todaySuffix)));
+
+      for (const entry of dueEntries) {
+        nextKeys.add(`${entry.id}${todaySuffix}`);
+      }
+
+      return {
+        ...current,
+        firedReminderKeys: Array.from(nextKeys)
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reminderSignature, todayKey]);
+
   return {
+    activeClassList,
     addAssessment,
     addHomework,
     assessments,
@@ -1490,14 +1758,16 @@ export function useHomeworkAssessmentTrackerController(
     dueTodayCount,
     homework,
     homeworkDueToday,
+    markAllHomeworkDone,
     overdueCount,
     reminderCount,
     reminderItems,
     removeAssessment,
     removeHomework,
+    setHomeworkCompletionStatus,
     summaryDescription,
     todayKey,
-    toggleHomeworkCompletion,
+    totalTrackedCount,
     tracker,
     upcomingAssessments,
     updateAssessment,
@@ -1699,6 +1969,20 @@ export function getTrackerStatusTone(
   return 'default';
 }
 
+export function getNextTrackerEntryStatus(
+  kind: 'assessment' | 'homework',
+  status: AssessmentTrackerStatus | HomeworkTrackerStatus,
+  direction: 1 | -1
+): AssessmentTrackerStatus | HomeworkTrackerStatus {
+  const options =
+    kind === 'assessment' ? ASSESSMENT_TRACKER_STATUS_OPTIONS : HOMEWORK_TRACKER_STATUS_OPTIONS;
+  const index = Math.max(
+    0,
+    options.findIndex((option) => option.value === status)
+  );
+  return options[(index + direction + options.length) % options.length].value;
+}
+
 export function compareTrackerEntries(
   left: Pick<HomeworkAssessmentEntryBase, 'dueDate' | 'updatedAt'> & { status: string },
   right: Pick<HomeworkAssessmentEntryBase, 'dueDate' | 'updatedAt'> & { status: string },
@@ -1725,7 +2009,8 @@ export function createAssessmentTrackerEntry(
   entry: Omit<AssessmentTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>,
   classLists: ClassList[],
   entryId = createStickyNoteId(),
-  _previousUpdatedAt?: number
+  previousUpdatedAt?: number,
+  previousClassLabel?: string
 ) {
   const dueDate = normalizeDateKey(entry.dueDate);
   if (!dueDate || !entry.title.trim()) {
@@ -1733,13 +2018,10 @@ export function createAssessmentTrackerEntry(
   }
 
   return {
-    classLabel: getTrackerItemClassLabel(
-      {
-        classLabel: '',
-        classListId: entry.classListId
-      },
-      classLists
-    ),
+    classLabel:
+      classLists.find((list) => list.id === entry.classListId)?.name ??
+      previousClassLabel?.trim() ??
+      '',
     classListId: entry.classListId,
     description: entry.description.trim(),
     dueDate,
@@ -1747,7 +2029,7 @@ export function createAssessmentTrackerEntry(
     reminderDaysBefore: Math.max(0, Math.round(entry.reminderDaysBefore)),
     status: entry.status,
     title: entry.title.trim(),
-    updatedAt: Date.now()
+    updatedAt: previousUpdatedAt ?? Date.now()
   } satisfies AssessmentTrackerEntry;
 }
 
@@ -1755,7 +2037,8 @@ export function createHomeworkTrackerEntry(
   entry: Omit<HomeworkTrackerEntry, 'classLabel' | 'id' | 'updatedAt'>,
   classLists: ClassList[],
   entryId = createStickyNoteId(),
-  _previousUpdatedAt?: number
+  previousUpdatedAt?: number,
+  previousClassLabel?: string
 ) {
   const dueDate = normalizeDateKey(entry.dueDate);
   if (!dueDate || !entry.title.trim()) {
@@ -1763,13 +2046,10 @@ export function createHomeworkTrackerEntry(
   }
 
   return {
-    classLabel: getTrackerItemClassLabel(
-      {
-        classLabel: '',
-        classListId: entry.classListId
-      },
-      classLists
-    ),
+    classLabel:
+      classLists.find((list) => list.id === entry.classListId)?.name ??
+      previousClassLabel?.trim() ??
+      '',
     classListId: entry.classListId,
     description: entry.description.trim(),
     dueDate,
@@ -1777,7 +2057,7 @@ export function createHomeworkTrackerEntry(
     reminderDaysBefore: Math.max(0, Math.round(entry.reminderDaysBefore)),
     status: entry.status,
     title: entry.title.trim(),
-    updatedAt: Date.now()
+    updatedAt: previousUpdatedAt ?? Date.now()
   } satisfies HomeworkTrackerEntry;
 }
 
@@ -1791,6 +2071,7 @@ export function normalizeHomeworkAssessmentTrackerSnapshot(
 
   const nextRaw = raw as {
     assessments?: unknown[];
+    firedReminderKeys?: unknown[];
     homework?: unknown[];
     homeworkCompletionsByHomeworkId?: Record<string, unknown>;
   };
@@ -1807,6 +2088,9 @@ export function normalizeHomeworkAssessmentTrackerSnapshot(
           .map((entry) => normalizeAssessmentTrackerEntry(entry))
           .filter((entry): entry is AssessmentTrackerEntry => entry !== null)
       : initialValue.assessments,
+    firedReminderKeys: Array.isArray(nextRaw.firedReminderKeys)
+      ? nextRaw.firedReminderKeys.filter((key): key is string => typeof key === 'string')
+      : [],
     homework,
     homeworkCompletionsByHomeworkId: normalizeHomeworkCompletionMap(
       nextRaw.homeworkCompletionsByHomeworkId,
@@ -1818,29 +2102,39 @@ export function normalizeHomeworkAssessmentTrackerSnapshot(
 export function normalizeHomeworkCompletionMap(
   raw: unknown,
   homeworkIds: Set<string>
-): Record<string, string[]> {
+): Record<string, Record<string, HomeworkCompletionStatus>> {
   if (!raw || typeof raw !== 'object') {
     return {};
   }
 
-  const completionsByHomeworkId: Record<string, string[]> = {};
+  const completionsByHomeworkId: Record<string, Record<string, HomeworkCompletionStatus>> = {};
 
-  for (const [homeworkId, studentNamesRaw] of Object.entries(raw)) {
-    if (!homeworkIds.has(homeworkId) || !Array.isArray(studentNamesRaw)) {
+  for (const [homeworkId, completionsRaw] of Object.entries(raw)) {
+    if (!homeworkIds.has(homeworkId)) {
       continue;
     }
 
-    const studentNames = Array.from(
-      new Set(
-        studentNamesRaw
-          .filter((studentName): studentName is string => typeof studentName === 'string')
-          .map((studentName) => studentName.trim())
-          .filter(Boolean)
-      )
-    );
+    const statusByStudent: Record<string, HomeworkCompletionStatus> = {};
 
-    if (studentNames.length > 0) {
-      completionsByHomeworkId[homeworkId] = studentNames;
+    if (Array.isArray(completionsRaw)) {
+      // Legacy shape: an array of completed student names maps to 'done'.
+      for (const studentNameRaw of completionsRaw) {
+        const studentName = typeof studentNameRaw === 'string' ? studentNameRaw.trim() : '';
+        if (studentName) {
+          statusByStudent[studentName] = 'done';
+        }
+      }
+    } else if (completionsRaw && typeof completionsRaw === 'object') {
+      for (const [studentNameRaw, statusRaw] of Object.entries(completionsRaw)) {
+        const studentName = studentNameRaw.trim();
+        if (studentName && isHomeworkCompletionStatus(statusRaw) && statusRaw !== 'missing') {
+          statusByStudent[studentName] = statusRaw;
+        }
+      }
+    }
+
+    if (Object.keys(statusByStudent).length > 0) {
+      completionsByHomeworkId[homeworkId] = statusByStudent;
     }
   }
 

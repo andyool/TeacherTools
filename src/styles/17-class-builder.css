@@ -1,0 +1,268 @@
+/* Class list builder — roster rows, import preview, archived section.
+   Loaded last, so rules here may override earlier layers. */
+
+/* --- Students field header ----------------------------------------------- */
+
+.builder-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.builder-roster-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.builder-import-input {
+  display: none;
+}
+
+.builder-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+}
+
+.builder-view-toggle__button {
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.builder-view-toggle__button[aria-pressed='true'] {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+/* --- Import preview chip -------------------------------------------------- */
+
+.builder-import-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.builder-import-preview__chip {
+  padding: 1px 9px;
+  border: 1px solid var(--accent-border-strong, var(--accent-border));
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.builder-import-preview__dismiss {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: var(--fs-md);
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.builder-import-preview__dismiss:hover {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+/* --- Roster rows ---------------------------------------------------------- */
+
+.builder-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px;
+  margin: 0 -2px;
+}
+
+.builder-roster__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: grab;
+}
+
+.builder-roster__row:hover {
+  border-color: var(--panel-border);
+}
+
+.builder-roster__row:focus-visible {
+  outline: none;
+  border-color: var(--accent-border-strong, var(--accent-border));
+  background: var(--accent-soft);
+}
+
+.builder-roster__row--dragging {
+  opacity: 0.45;
+}
+
+.builder-roster__row--drop {
+  border-color: var(--accent-border-strong, var(--accent-border));
+  background: var(--accent-soft);
+}
+
+.builder-roster__grip {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  letter-spacing: -1px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.builder-roster__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.builder-roster__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid var(--accent-border-strong, var(--accent-border));
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.builder-roster__input:focus {
+  outline: none;
+}
+
+.builder-roster__remove {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  color: var(--text-secondary);
+  opacity: 0;
+}
+
+.builder-roster__row:hover .builder-roster__remove,
+.builder-roster__row:focus-within .builder-roster__remove,
+.builder-roster__remove:focus-visible {
+  opacity: 1;
+}
+
+.builder-roster__remove:hover {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+/* --- Archived section ----------------------------------------------------- */
+
+.builder-archived {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.builder-archived__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.builder-archived__toggle:hover {
+  color: var(--text-primary);
+}
+
+.builder-archived__caret {
+  width: 10px;
+  font-size: var(--fs-xs);
+  line-height: 1;
+}
+
+.builder-archived__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.builder-archived__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.builder-archived__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.builder-archived__action {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+}
+
+/* --- Footer tools --------------------------------------------------------- */
+
+.builder-footer--class-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.builder-footer--class-list .builder-footer__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+}

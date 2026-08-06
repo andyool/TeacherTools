@@ -479,6 +479,37 @@ export function buildQrSvgPath(qrCode: QrCode, border = 2) {
   return pathCommands.join('');
 }
 
+export function drawQrToCanvas(
+  qrCode: QrCode,
+  options?: { border?: number; scale?: number }
+): HTMLCanvasElement | null {
+  const border = options?.border ?? 2;
+  const scale = options?.scale ?? 12;
+  const sizeInModules = qrCode.size + border * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = sizeInModules * scale;
+  canvas.height = sizeInModules * scale;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return null;
+  }
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#000000';
+
+  for (let y = 0; y < qrCode.size; y += 1) {
+    for (let x = 0; x < qrCode.size; x += 1) {
+      if (qrCode.getModule(x, y)) {
+        context.fillRect((x + border) * scale, (y + border) * scale, scale, scale);
+      }
+    }
+  }
+
+  return canvas;
+}
+
 function getByteModeCharacterCountBits(version: number) {
   return version <= 9 ? 8 : 16;
 }

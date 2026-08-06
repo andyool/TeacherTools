@@ -23,11 +23,6 @@
     justify-content: space-between;
   }
 
-  .update-toolbar {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .picker-select--toolbar {
     width: 100%;
     max-width: none;
@@ -141,10 +136,6 @@
     width: 100%;
   }
 
-  .planner-calendar__header {
-    flex-direction: column;
-  }
-
   .bell-schedule__compact-toolbar,
   .bell-schedule__summary-head,
   .bell-schedule__summary-main,
@@ -240,8 +231,7 @@
     min-width: min(220px, calc(100cqw - 28px));
   }
 
-  .panel--main .panel-actions,
-  .panel--main .update-toolbar {
+  .panel--main .panel-actions {
     min-width: 0;
     gap: 4px;
     flex-wrap: nowrap;
@@ -286,7 +276,6 @@
   }
 
   .panel--main .panel-actions,
-  .panel--main .update-toolbar,
   .panel--main .zoom-controls {
     gap: 3px;
   }
@@ -348,11 +337,6 @@
   .panel--main .panel-actions {
     justify-content: flex-end;
     flex-wrap: nowrap;
-  }
-
-  .panel--main .update-toolbar {
-    display: contents;
-    width: auto;
   }
 
   .panel--main .panel-actions,
@@ -438,21 +422,13 @@
 .panel__glass {
   background:var(--panel-fill);
   border: 1px solid var(--panel-border);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 .panel[data-theme='color'] .panel__glass {
   background:var(--panel-fill);
   border-width: 1px;
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 .panel__gloss,
@@ -499,18 +475,9 @@
   transform: translate(-50%, -50%) rotate(var(--bezel-glint-angle));
 }
 
-.panel[data-reflecting='true'] .panel__gloss::before {
-  opacity: calc(var(--surface-reflection-opacity) * 0.68);
-}
-
-.panel[data-reflecting='true'] .panel__gloss::after {
-  opacity: 0.439;
-}
-
 /* Plain selector list, not :is(): one compound argument (e.g. the `> span`
    below) would lift an :is() list's specificity above the bare-class rules
    that position floating popovers/menus — keep those out of this list too. */
-.card,
 .widget-card,
 .update-status-pill,
 .stepper,
@@ -521,7 +488,6 @@
 .widget-toggle,
 .builder-sidebar,
 .builder-editor,
-.planner-calendar,
 .planner-document,
 .tracker-panel,
 .tracker-record,
@@ -545,11 +511,7 @@
   isolation: isolate;
   border-width: 1px;
   background:var(--surface-fill);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 /* Only static, non-interactive surfaces keep hard clipping; containers that
@@ -585,8 +547,6 @@
   border-width: 1px;
   background:var(--surface-fill);
   box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
     inset 0 0 0 1px color-mix(in srgb, var(--button-outline, var(--surface-bezel-line)) 72%, transparent),
     var(--surface-depth-shadow);
 }
@@ -600,19 +560,13 @@
   position: relative;
   isolation: isolate;
   border-width: 1px;
-  background:var(--surface-fill);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line);
-}
+  background:var(--surface-fill);}
 
 :is(
   .badge,
   .group-card__count,
   .pill,
-  .tracker-status-pill--default,
-  .planner-calendar__badge
+  .tracker-status-pill--default
 ) {
   --surface-fill: color-mix(in srgb, var(--widget-highlight-soft, var(--accent-soft)) 72%, var(--field-fill));
   position: relative;
@@ -620,11 +574,7 @@
   overflow: hidden;
   border-width: 1px;
   background:var(--surface-fill);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 .widget-card {
@@ -658,7 +608,6 @@
   .pill,
   .badge,
   .group-card__count,
-  .planner-calendar,
   .planner-document,
   .text-field,
   .text-area,
@@ -668,11 +617,7 @@
 }
 
 .panel[data-theme='color'] .widget-card {
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 .panel[data-theme='color'] .widget-card::before,
@@ -698,8 +643,6 @@
 ) {
   background:var(--control-fill);
   box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
     inset 0 0 0 1px color-mix(in srgb, var(--button-outline, var(--surface-bezel-line)) 72%, transparent),
     var(--surface-depth-shadow);
 }
@@ -714,27 +657,16 @@
   .pill,
   .badge,
   .group-card__count,
-  .planner-calendar,
   .planner-document
 ) {
   background:var(--field-fill);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 .panel[data-theme='color'] .widget-card :is(.text-field, .text-area) {
-  background:var(--field-fill);
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line);
-}
+  background:var(--field-fill);}
 
 :is(
-  .card,
   .settings-popout,
   .color-mode-popover,
   .update-status-pill,
@@ -764,7 +696,6 @@
   .badge,
   .group-card__count,
   .pill,
-  .planner-calendar,
   .planner-document,
   .tracker-panel,
   .tracker-record,
@@ -816,7 +747,6 @@
   .stepper__value,
   .note-row__delete,
   .tracker-date-field__button,
-  .card,
   .widget-card,
   .settings-popout,
   .color-mode-popover,
@@ -833,7 +763,6 @@
   .badge,
   .group-card__count,
   .pill,
-  .planner-calendar,
   .planner-document,
   .tracker-panel,
   .tracker-record,
@@ -896,7 +825,6 @@
   .pill,
   .badge,
   .group-card__count,
-  .planner-calendar,
   .planner-document
 )::before,
 .panel[data-theme='color'] .widget-card :is(
@@ -923,114 +851,12 @@
   .pill,
   .badge,
   .group-card__count,
-  .planner-calendar,
   .planner-document
 )::after {
   display: block;
 }
 
-:is(
-  .card,
-  .settings-popout,
-  .color-mode-popover,
-  .update-status-pill,
-  .icon-button,
-  .widget-icon-button,
-  .toolbar-link,
-  .primary-link,
-  .secondary-link,
-  .danger-link,
-  .text-toggle,
-  .widget-card__collapse,
-  .picker-select__trigger,
-  .picker-select__option,
-  .builder-list__button,
-  .stepper,
-  .stepper__button,
-  .stepper__value,
-  .note-row__delete,
-  .picker-select__menu,
-  .group-card,
-  .group-maker__empty,
-  .note-row,
-  .widget-empty-state,
-  .widget-toggle,
-  .builder-sidebar,
-  .builder-editor,
-  .badge,
-  .group-card__count,
-  .pill,
-  .planner-calendar,
-  .planner-document,
-  .tracker-panel,
-  .tracker-record,
-  .bell-schedule__summary-card,
-  .bell-schedule__upcoming-item,
-  .bell-schedule-editor__day,
-  .bell-schedule-editor__slot,
-  .bell-schedule-editor__add-menu,
-  .bell-schedule__metric,
-  .seating-chart__preview-card,
-  .seating-chart__stat,
-  .seating-chart__sidebar-section,
-  .seating-chart__canvas,
-  .seating-chart__drop-well,
-  .seating-chart__item,
-  .seating-chart__student-pill
-)[data-reflecting='true']::before {
-  opacity: var(--surface-reflection-opacity);
-}
-
-:is(
-  .icon-button,
-  .widget-icon-button,
-  .toolbar-link,
-  .primary-link,
-  .secondary-link,
-  .danger-link,
-  .text-toggle,
-  .widget-card__collapse,
-  .picker-select__trigger,
-  .picker-select__option,
-  .builder-list__button,
-  .stepper__button,
-  .stepper__value,
-  .note-row__delete,
-  .card,
-  .widget-card,
-  .settings-popout,
-  .color-mode-popover,
-  .update-status-pill,
-  .stepper,
-  .picker-select__menu,
-  .group-card,
-  .group-maker__empty,
-  .note-row,
-  .widget-empty-state,
-  .widget-toggle,
-  .builder-sidebar,
-  .builder-editor,
-  .badge,
-  .group-card__count,
-  .pill,
-  .planner-calendar,
-  .planner-document,
-  .tracker-panel,
-  .tracker-record,
-  .bell-schedule__summary-card,
-  .bell-schedule__upcoming-item,
-  .bell-schedule-editor__day,
-  .bell-schedule-editor__slot,
-  .bell-schedule-editor__add-menu,
-  .bell-schedule__metric,
-  .seating-chart__preview-card,
-  .seating-chart__stat,
-  .seating-chart__sidebar-section,
-  .seating-chart__canvas,
-  .seating-chart__drop-well,
-  .seating-chart__item,
-  .seating-chart__student-pill
-)[data-reflecting='true']::after {
+.widget-card[data-reflecting='true']::after {
   opacity: 0.439;
 }
 
@@ -1058,7 +884,6 @@
   background:color-mix(in srgb, var(--tone-selection) 20%, var(--field-fill));
 }
 
-.widget-icon-button--active,
 .text-toggle--active,
 .picker-select__trigger--open,
 .picker-select__option--active,
@@ -1145,11 +970,7 @@
   position: relative;
   isolation: isolate;
   border-width: 1px;
-  box-shadow:
-    inset 1px 1px 0 var(--surface-bezel-light),
-    inset -1px -1px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 1px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 /* Static pills and scroll tables keep their clip; week-view rows stay open
@@ -1235,42 +1056,6 @@
   pointer-events: none;
 }
 
-:is(
-  .tracker-status-pill--default,
-  .tracker-status-pill--active,
-  .tracker-status-pill--warning,
-  .tracker-status-pill--complete,
-  .tracker-status-pill--reminder,
-  .tracker-date-picker,
-  .tracker-completion-table-wrap,
-  .lesson-plan-export-dialog__entry,
-  .planner-week__summary,
-  .planner-week__day-header,
-  .planner-week__day-track,
-  .planner-week-lesson
-)[data-reflecting='true']::before,
-.lesson-plan-export-dialog__summary > span[data-reflecting='true']::before {
-  opacity: var(--surface-reflection-opacity);
-}
-
-:is(
-  .tracker-status-pill--default,
-  .tracker-status-pill--active,
-  .tracker-status-pill--warning,
-  .tracker-status-pill--complete,
-  .tracker-status-pill--reminder,
-  .tracker-date-picker,
-  .tracker-completion-table-wrap,
-  .lesson-plan-export-dialog__entry,
-  .planner-week__summary,
-  .planner-week__day-header,
-  .planner-week__day-track,
-  .planner-week-lesson
-)[data-reflecting='true']::after,
-.lesson-plan-export-dialog__summary > span[data-reflecting='true']::after {
-  opacity: 0.439;
-}
-
 .panel {
   --surface-reflection-opacity: 0.158;
   --surface-reflection-blur: 22px;
@@ -1294,7 +1079,6 @@
 
 .panel__glass,
 .panel[data-theme='color'] .panel__glass,
-.card,
 .widget-card,
 .settings-popout,
 .color-mode-popover,
@@ -1308,7 +1092,6 @@
 .widget-toggle,
 .builder-sidebar,
 .builder-editor,
-.planner-calendar,
 .planner-document,
 .tracker-panel,
 .tracker-record,
@@ -1355,14 +1138,9 @@
   .badge,
   .group-card__count,
   .pill,
-  .tracker-status-pill--default,
-  .planner-calendar__badge
+  .tracker-status-pill--default
 ) {
-  box-shadow:
-    inset 0.5px 0.5px 0 var(--surface-bezel-light),
-    inset -0.5px -0.5px 0 var(--surface-bezel-shadow),
-    inset 0 0 0 0.5px var(--surface-bezel-line),
-    var(--surface-depth-shadow);
+  box-shadow: var(--surface-depth-shadow);
 }
 
 :is(

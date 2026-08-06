@@ -24,23 +24,36 @@
 
   /* raised extrusions — flat face, all depth in the twin shadows */
   --neu-raise-xs:
-    -2px -2px 4px var(--neu-hi),
-    2px 2px 5px var(--neu-lo);
+    -1px -1px 3px var(--neu-hi),
+    1px 2px 3px var(--neu-lo);
   --neu-raise-sm:
-    -3px -3px 7px var(--neu-hi),
-    3px 4px 8px var(--neu-lo);
+    -2px -2px 5px var(--neu-hi),
+    2px 3px 6px var(--neu-lo);
   --neu-raise-md:
-    -6px -6px 14px var(--neu-hi),
-    6px 8px 16px var(--neu-lo);
+    -3px -3px 8px var(--neu-hi),
+    4px 5px 10px var(--neu-lo);
   --neu-raise-lg:
-    -8px -8px 20px var(--neu-hi),
-    10px 12px 24px var(--neu-lo-deep);
+    -5px -5px 12px var(--neu-hi),
+    6px 8px 16px var(--neu-lo-deep);
   --neu-raise-hover:
-    -4px -5px 10px var(--neu-hi-strong),
-    5px 7px 13px var(--neu-lo-deep);
+    -3px -4px 8px var(--neu-hi-strong),
+    4px 5px 10px var(--neu-lo-deep);
   --neu-raise-float:
-    -8px -10px 22px var(--neu-hi-strong),
-    12px 16px 32px var(--neu-lo-deep);
+    -6px -7px 16px var(--neu-hi-strong),
+    8px 11px 22px var(--neu-lo-deep);
+
+  /* hover stretch: the face keeps its plateau shape and rides up while a
+     neck of material (the button ::before skirt) bridges it back to the
+     surface. The lower shadow's offset grows with the rise so it stays
+     anchored at surface level instead of travelling with the face. */
+  --neu-stretch-hover:
+    -2px -4px 8px var(--neu-hi-strong),
+    2px 6px 9px var(--neu-lo),
+    inset 0 -2px 3px color-mix(in srgb, var(--neu-lo) 24%, transparent);
+  --neu-stretch-float:
+    -3px -6px 12px var(--neu-hi-strong),
+    3px 10px 15px var(--neu-lo),
+    inset 0 -2px 3px color-mix(in srgb, var(--neu-lo) 28%, transparent);
 
   /* debossed wells */
   --neu-inset-sm:
@@ -81,12 +94,8 @@
   --control-fill: var(--neu-material);
   --field-fill: #d8e4f0;
   --well-fill: #d4e1ee;
-  --widget-title-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.55),
-    0 2px 6px rgba(52, 82, 118, 0.18);
-  --widget-title-icon-shadow:
-    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4))
-    drop-shadow(0 2px 6px rgba(52, 82, 118, 0.18));
+  --widget-title-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  --widget-title-icon-shadow: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
 }
 
 .panel[data-theme='dark'] {
@@ -108,12 +117,8 @@
   --dark-button-rim: transparent;
   --dark-button-rim-strong: transparent;
   --menu-surface: rgba(23, 32, 47, 0.97);
-  --widget-title-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.06),
-    0 2px 8px rgba(0, 0, 0, 0.5);
-  --widget-title-icon-shadow:
-    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.05))
-    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+  --widget-title-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --widget-title-icon-shadow: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
 
 .panel[data-theme='color'] {
@@ -129,12 +134,8 @@
   --control-fill: var(--neu-material);
   --field-fill: rgba(122, 96, 62, 0.13);
   --well-fill: rgba(122, 96, 62, 0.16);
-  --widget-title-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.5),
-    0 2px 6px rgba(47, 36, 69, 0.16);
-  --widget-title-icon-shadow:
-    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4))
-    drop-shadow(0 2px 6px rgba(47, 36, 69, 0.16));
+  --widget-title-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  --widget-title-icon-shadow: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
 }
 
 /* controls morph out of whatever surface they sit on */
@@ -154,21 +155,20 @@
 .panel[data-theme='color'] .panel__glass {
   border: 1px solid transparent;
   background:
-    linear-gradient(162deg, color-mix(in srgb, var(--neu-hi) 26%, transparent), transparent 40%),
+    linear-gradient(162deg, color-mix(in srgb, var(--neu-hi) 14%, transparent), transparent 30%),
     var(--panel-fill);
   -webkit-backdrop-filter: blur(18px) saturate(1.22);
   backdrop-filter: blur(18px) saturate(1.22);
   box-shadow:
     inset 0 1px 0 var(--glass-rim),
     inset 0 -1px 0 color-mix(in srgb, var(--neu-lo) 26%, transparent),
-    -6px -6px 16px color-mix(in srgb, var(--neu-hi) 36%, transparent),
-    9px 12px 28px var(--neu-lo-deep);
+    -4px -4px 10px color-mix(in srgb, var(--neu-hi) 24%, transparent),
+    6px 8px 20px color-mix(in srgb, var(--neu-lo-deep) 80%, transparent);
 }
 
 /* ---- 3. Surfaces: flat faces, deep soft extrusion ------------------- */
 
 :is(
-  .card,
   .widget-card,
   .builder-sidebar,
   .builder-editor,
@@ -196,7 +196,6 @@
 .note-row,
 .widget-empty-state,
 .widget-toggle,
-.planner-calendar,
 .planner-document,
 .lesson-plan-export-dialog__options,
 .lesson-plan-export-dialog__summary > span,
@@ -216,12 +215,21 @@
   .group-maker__empty,
   .note-row,
   .widget-empty-state,
-  .planner-calendar,
   .planner-document
 ) {
   border-color: transparent;
   background: var(--control-fill, var(--card-fill));
   box-shadow: var(--neu-raise-xs);
+}
+
+/* empty states lie flat and dashed — "nothing here yet", not furniture */
+
+.group-maker__empty,
+.widget-empty-state,
+.panel[data-theme] .widget-card :is(.group-maker__empty, .widget-empty-state) {
+  border: 1px dashed color-mix(in srgb, var(--text-secondary) 26%, transparent);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* recessed canvases and tracks */
@@ -387,10 +395,14 @@
   border-color: transparent;
   color: var(--button-ink);
   background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
-  box-shadow: var(--neu-raise-hover);
+  /* The plateau keeps its shape and rides up; the ::before neck (activated
+     below) stretches down behind it to stay fused with the surface. */
+  --stretch-rise: 3px;
+  transform: translateY(-3px);
+  box-shadow: var(--neu-stretch-hover);
 }
 
-/* pointer-tracked lift: raised higher, still attached */
+/* pointer-tracked lift: pulled further up, neck stretches further */
 
 .button-lift-stable:not(:disabled),
 .panel[data-theme] .button-lift-stable:not(:disabled),
@@ -429,32 +441,77 @@
   .note-row__delete,
   .tracker-date-field__button
 ).button-lift-stable:not(:disabled) {
-  transform: translateY(-1px) scale(1.02);
+  --stretch-rise: 5px;
+  transform: translateY(-5px);
   border-color: transparent;
   color: var(--button-ink);
   background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
-  box-shadow: var(--neu-raise-hover);
+  box-shadow: var(--neu-stretch-float);
 }
 
 .widget-card__collapse--collapsed.button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card .widget-card__collapse--collapsed.button-lift-stable:not(:disabled) {
-  transform: rotate(180deg) translateY(1px) scale(1.02);
+  /* Rotated 180°: local +Y is visual up, and the neck would render on the
+     wrong side, so this one rises without a skirt. */
+  transform: rotate(180deg) translateY(5px);
 }
 
-/* window-spawn buttons float a touch higher before popping out */
+/* window-spawn buttons stretch a touch further before popping out */
 
 .window-spawn-button.button-lift-stable:not(:disabled),
 [data-window-spawn-button='true'].button-lift-stable:not(:disabled),
 .panel[data-theme] :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled) {
-  transform: translateY(-2px) scale(1.035);
-  box-shadow: var(--neu-raise-float);
+  --stretch-rise: 7px;
+  transform: translateY(-7px);
+  box-shadow: var(--neu-stretch-float);
+}
+
+/* the stretched neck of material bridging the risen face to the surface */
+
+:is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete
+):hover:not(:disabled)::before,
+.panel[data-theme] :is(
+  .icon-button,
+  .widget-icon-button,
+  .toolbar-link,
+  .primary-link,
+  .secondary-link,
+  .danger-link,
+  .text-toggle,
+  .picker-select__trigger,
+  .picker-select__option,
+  .builder-list__button,
+  .stepper__button,
+  .stepper__value,
+  .note-row__delete
+).button-lift-stable:not(:disabled)::before {
+  opacity: 1;
+  bottom: calc(-1 * var(--stretch-rise, 3px));
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--neu-hi) 6%, var(--control-fill)) 30%,
+    color-mix(in srgb, var(--neu-lo) 30%, var(--neu-material))
+  );
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--neu-lo) 55%, transparent);
 }
 
 /* selected / toggled: solid accent pill */
 
 :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -465,7 +522,6 @@
   .color-mode-trigger--active
 ),
 .panel[data-theme] :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -476,7 +532,6 @@
   .color-mode-trigger--active
 ),
 .panel[data-theme] .widget-card :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -487,7 +542,6 @@
   .color-mode-trigger--active
 ),
 :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -498,7 +552,6 @@
   .color-mode-trigger--active
 ).button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card :is(
-  .widget-icon-button--active,
   .text-toggle--active,
   .picker-select__trigger--open,
   .picker-select__option--active,
@@ -796,24 +849,23 @@
 }
 
 /* ---- 7. Pills, badges, status chips ----------------------------------- */
+/* Informational chips lie flat — only interactive controls extrude. */
 
 :is(
   .badge,
   .group-card__count,
   .pill,
   .tracker-status-pill--default,
-  .planner-calendar__badge,
   .update-status-pill
 ),
 .panel[data-theme] .widget-card :is(
   .badge,
   .group-card__count,
-  .pill,
-  .planner-calendar__badge
+  .pill
 ) {
   border-color: transparent;
   background: color-mix(in srgb, var(--widget-highlight-soft, var(--accent-soft)) 34%, var(--control-fill, var(--card-fill)));
-  box-shadow: var(--neu-raise-xs);
+  box-shadow: none;
 }
 
 :is(
@@ -827,7 +879,7 @@
   .planner-week-lesson
 ) {
   border-color: transparent;
-  box-shadow: var(--neu-raise-xs);
+  box-shadow: none;
 }
 
 /* ---- 8. Progress, scrollbars, calendar cells --------------------------- */
@@ -857,7 +909,6 @@
 }
 
 :is(
-  .planner-calendar__day,
   .tracker-date-picker__day,
   .seating-chart__swatch,
   .seating-chart__item,
@@ -868,8 +919,6 @@
 }
 
 :is(
-  .planner-calendar__day--selected,
-  .planner-calendar__day--today,
   .tracker-date-picker__day--selected,
   .tracker-date-picker__day--today,
   .seating-chart__swatch--active,
@@ -877,8 +926,6 @@
   .seating-chart__item--selected
 ),
 .panel[data-theme='dark'] :is(
-  .planner-calendar__day--selected,
-  .planner-calendar__day--today,
   .tracker-date-picker__day--selected,
   .tracker-date-picker__day--today,
   .seating-chart__student-pill--active,
@@ -899,7 +946,7 @@
 .panel[data-theme] .widget-card :is(.picker-select__menu, .bell-schedule-editor__add-menu) {
   border-color: transparent;
   background:
-    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 22%, transparent), transparent 42%),
+    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 13%, transparent), transparent 32%),
     color-mix(in srgb, var(--menu-surface, var(--card-fill)) 92%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   backdrop-filter: blur(16px) saturate(1.2);
@@ -908,7 +955,7 @@
 
 .panel[data-theme='color'] .settings-popout {
   background:
-    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 22%, transparent), transparent 42%),
+    linear-gradient(165deg, color-mix(in srgb, var(--neu-hi) 13%, transparent), transparent 32%),
     var(--panel-fill) !important;
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   backdrop-filter: blur(16px) saturate(1.2);
@@ -930,8 +977,8 @@
   border: 1px solid transparent;
   background: var(--widget-card-fill);
   box-shadow:
-    -7px -7px 16px var(--neu-hi-strong),
-    9px 11px 22px color-mix(in srgb, var(--widget-card-shadow, var(--neu-lo)) 94%, transparent);
+    -3px -3px 8px var(--neu-hi-strong),
+    4px 5px 12px color-mix(in srgb, var(--widget-card-shadow, var(--neu-lo)) 80%, transparent);
 }
 
 .panel[data-theme='color'] .widget-card__header {
@@ -951,10 +998,6 @@
   .group-maker__empty,
   .note-row,
   .widget-empty-state,
-  .pill,
-  .badge,
-  .group-card__count,
-  .planner-calendar,
   .planner-document
 ) {
   border-color: transparent;
@@ -986,20 +1029,19 @@
 .qr-widget__preview-card {
   border-color: transparent;
   box-shadow:
-    -3px -3px 8px var(--neu-hi),
-    4px 5px 12px var(--neu-lo);
+    -2px -2px 5px var(--neu-hi),
+    2px 3px 8px var(--neu-lo);
 }
 
-/* ---- 12. Widget extrusion: stronger ring + room to render it ---------- */
+/* ---- 12. Widget extrusion: compact ring + room to render it ---------- */
 
 .panel {
   --neu-raise-card:
-    -7px -7px 16px var(--neu-hi-strong),
-    9px 11px 22px var(--neu-lo-deep);
+    -3px -3px 8px var(--neu-hi-strong),
+    4px 5px 12px var(--neu-lo);
 }
 
 :is(
-  .card,
   .widget-card,
   .builder-sidebar,
   .builder-editor,
@@ -1022,8 +1064,7 @@
    measured layout — the JS metrics subtract DASHBOARD_SHELL_SHADOW_PAD */
 
 .dashboard-shell,
-.dashboard-shell--scrolling,
-.dashboard-shell--stacked {
+.dashboard-shell--scrolling {
   margin: -10px -12px -12px;
   padding: 10px 12px 12px;
 }

@@ -144,14 +144,6 @@
   white-space: nowrap;
 }
 
-.planner-calendar__toggle .planner-widget__action-label {
-  white-space: nowrap;
-}
-
-.planner-calendar__toggle {
-  max-width: 100%;
-}
-
 .planner-widget__copy {
   display: flex;
   flex-direction: column;
@@ -175,6 +167,7 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 10px;
   width: 100%;
   min-width: 0;
   margin-bottom: -1px;
@@ -724,6 +717,42 @@
   white-space: nowrap;
 }
 
+/* Flat tint on today's column, plus a minute-accurate "now" line that only
+   renders while the current week is in view. */
+.planner-week__day--today .planner-week__day-header {
+  border-color: var(--accent-border-strong);
+}
+
+.planner-week__day--today .planner-week__day-header span {
+  color: var(--accent);
+}
+
+.planner-week__day--today .planner-week__day-track {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.planner-week__now-line {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  top: var(--planner-week-line-top);
+  border-top: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+.planner-week__now-line::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .planner-week-lesson {
   position: absolute;
   z-index: 2;
@@ -1057,6 +1086,27 @@
   font-size: var(--fs-sm);
 }
 
+.deleted-lesson__restore-original {
+  align-self: stretch;
+  text-align: center;
+}
+
+.deleted-lesson__restore-custom {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.deleted-lesson__restore-custom .field-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.deleted-lesson__restore-custom .secondary-link {
+  flex: 0 0 auto;
+  margin-bottom: 2px;
+}
+
 .helper-text--accent {
   color: var(--widget-highlight);
 }
@@ -1162,4 +1212,132 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+.lesson-templates-dialog__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lesson-templates-dialog__edit-plan {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.lesson-templates-dialog__edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Copy-forward menu — flat chip list under the toolbar button. */
+.planner-copy-menu {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.planner-copy-menu__list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--field-border);
+  background: var(--menu-surface);
+  box-shadow: 0 14px 30px rgba(8, 12, 18, 0.22);
+}
+
+.planner-copy-menu__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-copy-menu__item:hover,
+.planner-copy-menu__item:focus-visible {
+  background: var(--tone-action-soft);
+}
+
+.planner-copy-menu__item small {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--fs-2xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Term dates editor */
+.school-terms-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.school-terms-dialog .planner-week-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.school-terms-dialog__disable-toggle {
+  width: 100%;
+}
+
+.school-terms-dialog__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.school-terms-dialog__row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.school-terms-dialog__row-label {
+  padding-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.school-terms-dialog__row .text-field {
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.school-terms-dialog__remove {
+  margin-bottom: 5px;
+}
+
+.school-terms-dialog__add {
+  align-self: flex-start;
+}
+
+.lesson-plan-export-dialog__group-note {
+  color: var(--tone-utility);
 }

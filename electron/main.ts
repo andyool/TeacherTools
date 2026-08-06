@@ -12,7 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, screen } = electron;
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, Notification, Tray, screen, session } =
+  electron;
 const nativeImage = (electron as typeof electron & {
   nativeImage: typeof import('electron').nativeImage;
 }).nativeImage;
@@ -21,7 +22,7 @@ const shell = (electron as typeof electron & {
 }).shell;
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const isGeneratingIcons = process.env.TEACHERTOOLS_GENERATE_ICONS === '1';
-const shouldUseTray = process.platform === 'win32';
+const shouldUseTray = process.platform === 'win32' || process.platform === 'darwin';
 const shouldUseDock = process.platform === 'darwin';
 const OVERLAY_SIZE = 86;
 const OVERLAY_DOCK_SIZE = 64;
@@ -30,6 +31,8 @@ const OVERLAY_EXIT_BUTTON_TOP = 4;
 const OVERLAY_EXIT_BUTTON_RIGHT = 8;
 const OVERLAY_INTERACTIVITY_PADDING = 2;
 const OVERLAY_INTERACTIVITY_POLL_MS = 80;
+const OVERLAY_INTERACTIVITY_IDLE_POLL_MS = 500;
+const OVERLAY_INTERACTIVITY_NEAR_MARGIN = 200;
 const OVERLAY_MARGIN = 22;
 const POPOVER_MIN_WIDTH = 260;
 const POPOVER_MIN_HEIGHT = 300;
@@ -45,7 +48,8 @@ const WIDGET_POPOUT_DEFAULTS: Record<
   WidgetPopoutId,
   { height: number; minHeight: number; minWidth: number; width: number }
 > = {
-  timer: { width: 352, height: 304, minWidth: 280, minHeight: 224 },
+  // Keep sizes in sync with WIDGET_POPOUT_DEFAULT_SIZES in src/widgets/registry.tsx.
+  timer: { width: 352, height: 344, minWidth: 280, minHeight: 224 },
   picker: { width: 392, height: 372, minWidth: 300, minHeight: 290 },
   'group-maker': { width: 600, height: 456, minWidth: 320, minHeight: 280 },
   'seating-chart': { width: 980, height: 760, minWidth: 760, minHeight: 560 },
@@ -152,6 +156,7 @@ type AppUpdateState = {
   currentVersion: string;
   message: string;
   progressPercent: number | null;
+  releaseNotes: string | null;
   status: AppUpdateStatus;
 };
 
@@ -206,7 +211,8 @@ let appUpdateCheckPromise: Promise<unknown> | null = null;
 let isInstallingAppUpdate = false;
 let pendingOverlayBounds: Bounds | null = null;
 let overlayBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null;
-let overlayInteractivityPollTimer: ReturnType<typeof setInterval> | null = null;
+let overlayInteractivityPollTimer: ReturnType<typeof setTimeout> | null = null;
+let cachedOverlayBounds: Bounds | null = null;
 let overlayIsIgnoringMouseEvents: boolean | null = null;
 let pendingPopoverSize: Pick<Bounds, 'width' | 'height'> | null = null;
 let popoverSizeSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -220,6 +226,7 @@ let appUpdateState: AppUpdateState = {
   currentVersion: app.getVersion(),
   message: 'Updates work in installed release builds.',
   progressPercent: null,
+  releaseNotes: null,
   status: 'unsupported'
 };
 
@@ -267,7 +274,8 @@ function isWidgetPopoutId(value: unknown): value is WidgetPopoutId {
 }
 
 function createTrayIcon() {
-  return createAppIcon(20);
+  // macOS menu-bar icons render best at 18pt; Windows tray at 20px.
+  return createAppIcon(process.platform === 'darwin' ? 18 : 20);
 }
 
 function getAppIconPath() {
@@ -425,13 +433,25 @@ function pointIsInsidePaddedRect(
   );
 }
 
-function isCursorInOverlayInteractiveRegion() {
+function getCachedOverlayBounds() {
   if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return null;
+  }
+
+  if (!cachedOverlayBounds) {
+    cachedOverlayBounds = overlayWindow.getBounds();
+  }
+
+  return cachedOverlayBounds;
+}
+
+function isCursorInOverlayInteractiveRegion() {
+  const bounds = getCachedOverlayBounds();
+  if (!bounds) {
     return false;
   }
 
   const cursorPoint = screen.getCursorScreenPoint();
-  const bounds = overlayWindow.getBounds();
   const point = {
     x: cursorPoint.x - bounds.x,
     y: cursorPoint.y - bounds.y
@@ -1388,8 +1408,10 @@ function buildPdfBufferFromPageStreams(pageStreams: string[]) {
   objects[pagesObjectId] = `<< /Type /Pages /Kids [${pageObjectIds
     .map((objectId) => `${objectId} 0 R`)
     .join(' ')}] /Count ${pageObjectIds.length} >>`;
-  objects[regularFontObjectId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-  objects[boldFontObjectId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+  objects[regularFontObjectId] =
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objects[boldFontObjectId] =
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
 
   pageStreams.forEach((stream, index) => {
     const pageObjectId = pageObjectIds[index];
@@ -1604,11 +1626,29 @@ function createEmptyPersistentStateFile(): PersistentStateFile {
   };
 }
 
-function normalizePersistentStateFile(raw: unknown): PersistentStateFile {
-  if (!isRecord(raw)) {
+function migratePersistentStateFile(raw: Record<string, unknown>): Record<string, unknown> {
+  const rawVersion =
+    typeof raw.version === 'number' && Number.isFinite(raw.version)
+      ? raw.version
+      : PERSISTENT_STATE_VERSION;
+
+  let migrated = raw;
+  // Real migration switch: each case upgrades one version step and falls
+  // through. Add `case 1:` here when version 2 ships.
+  switch (rawVersion) {
+    default:
+      break;
+  }
+
+  return migrated;
+}
+
+function normalizePersistentStateFile(rawInput: unknown): PersistentStateFile {
+  if (!isRecord(rawInput)) {
     return createEmptyPersistentStateFile();
   }
 
+  const raw = migratePersistentStateFile(rawInput);
   const valuesByKey = isRecord(raw.valuesByKey) ? { ...raw.valuesByKey } : {};
   const profileId =
     typeof raw.profileId === 'string' && raw.profileId.trim()
@@ -1627,19 +1667,105 @@ function normalizePersistentStateFile(raw: unknown): PersistentStateFile {
   };
 }
 
-function readPersistentStateFile(filePath: string) {
+type PersistentStateRecoveryNotice =
+  | { kind: 'adopted'; fromProfileId: string }
+  | { kind: 'corrupt'; quarantinedPath: string };
+
+let persistentStateRecoveryNotice: PersistentStateRecoveryNotice | null = null;
+let persistentStateFlushTimeout: NodeJS.Timeout | null = null;
+let lastDailyBackupDateKey: string | null = null;
+
+const PERSISTENT_STATE_FLUSH_DELAY_MS = 400;
+const PERSISTENT_STATE_DAILY_BACKUPS_KEPT = 7;
+
+function quarantineCorruptStateFile(filePath: string) {
+  const quarantinedPath = `${filePath}.corrupt-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')}.json`;
+
+  try {
+    fs.renameSync(filePath, quarantinedPath);
+    return quarantinedPath;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a state file, quarantining (never overwriting) corrupt data.
+ * Returns null when neither the file nor its backup could be read, so callers
+ * can distinguish "new profile" from "recovered" states.
+ */
+function readPersistentStateFile(filePath: string): PersistentStateFile | null {
   const candidates = [filePath, `${filePath}.bak`];
 
   for (const candidate of candidates) {
+    let raw: string;
     try {
-      const raw = fs.readFileSync(candidate, 'utf8');
+      raw = fs.readFileSync(candidate, 'utf8');
+    } catch {
+      continue;
+    }
+
+    try {
       return normalizePersistentStateFile(JSON.parse(raw));
     } catch {
-      // Try the next candidate.
+      // A file that exists but cannot be parsed must never be silently
+      // replaced — move it aside so the data stays recoverable.
+      const quarantinedPath = quarantineCorruptStateFile(candidate);
+      if (quarantinedPath && !persistentStateRecoveryNotice) {
+        persistentStateRecoveryNotice = { kind: 'corrupt', quarantinedPath };
+      }
     }
   }
 
-  return createEmptyPersistentStateFile();
+  return null;
+}
+
+/**
+ * When the current scope has no state file (e.g. the account was renamed and
+ * the profile fingerprint changed), adopt the most recently updated existing
+ * profile instead of silently starting empty.
+ */
+function findAdoptablePersistentState(scope: UserStorageScope): {
+  profileId: string;
+  stateFile: PersistentStateFile;
+} | null {
+  const profilesDir = path.join(app.getPath('userData'), 'profiles');
+
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(profilesDir);
+  } catch {
+    return null;
+  }
+
+  let best: { mtimeMs: number; profileId: string; stateFile: PersistentStateFile } | null = null;
+
+  for (const entry of entries) {
+    if (entry === scope.id) {
+      continue;
+    }
+
+    const candidatePath = path.join(profilesDir, entry, PERSISTENT_STATE_FILENAME);
+    let stats: fs.Stats;
+    try {
+      stats = fs.statSync(candidatePath);
+    } catch {
+      continue;
+    }
+
+    if (best && stats.mtimeMs <= best.mtimeMs) {
+      continue;
+    }
+
+    const stateFile = readPersistentStateFile(candidatePath);
+    if (stateFile && Object.keys(stateFile.valuesByKey).length > 0) {
+      best = { mtimeMs: stats.mtimeMs, profileId: entry, stateFile };
+    }
+  }
+
+  return best ? { profileId: best.profileId, stateFile: best.stateFile } : null;
 }
 
 function ensurePersistentStateCache() {
@@ -1648,13 +1774,36 @@ function ensurePersistentStateCache() {
   }
 
   const scope = getUserStorageScope();
-  persistentStateCache = readPersistentStateFile(scope.storageFilePath);
+  let stateFile = readPersistentStateFile(scope.storageFilePath);
+
+  if (!stateFile && !persistentStateRecoveryNotice) {
+    const adoptable = findAdoptablePersistentState(scope);
+    if (adoptable) {
+      stateFile = adoptable.stateFile;
+      persistentStateRecoveryNotice = { kind: 'adopted', fromProfileId: adoptable.profileId };
+    }
+  }
+
+  persistentStateCache = stateFile ?? createEmptyPersistentStateFile();
   persistentStateCache.profileId = scope.id;
   return persistentStateCache;
 }
 
+function fsyncPathQuietly(targetPath: string) {
+  try {
+    const descriptor = fs.openSync(targetPath, 'r');
+    try {
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  } catch {
+    // Best effort — some filesystems refuse directory fsync.
+  }
+}
+
 function writePersistentStateFile(filePath: string, stateFile: PersistentStateFile) {
-  const serialized = JSON.stringify(stateFile, null, 2);
+  const serialized = JSON.stringify(stateFile);
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   const backupPath = `${filePath}.bak`;
 
@@ -1668,12 +1817,126 @@ function writePersistentStateFile(filePath: string, stateFile: PersistentStateFi
     // Keep going even if the backup refresh fails.
   }
 
-  fs.writeFileSync(tempPath, serialized, 'utf8');
+  const descriptor = fs.openSync(tempPath, 'w');
+  try {
+    fs.writeSync(descriptor, serialized, null, 'utf8');
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
   fs.renameSync(tempPath, filePath);
+  fsyncPathQuietly(path.dirname(filePath));
+}
+
+function getBackupDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
+}
+
+/** Keeps a rolling window of daily snapshots next to the live state file. */
+function maybeWriteDailyStateBackup(filePath: string) {
+  const dateKey = getBackupDateKey();
+  if (lastDailyBackupDateKey === dateKey) {
+    return;
+  }
+
+  lastDailyBackupDateKey = dateKey;
+  const backupsDir = path.join(path.dirname(filePath), 'backups');
+  const backupPath = path.join(backupsDir, `tool-state.${dateKey}.json`);
+
+  try {
+    if (!fs.existsSync(filePath) || fs.existsSync(backupPath)) {
+      return;
+    }
+
+    fs.mkdirSync(backupsDir, { recursive: true });
+    fs.copyFileSync(filePath, backupPath);
+
+    const backups = fs
+      .readdirSync(backupsDir)
+      .filter((entry) => /^tool-state\.\d{4}-\d{2}-\d{2}\.json$/.test(entry))
+      .sort();
+    while (backups.length > PERSISTENT_STATE_DAILY_BACKUPS_KEPT) {
+      const oldest = backups.shift();
+      if (oldest) {
+        fs.rmSync(path.join(backupsDir, oldest), { force: true });
+      }
+    }
+  } catch {
+    // Backups are best-effort.
+  }
 }
 
 function persistPersistentState() {
-  writePersistentStateFile(getUserStorageScope().storageFilePath, ensurePersistentStateCache());
+  const filePath = getUserStorageScope().storageFilePath;
+  maybeWriteDailyStateBackup(filePath);
+  writePersistentStateFile(filePath, ensurePersistentStateCache());
+}
+
+/** Coalesces state writes so per-keystroke updates stop blocking the process. */
+function schedulePersistentStateFlush() {
+  if (persistentStateFlushTimeout) {
+    return;
+  }
+
+  persistentStateFlushTimeout = setTimeout(() => {
+    persistentStateFlushTimeout = null;
+    try {
+      persistPersistentState();
+    } catch (error) {
+      console.error('Failed to flush persistent state:', error);
+    }
+  }, PERSISTENT_STATE_FLUSH_DELAY_MS);
+}
+
+function flushPersistentStateNow() {
+  if (persistentStateFlushTimeout) {
+    clearTimeout(persistentStateFlushTimeout);
+    persistentStateFlushTimeout = null;
+  }
+
+  if (!persistentStateCache) {
+    return;
+  }
+
+  try {
+    persistPersistentState();
+  } catch (error) {
+    console.error('Failed to write persistent state:', error);
+  }
+}
+
+function showPersistentStateRecoveryNotice() {
+  const notice = persistentStateRecoveryNotice;
+  if (!notice) {
+    return;
+  }
+
+  persistentStateRecoveryNotice = null;
+
+  if (notice.kind === 'corrupt') {
+    void dialog
+      .showMessageBox({
+        buttons: ['Show saved copy', 'OK'],
+        defaultId: 1,
+        detail: `A copy of the unreadable file was saved to:\n${notice.quarantinedPath}\n\nTeacherTools will start with fresh data. If this file mattered, keep the saved copy and contact support or restore a daily backup from the backups folder next to it.`,
+        message: "TeacherTools couldn't read your saved data",
+        type: 'warning'
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          shell.showItemInFolder(notice.quarantinedPath);
+        }
+      });
+    return;
+  }
+
+  void dialog.showMessageBox({
+    buttons: ['OK'],
+    detail:
+      'Your computer account looks different from last time, so TeacherTools restored your data from the most recent existing profile.',
+    message: 'Your TeacherTools data was restored',
+    type: 'info'
+  });
 }
 
 function isPersistentStateKey(value: unknown): value is string {
@@ -1737,7 +2000,10 @@ function getPendingDownloadedAppUpdateFileName() {
     const rawInfo = JSON.parse(fs.readFileSync(getPendingAppUpdateInfoPath(), 'utf8')) as {
       fileName?: unknown;
     };
-    const fileName = typeof rawInfo.fileName === 'string' ? rawInfo.fileName : '';
+    const rawFileName = typeof rawInfo.fileName === 'string' ? rawInfo.fileName : '';
+    // The info file lives in a user-writable cache — never let its contents
+    // walk outside the pending directory.
+    const fileName = rawFileName ? path.basename(rawFileName) : '';
     const updatePath = path.join(getAppUpdateCachePath(), 'pending', fileName);
 
     return fileName && fs.existsSync(updatePath) ? fileName : null;
@@ -1772,6 +2038,19 @@ function appendAppUpdateLog(level: 'debug' | 'error' | 'info' | 'warn', value: u
   }
 
   const line = `[${new Date().toISOString()}] [${level}] ${stringifyAppUpdateLogValue(value)}\n`;
+
+  // Keep the log from growing without bound: when it passes ~512 KB, keep
+  // only the newest half.
+  try {
+    const stats = fs.statSync(logPath);
+    if (stats.size > 512 * 1024) {
+      const contents = fs.readFileSync(logPath, 'utf8');
+      fs.writeFileSync(logPath, contents.slice(Math.floor(contents.length / 2)), 'utf8');
+    }
+  } catch {
+    // Missing log file is fine.
+  }
+
   fs.appendFile(logPath, line, () => undefined);
 }
 
@@ -1825,6 +2104,7 @@ function getInitialAppUpdateState(): AppUpdateState {
       currentVersion: app.getVersion(),
       message: 'Updates work in installed release builds.',
       progressPercent: null,
+      releaseNotes: null,
       status: 'unsupported'
     };
   }
@@ -1835,6 +2115,7 @@ function getInitialAppUpdateState(): AppUpdateState {
       currentVersion: app.getVersion(),
       message: 'Updates are configured for the macOS and Windows builds.',
       progressPercent: null,
+      releaseNotes: null,
       status: 'unsupported'
     };
   }
@@ -1844,16 +2125,61 @@ function getInitialAppUpdateState(): AppUpdateState {
     currentVersion: app.getVersion(),
     message: 'Ready to check GitHub Releases for an update.',
     progressPercent: null,
+    releaseNotes: null,
     status: 'idle'
   };
 }
 
 function getAppUpdateErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
+  const rawMessage = error instanceof Error ? error.message.trim() : '';
+
+  // Map raw updater/network errors to copy a teacher can act on.
+  if (/ENOTFOUND|ENETDOWN|ENETUNREACH|ECONNREFUSED|ETIMEDOUT|ERR_INTERNET_DISCONNECTED|net::/i.test(rawMessage)) {
+    return "Couldn't reach the update server. Check your internet connection and try again.";
+  }
+
+  if (/403|rate limit/i.test(rawMessage)) {
+    return 'The update server is busy right now. Try again in a few minutes.';
+  }
+
+  if (/404|no published versions|Cannot find latest/i.test(rawMessage)) {
+    return 'No update information was found. Try again later.';
+  }
+
+  if (/code signature|codesign|signature|not signed|Could not get code signature/i.test(rawMessage)) {
+    return 'The downloaded update could not be verified. Download the latest version from the TeacherTools releases page instead.';
+  }
+
+  if (/EACCES|EPERM|permission/i.test(rawMessage)) {
+    return "TeacherTools doesn't have permission to install the update. Try moving the app to your Applications folder.";
+  }
+
+  if (rawMessage) {
+    return `The update failed: ${rawMessage}`;
   }
 
   return 'The update check failed. Please try again.';
+}
+
+function releaseNotesToPlainText(notes: UpdateInfo['releaseNotes']): string | null {
+  if (!notes) {
+    return null;
+  }
+
+  const raw =
+    typeof notes === 'string'
+      ? notes
+      : notes
+          .map((note) => (typeof note === 'string' ? note : note?.note ?? ''))
+          .filter(Boolean)
+          .join('\n\n');
+  const text = raw
+    .replace(/<[^>]+>/g, '')
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return text ? text.slice(0, 4000) : null;
 }
 
 function handleAppUpdateError(error: unknown) {
@@ -1890,7 +2216,8 @@ function initializeAppUpdater() {
   appUpdater = autoUpdater;
   appUpdater.logger = appUpdateLogger;
   appUpdater.autoDownload = false;
-  appUpdater.autoInstallOnAppQuit = false;
+  // Installing on quit is the least disruptive moment for a downloaded update.
+  appUpdater.autoInstallOnAppQuit = true;
   appUpdateLogger.info(`Initialized updater for TeacherTools ${app.getVersion()}.`);
 
   appUpdater.on('checking-for-update', () => {
@@ -1903,11 +2230,28 @@ function initializeAppUpdater() {
   });
 
   appUpdater.on('update-available', (info: UpdateInfo) => {
+    const releaseNotes = releaseNotesToPlainText(info.releaseNotes);
+
+    if (isBackgroundAppUpdateCheck) {
+      // A background check only announces the update — the user decides when
+      // the (possibly large) download happens.
+      appUpdateLogger.info(`Update ${info.version} found by background check.`);
+      updateAppUpdateState({
+        availableVersion: info.version ?? null,
+        message: `Update ${info.version} is available. Open Settings to download it.`,
+        progressPercent: null,
+        releaseNotes,
+        status: 'available'
+      });
+      return;
+    }
+
     appUpdateLogger.info(`Update ${info.version} found; starting download.`);
     updateAppUpdateState({
       availableVersion: info.version ?? null,
       message: `Update ${info.version} found. Downloading now.`,
       progressPercent: 0,
+      releaseNotes,
       status: 'available'
     });
 
@@ -1938,10 +2282,23 @@ function initializeAppUpdater() {
     appUpdateLogger.info(`Update ${info.version} is downloaded and ready to install.`);
     updateAppUpdateState({
       availableVersion: info.version ?? appUpdateState.availableVersion,
-      message: `Update ${info.version} is ready. Restart TeacherTools to install it.`,
+      message: `Update ${info.version} is ready. It installs when you quit, or restart now from Settings.`,
       progressPercent: 100,
+      releaseNotes: releaseNotesToPlainText(info.releaseNotes) ?? appUpdateState.releaseNotes,
       status: 'downloaded'
     });
+
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        body: `Version ${info.version} installs the next time you quit TeacherTools.`,
+        silent: true,
+        title: 'TeacherTools update ready'
+      });
+      notification.on('click', () => {
+        openPopover();
+      });
+      notification.show();
+    }
   });
 
   appUpdater.on('error', (error) => {
@@ -1952,9 +2309,47 @@ function initializeAppUpdater() {
 }
 
 type AppUpdateCheckOptions = {
+  background?: boolean;
   force?: boolean;
   message?: string;
 };
+
+let isBackgroundAppUpdateCheck = false;
+
+const APP_UPDATE_FIRST_CHECK_DELAY_MS = 30_000;
+const APP_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function scheduleBackgroundAppUpdateChecks() {
+  if (appUpdateState.status === 'unsupported') {
+    return;
+  }
+
+  setTimeout(() => {
+    void checkForAppUpdates({ background: true });
+  }, APP_UPDATE_FIRST_CHECK_DELAY_MS);
+
+  setInterval(() => {
+    void checkForAppUpdates({ background: true });
+  }, APP_UPDATE_CHECK_INTERVAL_MS);
+}
+
+function downloadAvailableAppUpdate() {
+  if (!appUpdater || appUpdateState.status !== 'available') {
+    return appUpdateState;
+  }
+
+  updateAppUpdateState({
+    message: `Downloading update${appUpdateState.availableVersion ? ` ${appUpdateState.availableVersion}` : ''}.`,
+    progressPercent: 0,
+    status: 'downloading'
+  });
+
+  void appUpdater.downloadUpdate().catch((error) => {
+    handleAppUpdateError(error);
+  });
+
+  return appUpdateState;
+}
 
 async function checkForAppUpdates(options: AppUpdateCheckOptions = {}) {
   if (!appUpdater) {
@@ -1974,6 +2369,8 @@ async function checkForAppUpdates(options: AppUpdateCheckOptions = {}) {
   }
 
   try {
+    isBackgroundAppUpdateCheck = options.background === true;
+
     if (options.message) {
       updateAppUpdateState({
         message: options.message,
@@ -1985,8 +2382,15 @@ async function checkForAppUpdates(options: AppUpdateCheckOptions = {}) {
     appUpdateCheckPromise = appUpdater.checkForUpdates();
     await appUpdateCheckPromise;
   } catch (error) {
-    handleAppUpdateError(error);
+    if (options.background) {
+      // A quiet check failing (offline laptop, school proxy) is normal; do not
+      // surface an error state the user never asked about.
+      appUpdateLogger.warn(`Background update check failed: ${error}`);
+    } else {
+      handleAppUpdateError(error);
+    }
   } finally {
+    isBackgroundAppUpdateCheck = false;
     appUpdateCheckPromise = null;
   }
 
@@ -2048,15 +2452,11 @@ function setPersistentStateValue(key: string, value: unknown) {
     return true;
   }
 
-  try {
-    stateFile.valuesByKey[key] = value;
-    stateFile.updatedAt = Date.now();
-    persistPersistentState();
-    broadcastPersistentStateChange({ key, value });
-    return true;
-  } catch {
-    return false;
-  }
+  stateFile.valuesByKey[key] = value;
+  stateFile.updatedAt = Date.now();
+  schedulePersistentStateFlush();
+  broadcastPersistentStateChange({ key, value });
+  return true;
 }
 
 function normalizeTimerSpeechVoice(value: unknown): TimerSpeechVoice {
@@ -2218,8 +2618,19 @@ function getPopoverBounds(preferredSize?: Partial<Pick<Bounds, 'width' | 'height
     POPOVER_MIN_HEIGHT,
     maxHeight
   );
-  const anchorX = overlayBounds.x + Math.round(overlayBounds.width / 2);
-  const anchorY = overlayBounds.y + Math.round(overlayBounds.height / 2);
+  // Open toward whichever quadrant has room, with a small gap, so the panel
+  // never covers the dot.
+  const gap = 10;
+  const spaceRight = workArea.x + workArea.width - (overlayBounds.x + overlayBounds.width);
+  const spaceLeft = overlayBounds.x - workArea.x;
+  const spaceBelow = workArea.y + workArea.height - (overlayBounds.y + overlayBounds.height);
+  const openRight = spaceRight >= width + gap + 14 || spaceRight >= spaceLeft;
+  const openDown = spaceBelow >= height + gap + 14 || spaceBelow >= overlayBounds.y - workArea.y;
+
+  const anchorX = openRight
+    ? overlayBounds.x + overlayBounds.width + gap
+    : overlayBounds.x - width - gap;
+  const anchorY = openDown ? overlayBounds.y : overlayBounds.y + overlayBounds.height - height;
 
   return {
     x: clamp(anchorX, workArea.x + 14, workArea.x + workArea.width - width - 14),
@@ -2415,23 +2826,45 @@ function setOverlayInteractive(interactive: boolean) {
   setOverlayMouseEventsIgnored(!(interactive || isCursorInOverlayInteractiveRegion()));
 }
 
+function isCursorNearOverlay() {
+  const bounds = getCachedOverlayBounds();
+  if (!bounds) {
+    return false;
+  }
+
+  const cursorPoint = screen.getCursorScreenPoint();
+  const margin = OVERLAY_INTERACTIVITY_NEAR_MARGIN;
+  return (
+    cursorPoint.x >= bounds.x - margin &&
+    cursorPoint.x <= bounds.x + bounds.width + margin &&
+    cursorPoint.y >= bounds.y - margin &&
+    cursorPoint.y <= bounds.y + bounds.height + margin
+  );
+}
+
 function startOverlayInteractivityMonitor() {
   if (overlayInteractivityPollTimer) {
-    clearInterval(overlayInteractivityPollTimer);
+    clearTimeout(overlayInteractivityPollTimer);
     overlayInteractivityPollTimer = null;
   }
 
   overlayIsIgnoringMouseEvents = null;
-  refreshOverlayInteractivityFromCursor();
-  overlayInteractivityPollTimer = setInterval(
-    refreshOverlayInteractivityFromCursor,
-    OVERLAY_INTERACTIVITY_POLL_MS
-  );
+
+  // Poll fast only while the cursor is near the dot; an idle machine polls
+  // ~2×/sec instead of 12.5×/sec.
+  const poll = () => {
+    refreshOverlayInteractivityFromCursor();
+    overlayInteractivityPollTimer = setTimeout(
+      poll,
+      isCursorNearOverlay() ? OVERLAY_INTERACTIVITY_POLL_MS : OVERLAY_INTERACTIVITY_IDLE_POLL_MS
+    );
+  };
+  poll();
 }
 
 function stopOverlayInteractivityMonitor() {
   if (overlayInteractivityPollTimer) {
-    clearInterval(overlayInteractivityPollTimer);
+    clearTimeout(overlayInteractivityPollTimer);
     overlayInteractivityPollTimer = null;
   }
 
@@ -2614,10 +3047,13 @@ function createOverlayWindow() {
   overlayWindow.on('move', () => {
     if (overlayWindow) {
       saveOverlayBounds(overlayWindow.getBounds());
+      cachedOverlayBounds = overlayWindow.getBounds();
     }
 
-    if (popoverWindow) {
-      closePopover();
+    // Keep the panel with its dot instead of throwing the user's work away.
+    if (popoverWindow && !popoverWindow.isDestroyed()) {
+      popoverWindow.setBounds(getPopoverBounds(preferredPopoverSize ?? undefined), false);
+      syncAuxiliaryWindowPositions();
     }
   });
 
@@ -3130,9 +3566,36 @@ function refreshTrayMenu() {
         label: popoverWindow ? 'Hide TeacherTools' : 'Open TeacherTools',
         click: () => togglePopover()
       },
+      isOverlayHidden()
+        ? {
+            label: 'Show Dot',
+            click: () => showOverlayNow()
+          }
+        : {
+            label: 'Hide Dot for 30 Minutes',
+            click: () => hideOverlayTemporarily(30 * 60 * 1000)
+          },
       {
         label: 'Recenter Dot',
         click: () => centerOverlayWindow()
+      },
+      {
+        label: 'Bring All Windows to Front',
+        click: () => bringAllWindowsToFront()
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Check for Updates…',
+        click: () => {
+          void checkForAppUpdates({ force: true });
+          openPopover();
+        }
+      },
+      {
+        label: 'Show Data Folder',
+        click: () => shell.showItemInFolder(getUserStorageScope().storageFilePath)
       },
       {
         type: 'separator'
@@ -3174,6 +3637,252 @@ function createTray() {
   });
 }
 
+let overlayHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isOverlayHidden() {
+  return Boolean(overlayWindow && !overlayWindow.isDestroyed() && !overlayWindow.isVisible());
+}
+
+function showOverlayNow() {
+  if (overlayHideTimer) {
+    clearTimeout(overlayHideTimer);
+    overlayHideTimer = null;
+  }
+
+  if (overlayWindow && !overlayWindow.isDestroyed() && !overlayWindow.isVisible()) {
+    overlayWindow.showInactive();
+  }
+
+  refreshTrayMenu();
+}
+
+/** Hides the dot; pass null to hide until the user brings it back. */
+function hideOverlayTemporarily(durationMs: number | null) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+
+  closePopover();
+  overlayWindow.hide();
+
+  if (overlayHideTimer) {
+    clearTimeout(overlayHideTimer);
+    overlayHideTimer = null;
+  }
+
+  if (durationMs !== null) {
+    overlayHideTimer = setTimeout(() => {
+      overlayHideTimer = null;
+      showOverlayNow();
+    }, durationMs);
+  }
+
+  refreshTrayMenu();
+}
+
+/** The dot's × opens this menu instead of quitting the app outright. */
+function showOverlayDotMenu() {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Hide dot for 30 minutes',
+      click: () => hideOverlayTemporarily(30 * 60 * 1000)
+    },
+    {
+      label: 'Hide dot for 1 hour',
+      click: () => hideOverlayTemporarily(60 * 60 * 1000)
+    },
+    {
+      label: `Hide dot until reopened${shouldUseTray ? '' : ' (reopen from the Dock)'}`,
+      click: () => hideOverlayTemporarily(null)
+    },
+    { type: 'separator' },
+    {
+      label: 'Recenter dot',
+      click: () => centerOverlayWindow()
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit TeacherTools',
+      click: () => app.quit()
+    }
+  ]);
+
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    menu.popup({ window: overlayWindow });
+  } else {
+    menu.popup();
+  }
+}
+
+function bringAllWindowsToFront() {
+  showOverlayNow();
+  for (const win of getAllApplicationWindows()) {
+    if (win.isVisible()) {
+      win.moveTop();
+    }
+  }
+}
+
+/** Re-clamps every window after a display is unplugged or rescaled. */
+function renormalizeAllWindowBounds() {
+  cachedOverlayBounds = null;
+
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.setBounds(normalizeOverlayBounds(overlayWindow.getBounds()));
+    cachedOverlayBounds = overlayWindow.getBounds();
+  }
+
+  if (popoverWindow && !popoverWindow.isDestroyed()) {
+    popoverWindow.setBounds(getPopoverBounds(preferredPopoverSize ?? undefined), false);
+  }
+
+  if (builderWindow && !builderWindow.isDestroyed()) {
+    builderWindow.setBounds(getBuilderBounds(preferredBuilderSize ?? undefined), false);
+  }
+
+  if (widgetPickerWindow && !widgetPickerWindow.isDestroyed()) {
+    widgetPickerWindow.setBounds(getWidgetPickerBounds(preferredWidgetPickerSize ?? undefined), false);
+  }
+
+  for (const [widgetId, widgetWindow] of widgetPopoutWindows.entries()) {
+    if (!widgetWindow.isDestroyed()) {
+      const defaults = WIDGET_POPOUT_DEFAULTS[widgetId];
+      widgetWindow.setBounds(
+        normalizeManagedWindowBounds(widgetWindow.getBounds(), defaults.minWidth, defaults.minHeight)
+      );
+    }
+  }
+}
+
+const OPEN_POPOUTS_STATE_KEY = 'teacher-tools.open-popouts';
+
+function saveOpenWidgetPopouts() {
+  setPersistentStateValue(OPEN_POPOUTS_STATE_KEY, [...widgetPopoutWindows.keys()]);
+}
+
+function restoreOpenWidgetPopouts() {
+  const snapshot = getPersistentStateSnapshot(OPEN_POPOUTS_STATE_KEY);
+  if (!snapshot.found || !Array.isArray(snapshot.value)) {
+    return;
+  }
+
+  for (const widgetId of snapshot.value) {
+    if (isWidgetPopoutId(widgetId) && !widgetPopoutWindows.has(widgetId)) {
+      toggleWidgetPopoutWindow(widgetId);
+    }
+  }
+}
+
+function registerGlobalShortcuts() {
+  const bindings: Array<{ accelerator: string; description: string; handler: () => void }> = [
+    {
+      accelerator: 'CommandOrControl+Shift+T',
+      description: 'toggle the TeacherTools panel',
+      handler: () => {
+        showOverlayNow();
+        togglePopover();
+        refreshTrayMenu();
+      }
+    },
+    {
+      accelerator: 'CommandOrControl+Shift+H',
+      description: 'hide or show the overlay dot',
+      handler: () => {
+        if (isOverlayHidden()) {
+          showOverlayNow();
+        } else {
+          hideOverlayTemporarily(null);
+        }
+      }
+    }
+  ];
+
+  for (const binding of bindings) {
+    try {
+      const registered = globalShortcut.register(binding.accelerator, binding.handler);
+      if (!registered) {
+        console.warn(`Global shortcut ${binding.accelerator} is taken by another app.`);
+      }
+    } catch (error) {
+      console.warn(`Could not register global shortcut to ${binding.description}:`, error);
+    }
+  }
+}
+
+function createApplicationMenu() {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        {
+          label: 'Check for Updates…',
+          click: () => {
+            void checkForAppUpdates({ force: true });
+            openPopover();
+          }
+        },
+        { type: 'separator' },
+        {
+          accelerator: 'Command+,',
+          label: 'Open TeacherTools Panel',
+          click: () => openPopover()
+        },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'close' },
+        { type: 'separator' },
+        {
+          label: 'Bring All to Front',
+          click: () => bringAllWindowsToFront()
+        },
+        {
+          label: 'Show Overlay Dot',
+          click: () => showOverlayNow()
+        }
+      ]
+    },
+    {
+      label: 'Help',
+      role: 'help',
+      submenu: [
+        {
+          label: 'TeacherTools Releases',
+          click: () => void shell.openExternal('https://github.com/andyool/TeacherTools/releases')
+        }
+      ]
+    }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function handleSecondInstance() {
   if (isInstallingAppUpdate || !app.isReady()) {
     return;
@@ -3187,6 +3896,31 @@ function handleSecondInstance() {
 }
 
 const shouldUseSingleInstanceLock = app.isPackaged && !isGeneratingIcons;
+app.setAppUserModelId('com.teachertools.overlay');
+
+// Standard Electron hardening: no renderer may open or navigate to arbitrary
+// content with the preload bridge attached. External links go to the browser.
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  contents.on('will-navigate', (event, url) => {
+    if (url !== contents.getURL()) {
+      event.preventDefault();
+    }
+  });
+
+  if (app.isPackaged) {
+    contents.on('devtools-opened', () => {
+      contents.closeDevTools();
+    });
+  }
+});
+
 const hasSingleInstanceLock = !shouldUseSingleInstanceLock || app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -3213,28 +3947,41 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    if (shouldUseDock) {
+    if (shouldUseDock && app.dock) {
       app.setActivationPolicy('regular');
       const dockIcon = createAppIcon(512);
       if (!dockIcon.isEmpty()) {
         app.dock.setIcon(dockIcon);
       }
-      app.dock.show();
+      void app.dock.show();
     }
+
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      callback(permission === 'notifications' || permission === 'clipboard-sanitized-write');
+    });
 
     clearBlockedLaunchAtLogin();
     preferredPopoverSize = loadStoredPopoverSize();
     ensurePersistentStateCache();
+    showPersistentStateRecoveryNotice();
     createOverlayWindow();
     if (shouldUseTray) {
       createTray();
     }
+    createApplicationMenu();
     initializeAppUpdater();
+    scheduleBackgroundAppUpdateChecks();
+    registerGlobalShortcuts();
+    restoreOpenWidgetPopouts();
+
+    screen.on('display-removed', renormalizeAllWindowBounds);
+    screen.on('display-metrics-changed', renormalizeAllWindowBounds);
 
     app.on('activate', () => {
       if (!overlayWindow) {
         createOverlayWindow();
       }
+      showOverlayNow();
     });
   });
 }
@@ -3244,16 +3991,30 @@ app.on('before-quit', () => {
   flushOverlayBoundsSave();
   flushPopoverSizeSave();
   flushWidgetPopoutBoundsSave();
+  saveOpenWidgetPopouts();
+  flushPersistentStateNow();
+});
 
-  if (!persistentStateCache) {
-    return;
-  }
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
 
-  try {
-    persistPersistentState();
-  } catch {
-    // The latest in-memory state was already written on each change.
-  }
+// Forced logoff/terminal kill: flush the debounced state write before dying.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    flushPersistentStateNow();
+    app.quit();
+  });
+}
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception in main process:', error);
+  appendAppUpdateLog('error', `Uncaught exception: ${error?.stack ?? error}`);
+  flushPersistentStateNow();
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection in main process:', reason);
 });
 
 app.on('window-all-closed', () => {
@@ -3287,6 +4048,10 @@ ipcMain.handle('widget-popout:get-open-ids', () => {
 
 ipcMain.handle('app-update:get-state', () => {
   return appUpdateState;
+});
+
+ipcMain.handle('app-update:download', () => {
+  return downloadAvailableAppUpdate();
 });
 
 ipcMain.handle('app-update:check', async () => {
@@ -3334,12 +4099,103 @@ ipcMain.on('storage:get', (event, key: unknown) => {
       };
 });
 
+const PERSISTENT_STATE_KEY_PREFIX = 'teacher-tools.';
+const PERSISTENT_STATE_MAX_VALUE_CHARS = 5_000_000;
+
 ipcMain.handle('storage:set', (event, key: unknown, value: unknown) => {
-  if (!isPersistentStateKey(key)) {
+  if (!isPersistentStateKey(key) || !key.startsWith(PERSISTENT_STATE_KEY_PREFIX)) {
+    return false;
+  }
+
+  const serialized = serializePersistentStateValue(value);
+  if (serialized === undefined || serialized.length > PERSISTENT_STATE_MAX_VALUE_CHARS) {
     return false;
   }
 
   return setPersistentStateValue(key, value);
+});
+
+ipcMain.handle('storage:reveal-data-folder', () => {
+  shell.showItemInFolder(getUserStorageScope().storageFilePath);
+});
+
+ipcMain.handle('storage:export', async () => {
+  const stateFile = ensurePersistentStateCache();
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? popoverWindow ?? null;
+  const dialogOptions: Electron.SaveDialogOptions = {
+    defaultPath: `teachertools-backup-${getBackupDateKey()}.teachertools.json`,
+    filters: [{ extensions: ['json'], name: 'TeacherTools backup' }],
+    title: 'Export TeacherTools data'
+  };
+  const result = targetWindow
+    ? await dialog.showSaveDialog(targetWindow, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions);
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true, ok: false };
+  }
+
+  try {
+    fs.writeFileSync(result.filePath, JSON.stringify(stateFile, null, 2), 'utf8');
+    return { canceled: false, ok: true };
+  } catch (error) {
+    return {
+      canceled: false,
+      errorMessage: error instanceof Error ? error.message : 'The backup could not be written.',
+      ok: false
+    };
+  }
+});
+
+ipcMain.handle('storage:import', async () => {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? popoverWindow ?? null;
+  const dialogOptions: Electron.OpenDialogOptions = {
+    filters: [{ extensions: ['json'], name: 'TeacherTools backup' }],
+    properties: ['openFile'],
+    title: 'Import TeacherTools data'
+  };
+  const result = targetWindow
+    ? await dialog.showOpenDialog(targetWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, ok: false };
+  }
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8')) as unknown;
+    if (!isRecord(raw) || !isRecord(raw.valuesByKey)) {
+      return { canceled: false, errorMessage: 'That file is not a TeacherTools backup.', ok: false };
+    }
+
+    // Keep the current data recoverable before replacing it.
+    flushPersistentStateNow();
+    const currentPath = getUserStorageScope().storageFilePath;
+    try {
+      if (fs.existsSync(currentPath)) {
+        fs.copyFileSync(currentPath, `${currentPath}.pre-import-${Date.now()}.json`);
+      }
+    } catch {
+      // Best effort.
+    }
+
+    const imported = normalizePersistentStateFile(raw);
+    persistentStateCache = imported;
+    persistentStateCache.profileId = getUserStorageScope().id;
+    flushPersistentStateNow();
+
+    for (const [key, value] of Object.entries(imported.valuesByKey)) {
+      broadcastPersistentStateChange({ key, value });
+    }
+
+    return { canceled: false, ok: true };
+  } catch (error) {
+    return {
+      canceled: false,
+      errorMessage: error instanceof Error ? error.message : 'The backup could not be read.',
+      ok: false
+    };
+  }
 });
 
 ipcMain.on('popover:toggle', () => {
@@ -3388,6 +4244,10 @@ ipcMain.on('overlay:set-interactive', (_event, interactive: unknown) => {
   setOverlayInteractive(interactive === true);
 });
 
+ipcMain.on('overlay:show-menu', () => {
+  showOverlayDotMenu();
+});
+
 ipcMain.on('window:set-current-bounds', (event, bounds: Bounds) => {
   const sourceWindow = BrowserWindow.fromWebContents(event.sender);
 
@@ -3414,6 +4274,40 @@ ipcMain.on('window:set-current-bounds', (event, bounds: Bounds) => {
   }
 });
 
+// Only paths the app itself handed out (via the picker dialog or the
+// persisted planner attachments) may be opened, and never executables.
+const allowedLessonDocumentPaths = new Set<string>();
+const BLOCKED_DOCUMENT_EXTENSIONS = new Set([
+  '.app',
+  '.bat',
+  '.cmd',
+  '.com',
+  '.command',
+  '.exe',
+  '.jar',
+  '.js',
+  '.jse',
+  '.msi',
+  '.ps1',
+  '.scpt',
+  '.scr',
+  '.sh',
+  '.vbs',
+  '.wsf',
+  '.wsh'
+]);
+
+function isLessonDocumentPathAllowed(filePath: string) {
+  if (allowedLessonDocumentPaths.has(filePath)) {
+    return true;
+  }
+
+  const plannerSerialized = serializePersistentStateValue(
+    ensurePersistentStateCache().valuesByKey['teacher-tools.planner']
+  );
+  return Boolean(plannerSerialized && plannerSerialized.includes(JSON.stringify(filePath)));
+}
+
 ipcMain.handle('lesson-documents:select', async () => {
   const focusedWindow =
     BrowserWindow.getFocusedWindow() ??
@@ -3432,6 +4326,10 @@ ipcMain.handle('lesson-documents:select', async () => {
 
   if (result.canceled) {
     return [];
+  }
+
+  for (const filePath of result.filePaths) {
+    allowedLessonDocumentPaths.add(filePath);
   }
 
   return result.filePaths.map((filePath) => ({
@@ -3456,7 +4354,15 @@ ipcMain.handle('lesson-documents:open', async (_event, filePath: unknown) => {
     }
   }
 
-  return shell.openPath(filePath);
+  if (BLOCKED_DOCUMENT_EXTENSIONS.has(path.extname(trimmedPath).toLowerCase())) {
+    return 'This file type cannot be opened from TeacherTools.';
+  }
+
+  if (!isLessonDocumentPathAllowed(trimmedPath)) {
+    return 'This file is not attached to a lesson.';
+  }
+
+  return shell.openPath(trimmedPath);
 });
 
 ipcMain.handle('lesson-plans:export-pdf', async (event, payloadRaw: unknown): Promise<LessonPlansPdfExportResult> => {
