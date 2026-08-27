@@ -1,11 +1,20 @@
 /* =====================================================================
-   LAYER: NEUMORPHIC GLASS v2
+   LAYER: NEUMORPHIC GLASS v3
    True soft-UI: every control is a bump of the exact material it sits
    on — same fill as its background, no borders, a perfectly flat face.
    Depth comes only from a twin-shadow extrusion (key light upper-left,
-   occlusion lower-right). Hover grows the bump, pressing squashes it
-   back into the surface with a fluid spring. Panels stay glass.
-   Themed for light, dark, and color modes via the tokens below.
+   occlusion lower-right). Three rules keep the physics honest:
+   1. Occlusion tiers — taller things paint above shorter things, so a
+      control's face and its cast shadow always override the light halo
+      of the surface it stands on (never the reverse).
+   2. Anchored hover — hovering grows the bump taller but keeps it fused
+      to the surface: the shadow footprint neither moves nor grows, it
+      only darkens and sharpens.
+   3. Concavity — a control standing over a recessed well casts a longer,
+      softer, dimmer shadow (the floor is further away) and its ambient
+      highlight is muted by the shaded walls.
+   Pressing squashes the bump back into the surface with a fluid spring.
+   Panels stay glass. Themed for light, dark, and color modes below.
    ===================================================================== */
 
 /* ---- 1. Material tokens ------------------------------------------- */
@@ -22,38 +31,64 @@
   /* motion */
   --neu-spring: cubic-bezier(0.3, 1.28, 0.44, 1);
 
-  /* raised extrusions — flat face, all depth in the twin shadows */
+  /* raised extrusions — flat face, all depth in the twin shadows.
+     Every layer carries a negative spread so the glow can never wrap
+     around a rounded cap onto the wrong side of the element: the light
+     stays strictly up-left, the occlusion strictly down-right, and halos
+     live in the gutters instead of washing over a neighbour's face. */
   --neu-raise-xs:
-    -1px -1px 3px var(--neu-hi),
-    1px 2px 3px var(--neu-lo);
+    -1px -1px 2px -0.5px var(--neu-hi),
+    1px 2px 3px -0.5px var(--neu-lo);
   --neu-raise-sm:
-    -2px -2px 5px var(--neu-hi),
-    2px 3px 6px var(--neu-lo);
+    -2px -2px 4px -1px var(--neu-hi),
+    2px 3px 6px -1px var(--neu-lo);
   --neu-raise-md:
-    -3px -3px 8px var(--neu-hi),
-    4px 5px 10px var(--neu-lo);
+    -3px -3px 6px -1.5px var(--neu-hi),
+    4px 5px 10px -1px var(--neu-lo);
   --neu-raise-lg:
-    -5px -5px 12px var(--neu-hi),
-    6px 8px 16px var(--neu-lo-deep);
-  --neu-raise-hover:
-    -3px -4px 8px var(--neu-hi-strong),
-    4px 5px 10px var(--neu-lo-deep);
+    -5px -5px 12px -2px var(--neu-hi),
+    6px 8px 16px -2px var(--neu-lo-deep);
+  /* truly detached surfaces (menus, popovers) — the one place a shadow
+     is allowed to spread wide */
   --neu-raise-float:
     -6px -7px 16px var(--neu-hi-strong),
     8px 11px 22px var(--neu-lo-deep);
 
-  /* hover stretch: the face keeps its plateau shape and rides up while a
-     neck of material (the button ::before skirt) bridges it back to the
-     surface. The lower shadow's offset grows with the rise so it stays
-     anchored at surface level instead of travelling with the face. */
-  --neu-stretch-hover:
-    -2px -4px 8px var(--neu-hi-strong),
-    2px 6px 9px var(--neu-lo),
-    inset 0 -2px 3px color-mix(in srgb, var(--neu-lo) 24%, transparent);
-  --neu-stretch-float:
-    -3px -6px 12px var(--neu-hi-strong),
-    3px 10px 15px var(--neu-lo),
-    inset 0 -2px 3px color-mix(in srgb, var(--neu-lo) 28%, transparent);
+  /* hover: the bump rises while a neck of stretched material (the button's
+     ::before skirt) keeps it fused to the surface. The occlusion shadow is
+     built from two layers: one at rest offsets so it stays touching the
+     face, and one pushed down by exactly the rise so its bottom edge stays
+     pinned where it was before the lift — between them the dark simply
+     gets longer, stretching from the risen face to the un-moved base. */
+  --neu-hover-sm: /* 2px rise */
+    -2px -2px 3px -1px var(--neu-hi-strong),
+    2px 3px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 62%, transparent),
+    2px 5px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 62%, transparent);
+  --neu-hover-lift: /* 3px rise */
+    -2px -2px 3px -1px var(--neu-hi-strong),
+    2px 3px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 58%, transparent),
+    2px 6px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 58%, transparent);
+  --neu-hover-spawn: /* 4px rise */
+    -2px -2px 3px -1px var(--neu-hi-strong),
+    2px 3px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 52%, transparent),
+    2px 5px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 34%, transparent),
+    2px 7px 5px -1px color-mix(in srgb, var(--neu-lo-deep) 52%, transparent);
+
+  /* controls standing over a concave well: the floor drops away, so the
+     cast shadow travels further, spreads and fades, and the shaded walls
+     mute the ambient highlight. */
+  --neu-raise-on-well:
+    -2px -2px 4px -1px color-mix(in srgb, var(--neu-hi) 60%, transparent),
+    3px 5px 9px -1px color-mix(in srgb, var(--neu-lo) 82%, transparent);
+  --neu-hover-on-well:
+    -2px -2px 4px -1px color-mix(in srgb, var(--neu-hi) 70%, transparent),
+    3px 5px 8px -1px color-mix(in srgb, var(--neu-lo-deep) 48%, transparent),
+    3px 7px 8px -1px color-mix(in srgb, var(--neu-lo-deep) 48%, transparent);
+  /* items resting on a well floor: deeper ambient shade, longer soft drop */
+  --neu-raise-in-well:
+    -1px -1px 2px -0.5px color-mix(in srgb, var(--neu-hi) 55%, transparent),
+    2px 4px 6px -1px color-mix(in srgb, var(--neu-lo) 85%, transparent);
+
 
   /* debossed wells */
   --neu-inset-sm:
@@ -159,10 +194,12 @@
     var(--panel-fill);
   -webkit-backdrop-filter: blur(18px) saturate(1.22);
   backdrop-filter: blur(18px) saturate(1.22);
+  /* No outer highlight here: the glass is the app's outermost edge, and a
+     white glow past it just gets clipped at the window bounds as a stray
+     light band over the desktop. Only the drop shadow leaves the glass. */
   box-shadow:
     inset 0 1px 0 var(--glass-rim),
     inset 0 -1px 0 color-mix(in srgb, var(--neu-lo) 26%, transparent),
-    -4px -4px 10px color-mix(in srgb, var(--neu-hi) 24%, transparent),
     6px 8px 20px color-mix(in srgb, var(--neu-lo-deep) 80%, transparent);
 }
 
@@ -173,8 +210,7 @@
   .builder-sidebar,
   .builder-editor,
   .tracker-panel,
-  .tracker-record,
-  .seating-chart__preview-card
+  .tracker-record
 ) {
   --surface-fill: var(--card-fill);
   border-color: transparent;
@@ -232,16 +268,39 @@
   box-shadow: none;
 }
 
-/* recessed canvases and tracks */
+/* recessed canvases and tracks — the seating preview is a display window
+   sunk into the widget (matching the editor canvas), not a raised slab,
+   so it casts no halo over the controls above it */
 
 :is(
   .seating-chart__canvas,
   .seating-chart__drop-well,
   .planner-week__day-track
-) {
+),
+.seating-chart__preview-card,
+.panel[data-theme] .widget-card .seating-chart__preview-card {
   border-color: transparent;
   background: var(--well-fill, var(--field-fill));
   box-shadow: var(--neu-inset-sm);
+}
+
+/* ---- 3b. Occlusion tiers ------------------------------------------- */
+/* Taller elements paint above shorter ones, whatever the DOM order:
+   sub-surface bumps sit above cards, controls above everything. A raised
+   button's opaque face occludes the light halo of the surface below it,
+   and its own occlusion shadow falls *onto* that surface — the dark
+   always wins over a lower element's light, never the reverse. */
+
+.stepper,
+.group-card,
+.note-row,
+.widget-toggle,
+.bell-schedule__summary-card,
+.bell-schedule__upcoming-item,
+.bell-schedule__metric,
+.seating-chart__stat,
+.seating-chart__sidebar-section {
+  z-index: 1;
 }
 
 /* ---- 4. Controls: same material, no border, flat face ---------------- */
@@ -317,6 +376,22 @@
   .note-row__delete,
   .tracker-date-field__button
 ) {
+  /* ink-filled faces (accent pills, selected toggles): a flat slab of dark
+     colour reads as a sticker — or worse, a depression — next to the
+     material bumps. The same curvature under the same key light, painted
+     in the pill's own colour: a smooth diagonal grade from a lit upper-
+     left to a shaded lower-right. No rims, no inner shadows — just the
+     face turning away from the light. Defined HERE, on the buttons, so
+     var(--button-ink) resolves per button and every tone shades itself. */
+  --neu-ink-fill: color-mix(in srgb, var(--button-ink) 90%, var(--control-fill));
+  --neu-ink-grad: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--neu-hi-strong) 16%, var(--neu-ink-fill)),
+    var(--neu-ink-fill) 55%,
+    color-mix(in srgb, var(--neu-lo-deep) 18%, var(--neu-ink-fill))
+  );
+  z-index: 2;
+  overflow: visible;
   border: 1px solid transparent;
   color: var(--button-ink);
   background: var(--control-fill);
@@ -337,7 +412,8 @@
   border-left-color: color-mix(in srgb, var(--neu-lo) 22%, transparent);
 }
 
-/* hover: the bump grows, base stays fused to the surface */
+/* hover: the bump rises a touch northwards but stays attached — the
+   shadow keeps its footprint and simply strengthens and sharpens */
 
 :is(
   .icon-button,
@@ -394,15 +470,20 @@
 ):hover:not(:disabled) {
   border-color: transparent;
   color: var(--button-ink);
-  background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
-  /* The plateau keeps its shape and rides up; the ::before neck (activated
-     below) stretches down behind it to stay fused with the surface. */
-  --stretch-rise: 3px;
-  transform: translateY(-3px);
-  box-shadow: var(--neu-stretch-hover);
+  background: color-mix(in srgb, var(--neu-hi) 12%, var(--control-fill));
+  --stretch-rise: 2px;
+  transform: translateY(-2px);
+  box-shadow: var(--neu-hover-sm);
 }
 
-/* pointer-tracked lift: pulled further up, neck stretches further */
+/* the collapse chevron is rotated when collapsed — keep the rise northward
+   in page space */
+.widget-card__collapse--collapsed:hover:not(:disabled),
+.panel[data-theme] .widget-card .widget-card__collapse--collapsed:hover:not(:disabled) {
+  transform: rotate(180deg) translateY(2px);
+}
+
+/* pointer-tracked lift: pulled slightly further up, still anchored */
 
 .button-lift-stable:not(:disabled),
 .panel[data-theme] .button-lift-stable:not(:disabled),
@@ -441,33 +522,36 @@
   .note-row__delete,
   .tracker-date-field__button
 ).button-lift-stable:not(:disabled) {
-  --stretch-rise: 5px;
-  transform: translateY(-5px);
+  --stretch-rise: 3px;
+  transform: translateY(-3px);
   border-color: transparent;
   color: var(--button-ink);
-  background: color-mix(in srgb, var(--neu-hi) 9%, var(--control-fill));
-  box-shadow: var(--neu-stretch-float);
+  background: color-mix(in srgb, var(--neu-hi) 12%, var(--control-fill));
+  box-shadow: var(--neu-hover-lift);
 }
 
 .widget-card__collapse--collapsed.button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card .widget-card__collapse--collapsed.button-lift-stable:not(:disabled) {
-  /* Rotated 180°: local +Y is visual up, and the neck would render on the
-     wrong side, so this one rises without a skirt. */
-  transform: rotate(180deg) translateY(5px);
+  /* Rotated 180°: local +Y is visual up */
+  transform: rotate(180deg) translateY(3px);
 }
 
-/* window-spawn buttons stretch a touch further before popping out */
+/* window-spawn buttons rise a touch further before popping out */
 
 .window-spawn-button.button-lift-stable:not(:disabled),
 [data-window-spawn-button='true'].button-lift-stable:not(:disabled),
 .panel[data-theme] :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card :is(.window-spawn-button, [data-window-spawn-button='true']).button-lift-stable:not(:disabled) {
-  --stretch-rise: 7px;
-  transform: translateY(-7px);
-  box-shadow: var(--neu-stretch-float);
+  --stretch-rise: 4px;
+  transform: translateY(-4px);
+  box-shadow: var(--neu-hover-spawn);
 }
 
-/* the stretched neck of material bridging the risen face to the surface */
+/* the stretched neck: a band of the button's own material left behind as
+   the face rises, bridging it back down to the surface. Background is
+   inherited so it matches any fill (accent pills included); an inset
+   bottom shade plus a tight drop at its base keep it reading as material
+   being pulled, not a glow. */
 
 :is(
   .icon-button,
@@ -500,13 +584,11 @@
   .note-row__delete
 ).button-lift-stable:not(:disabled)::before {
   opacity: 1;
-  bottom: calc(-1 * var(--stretch-rise, 3px));
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--neu-hi) 6%, var(--control-fill)) 30%,
-    color-mix(in srgb, var(--neu-lo) 30%, var(--neu-material))
-  );
-  box-shadow: 0 2px 4px color-mix(in srgb, var(--neu-lo) 55%, transparent);
+  bottom: calc(-1 * var(--stretch-rise, 2px));
+  background: inherit;
+  box-shadow:
+    inset 0 -3px 4px -1px color-mix(in srgb, var(--neu-lo) 34%, transparent),
+    0 2px 3px -1px color-mix(in srgb, var(--neu-lo) 50%, transparent);
 }
 
 /* selected / toggled: solid accent pill */
@@ -564,7 +646,7 @@
   transform: none;
   color: var(--neu-on-ink);
   border-color: transparent;
-  background: color-mix(in srgb, var(--button-ink) 90%, var(--control-fill));
+  background: var(--neu-ink-grad);
   box-shadow: var(--neu-raise-sm);
 }
 
@@ -635,6 +717,40 @@
   background: var(--control-fill);
   box-shadow: var(--neu-pressed);
   transition-duration: 90ms, 90ms, 110ms, 110ms, 110ms, 90ms;
+}
+
+/* the calendar button stands over the debossed date field — a concave
+   floor, so its shadow falls further, spreads and dims, and the well's
+   shaded walls mute its highlight. It vertically centres with
+   translateY(-50%), so every state must fold that into its transform;
+   these rules sit AFTER the generic hover/lift/active blocks above so the
+   centring is never dropped (losing it makes the button leap ~14px). */
+
+.tracker-date-field__button,
+.panel[data-theme] .tracker-date-field__button,
+.panel[data-theme] .widget-card .tracker-date-field__button {
+  box-shadow: var(--neu-raise-on-well);
+}
+
+.tracker-date-field__button:hover:not(:disabled),
+.panel[data-theme] .tracker-date-field__button:hover:not(:disabled),
+.panel[data-theme] .widget-card .tracker-date-field__button:hover:not(:disabled) {
+  transform: translateY(calc(-50% - 2px));
+  box-shadow: var(--neu-hover-on-well);
+}
+
+.tracker-date-field__button.button-lift-stable:not(:disabled),
+.panel[data-theme] .tracker-date-field__button.button-lift-stable:not(:disabled),
+.panel[data-theme] .widget-card .tracker-date-field__button.button-lift-stable:not(:disabled) {
+  transform: translateY(calc(-50% - 3px));
+  box-shadow: var(--neu-hover-on-well);
+}
+
+.tracker-date-field__button:active:not(:disabled),
+.panel[data-theme] .tracker-date-field__button:active:not(:disabled),
+.panel[data-theme] .widget-card .tracker-date-field__button:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.95);
+  box-shadow: var(--neu-pressed);
 }
 
 /* focus: soft luminous ring around the raised form */
@@ -719,7 +835,7 @@
 .panel[data-theme] .primary-link.button-lift-stable:not(:disabled),
 .panel[data-theme] .widget-card .primary-link.button-lift-stable:not(:disabled) {
   color: var(--neu-on-ink);
-  background: color-mix(in srgb, var(--button-ink) 90%, var(--control-fill));
+  background: var(--neu-ink-grad);
 }
 
 .primary-link:active:not(:disabled),
@@ -727,6 +843,7 @@
 .panel[data-theme] .widget-card .primary-link:active:not(:disabled) {
   color: var(--neu-on-ink);
   background: color-mix(in srgb, var(--button-ink) 78%, var(--control-fill));
+  box-shadow: var(--neu-pressed);
 }
 
 /* compact icon glyphs inherit the on-ink color when the pill is filled */
@@ -747,13 +864,11 @@
 
 .text-field,
 .text-area,
-.tracker-date-picker,
 .tracker-completion-table-wrap,
 .tracker-completion-check span,
 .panel[data-theme] .widget-card :is(
   .text-field,
   .text-area,
-  .tracker-date-picker,
   .tracker-completion-table-wrap
 ),
 .panel[data-theme] .widget-card .tracker-completion-check span,
@@ -767,6 +882,35 @@
     box-shadow 240ms var(--neu-spring),
     background 200ms ease,
     border-color 200ms ease;
+}
+
+/* The date-picker popover portals to document.body, outside every panel
+   token scope — var()-based fills resolve to nothing there and the widget
+   behind shows through. Paint it with literal, opaque materials, floating
+   (a detached surface, not a debossed field). */
+.tracker-date-picker,
+.tracker-date-picker[data-theme='light'] {
+  border-color: rgba(82, 116, 154, 0.28);
+  background: #e3edf7;
+  box-shadow:
+    -6px -7px 16px rgba(255, 255, 255, 0.8),
+    8px 11px 22px rgba(76, 104, 138, 0.48);
+}
+
+.tracker-date-picker[data-theme='dark'] {
+  border-color: rgba(195, 218, 255, 0.16);
+  background: #161f2e;
+  box-shadow:
+    -6px -7px 16px rgba(170, 197, 238, 0.1),
+    8px 11px 22px rgba(0, 0, 0, 0.88);
+}
+
+.tracker-date-picker[data-theme='color'] {
+  border-color: rgba(47, 36, 69, 0.28);
+  background: #f1e6c8;
+  box-shadow:
+    -6px -7px 16px rgba(255, 253, 244, 0.9),
+    8px 11px 22px rgba(112, 88, 66, 0.46);
 }
 
 .text-field:hover:not(:focus),
@@ -910,12 +1054,21 @@
 
 :is(
   .tracker-date-picker__day,
-  .seating-chart__swatch,
+  .seating-chart__swatch
+) {
+  border-color: transparent;
+  box-shadow: var(--neu-raise-xs);
+}
+
+/* seats and student pills rest on recessed well floors — longer, softer
+   drop and muted highlight down there */
+
+:is(
   .seating-chart__item,
   .seating-chart__student-pill
 ) {
   border-color: transparent;
-  box-shadow: var(--neu-raise-xs);
+  box-shadow: var(--neu-raise-in-well);
 }
 
 :is(
@@ -977,8 +1130,8 @@
   border: 1px solid transparent;
   background: var(--widget-card-fill);
   box-shadow:
-    -3px -3px 8px var(--neu-hi-strong),
-    4px 5px 12px color-mix(in srgb, var(--widget-card-shadow, var(--neu-lo)) 80%, transparent);
+    -3px -3px 6px -2px var(--neu-hi-strong),
+    4px 5px 12px -2px color-mix(in srgb, var(--widget-card-shadow, var(--neu-lo)) 80%, transparent);
 }
 
 .panel[data-theme='color'] .widget-card__header {
@@ -1037,8 +1190,8 @@
 
 .panel {
   --neu-raise-card:
-    -3px -3px 8px var(--neu-hi-strong),
-    4px 5px 12px var(--neu-lo);
+    -3px -3px 6px -2px var(--neu-hi-strong),
+    4px 5px 12px -2px var(--neu-lo);
 }
 
 :is(
@@ -1046,8 +1199,7 @@
   .builder-sidebar,
   .builder-editor,
   .tracker-panel,
-  .tracker-record,
-  .seating-chart__preview-card
+  .tracker-record
 ),
 .widget-card,
 .dashboard-shell .widget-card {

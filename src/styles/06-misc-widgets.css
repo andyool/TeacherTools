@@ -38,7 +38,6 @@
   min-height: 0;
   gap: 4px;
   overflow-y: auto;
-  overscroll-behavior: contain;
   padding: 10px 14px 14px 12px;
   margin: -10px -12px -14px -12px;
 }
@@ -86,7 +85,9 @@
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='timer'] .widget-card__body,
 :is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-widget-id='notes'] .widget-card__body {
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* No overscroll-behavior here: on the dashboard these bodies usually fit
+     their content, and `contain` on a non-overflowing scroller still blocks
+     wheel events from chaining up to the dashboard scroll. */
   /* Widen the scrollport (padding pulled back with negative margins) so
      button lift shadows and glows are not clipped flush at the edges.
      Lift glows measure 10px above / 12px below the button box. */
@@ -1194,9 +1195,22 @@ body[data-window-resizing='true'] .window-stage * {
 /* created date. Appended rules only.                                 */
 /* ------------------------------------------------------------------ */
 
-.note-compose-field {
+/* Grow with wrapped text as well as hard newlines (the rows attribute only
+   counts newlines); cap near five lines like the old rows cap. The base
+   .text-field rules pin height (28px, 30px at small tiers), so height:auto
+   needs to out-rank those tier selectors for field-sizing to take effect. */
+.note-compose-field,
+:is(.dashboard-shell, .window-stage--widget-popout) .widget-card[data-size-tier] .note-input-row .note-compose-field {
   resize: none;
   line-height: 1.35;
+  field-sizing: content;
+  height: auto;
+  min-height: var(--control-height-sm, 28px);
+  max-height: 132px;
+  padding: 4px 12px;
+  /* Not the full 999px pill: a tall stadium curls its round ends into the
+     first and last lines of a grown multi-line draft. */
+  border-radius: 14px;
 }
 
 .notes-toolbar {

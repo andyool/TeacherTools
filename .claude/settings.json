@@ -66,10 +66,19 @@
       "Bash(node toggle-full.mjs)",
       "Bash(sips -g pixelWidth -g pixelHeight after-toggle-full.png)",
       "Bash(cp after-toggle-full.png after-toggle-crop.png)",
-      "Bash(sips -c 280 560 --cropOffset 610 430 after-toggle-crop.png)"
+      "Bash(sips -c 280 560 --cropOffset 610 430 after-toggle-crop.png)",
+      "Bash(awk '/^\\\\.icon-button \\\\{|^\\\\.widget-icon-button/,/\\\\}/' /Users/andreasbeerli/TeacherTools/src/styles/02-chrome.css)",
+      "Bash(node /private/tmp/claude-501/-Users-andreasbeerli-TeacherTools/edc587f4-10f0-4f49-9d9f-c99784958724/scratchpad/drive.mjs)",
+      "Bash(node /private/tmp/claude-501/-Users-andreasbeerli-TeacherTools/edc587f4-10f0-4f49-9d9f-c99784958724/scratchpad/drive2.mjs)",
+      "Bash(sed -i '' 's/setTimeout\\(r, 1200\\)\\);/setTimeout\\(r, 3500\\)\\);/; s/setTimeout\\(r, 900\\)\\);/setTimeout\\(r, 1500\\)\\);/' drive2.mjs)",
+      "Bash(node drive2.mjs)",
+      "Bash(node /private/tmp/claude-501/-Users-andreasbeerli-TeacherTools/edc587f4-10f0-4f49-9d9f-c99784958724/scratchpad/drive3.mjs)",
+      "Bash(node drive3.mjs)",
+      "Bash(node /private/tmp/claude-501/-Users-andreasbeerli-TeacherTools/edc587f4-10f0-4f49-9d9f-c99784958724/scratchpad/drive4.mjs)"
     ],
     "additionalDirectories": [
-      "/Users/andreasbeerli/TeacherTools/dist/assets"
+      "/Users/andreasbeerli/TeacherTools/dist/assets",
+      "/private/tmp/claude-501/-Users-andreasbeerli-TeacherTools/edc587f4-10f0-4f49-9d9f-c99784958724/scratchpad"
     ]
   }
 }

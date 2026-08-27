@@ -293,49 +293,6 @@
   transform: translateY(-50%);
 }
 
-.tracker-date-field__button.button-lift-stable:not(:disabled),
-.tracker-date-field__button.button-lift-stable {
-  transform: translateY(calc(-50% - 6px));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -1px 0 rgba(8, 12, 18, 0.08),
-    0 20px 30px -4px rgba(8, 12, 18, 0.26),
-    0 34px 48px -8px rgba(8, 12, 18, 0.18);
-}
-
-.tracker-date-field__button:active:not(:disabled) {
-  transform: translateY(calc(-50% - 6px));
-  box-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 14px 24px -6px rgba(8, 12, 18, 0.2),
-    0 24px 34px -10px rgba(8, 12, 18, 0.14);
-}
-
-.panel[data-theme='dark'] .tracker-date-field__button.button-lift-stable:not(:disabled),
-.panel[data-theme='dark'] .tracker-date-field__button.button-lift-stable {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    inset 0 -1px 0 rgba(8, 12, 18, 0.12),
-    0 20px 34px -3px rgba(0, 0, 0, 0.82),
-    0 38px 60px -7px rgba(0, 0, 0, 0.66);
-}
-
-.panel[data-theme='color'] .widget-card .tracker-date-field__button.button-lift-stable:not(:disabled),
-.panel[data-theme='color'] .widget-card .tracker-date-field__button.button-lift-stable {
-  transform: translateY(calc(-50% - 6px));
-  box-shadow:
-    0 20px 30px -4px rgba(36, 26, 57, 0.44),
-    0 34px 48px -8px rgba(36, 26, 57, 0.34);
-}
-
-.panel[data-theme='color'] .widget-card .tracker-date-field__button:active:not(:disabled) {
-  transform: translateY(calc(-50% - 6px));
-  box-shadow:
-    0 14px 24px -6px rgba(36, 26, 57, 0.34),
-    0 24px 34px -10px rgba(36, 26, 57, 0.26);
-}
-
 .calendar-icon {
   width: 15px;
   height: 15px;
