@@ -71,6 +71,8 @@ export type LessonPlanExportRangeMode =
 
 export type PlannerSnapshot = {
   activeDateByListId: Record<string, string>;
+  /** Day the active dates were last set; selections expire on the next day so the planner reopens on today. */
+  activeDateStampedOn: string;
   confirmLessonPlanMoves: boolean;
   deletedEntries: DeletedLessonPlanEntry[];
   /** Keys are either a plain date key or `dateKey#slotId` for slot-keyed plans. */
@@ -148,6 +150,7 @@ export function buildDefaultSchoolTermDates(year = new Date().getFullYear()): Sc
 
 export const DEFAULT_PLANNER: PlannerSnapshot = {
   activeDateByListId: {},
+  activeDateStampedOn: '',
   confirmLessonPlanMoves: true,
   deletedEntries: [],
   entriesByListId: {},
@@ -2681,6 +2684,8 @@ export function useLessonPlannerController(selectedListId: string | null, classL
   const [planner, setPlanner] = usePlannerState();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [missingDocumentIds, setMissingDocumentIds] = useState<Record<string, true>>({});
+  // Re-render at midnight so a day-old selection expires while the app stays open.
+  useToday();
   const selectedDate = getPlannerSelectedDate(planner, selectedListId);
   const entry = getPlannerEntry(planner, selectedListId, selectedDate);
   const storedDocuments = entry?.documents ?? [];
@@ -4415,7 +4420,15 @@ export function formatDeletedLessonPlanTimestamp(timestamp: number) {
 }
 
 export function getPlannerSelectedDate(snapshot: PlannerSnapshot, listId: string | null) {
-  return snapshot.activeDateByListId[getDashboardLayoutKey(listId)] ?? getTodayDateKey();
+  const todayKey = getTodayDateKey();
+
+  // Selections expire overnight: a date picked on a previous day no longer
+  // pins the planner, so each new day opens on today.
+  if (snapshot.activeDateStampedOn !== todayKey) {
+    return todayKey;
+  }
+
+  return snapshot.activeDateByListId[getDashboardLayoutKey(listId)] ?? todayKey;
 }
 
 export function makePlannerEntryKey(dateKey: string, slotId: string | null = null) {
@@ -4521,7 +4534,8 @@ export function setPlannerDateForList(snapshot: PlannerSnapshot, listId: string 
     activeDateByListId: {
       ...snapshot.activeDateByListId,
       [getDashboardLayoutKey(listId)]: normalizedDate
-    }
+    },
+    activeDateStampedOn: getTodayDateKey()
   };
 }
 
@@ -4570,6 +4584,7 @@ export function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnap
 
   const nextRaw = raw as {
     activeDateByListId?: Record<string, unknown>;
+    activeDateStampedOn?: unknown;
     confirmLessonPlanMoves?: unknown;
     deletedEntries?: unknown[];
     entriesByListId?: Record<string, Record<string, unknown>>;
@@ -4626,6 +4641,10 @@ export function normalizePlannerSnapshot(raw: unknown, initialValue: PlannerSnap
 
   return {
     activeDateByListId,
+    activeDateStampedOn:
+      typeof nextRaw.activeDateStampedOn === 'string'
+        ? normalizeDateKey(nextRaw.activeDateStampedOn) ?? ''
+        : '',
     confirmLessonPlanMoves:
       typeof nextRaw.confirmLessonPlanMoves === 'boolean'
         ? nextRaw.confirmLessonPlanMoves
