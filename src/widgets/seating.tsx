@@ -5,15 +5,22 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent
 } from 'react';
+import { useColorModeAppearance } from '../app/colorMode';
 import type { InterfaceScaleControlsState } from '../app/interfaceScale';
 import { usePersistentState } from '../shared/persistence';
-import { announce, requestConfirm, showUndoToast } from '../shared/uiKit';
+import { WidgetDialog, announce, requestConfirm, showUndoToast } from '../shared/uiKit';
 import { clampNumber, createStickyNoteId, formatStudentInitials, isString, shuffleNames } from '../shared/utils';
 import { PopoutWidgetActions, WidgetCard } from './chrome';
 import type { ClassList } from './classLists';
 import type { WidgetSizeTier } from './dashboard';
-import type { GroupPairRule } from './groupRules';
-import { getGroupRulesForList, useGroupRulesState } from './groupRules';
+import type { GroupPairRule, GroupRuleKind } from './groupRules';
+import {
+  StudentCombobox,
+  addGroupRule,
+  getGroupRulesForList,
+  removeGroupRule,
+  useGroupRulesState
+} from './groupRules';
 import { filterAbsentStudents, getAbsentStudentsForList, usePickerState } from './picker';
 import { WIDGET_DETAILS } from './registry';
 
@@ -27,6 +34,7 @@ export type SeatingChartLayoutItem = {
   id: string;
   kind: SeatingChartItemKind;
   label: string;
+  locked: boolean;
   seatStyle: SeatingChartSeatStyle;
   x: number;
   y: number;
@@ -46,8 +54,41 @@ export type SeatingChartClassState = {
 
 export type SeatingChartSnapshot = {
   chartsByListId: Record<string, SeatingChartClassState>;
-  frontRowByListId: Record<string, string[]>;
+  generatorOptionsByListId: Record<string, SeatingGeneratorOptions>;
+  placementsByListId: Record<string, Record<string, SeatingPlacementZone>>;
   studentNotesByListId: Record<string, Record<string, string>>;
+};
+
+/** Where a student should end up when the randomizer runs. */
+export type SeatingPlacementZone =
+  | 'alone'
+  | 'back'
+  | 'edge'
+  | 'front'
+  | 'near-board'
+  | 'near-door'
+  | 'near-teacher'
+  | 'not-near-door';
+
+export type SeatingApartDistance = 1 | 2;
+
+export type SeatingEmptySeatPlacement = 'anywhere' | 'back' | 'spread';
+
+export type SeatingTogetherStyle = 'adjacent' | 'side-by-side';
+
+export type SeatingGeneratorOptions = {
+  apartDistance: SeatingApartDistance;
+  avoidRepeatNeighbours: boolean;
+  emptySeatPlacement: SeatingEmptySeatPlacement;
+  respectLockedSeats: boolean;
+  togetherStyle: SeatingTogetherStyle;
+};
+
+export type SeatingShuffleReport = {
+  totalRules: number;
+  unmetApartPairs: GroupPairRule[];
+  unmetPlacements: { student: string; zone: SeatingPlacementZone }[];
+  unmetTogetherPairs: GroupPairRule[];
 };
 
 export type SeatingChartTool = 'select' | SeatingChartItemKind | 'erase' | 'rows';
@@ -118,11 +159,45 @@ export const SEATING_CHART_ITEM_DETAILS: Record<
 
 export const DEFAULT_SEATING_CHART: SeatingChartSnapshot = {
   chartsByListId: {},
-  frontRowByListId: {},
+  generatorOptionsByListId: {},
+  placementsByListId: {},
   studentNotesByListId: {}
 };
 
-export const SEATING_RESHUFFLE_ATTEMPTS = 40;
+export const DEFAULT_SEATING_GENERATOR_OPTIONS: SeatingGeneratorOptions = {
+  apartDistance: 1,
+  avoidRepeatNeighbours: false,
+  emptySeatPlacement: 'anywhere',
+  respectLockedSeats: true,
+  togetherStyle: 'adjacent'
+};
+
+export const SEATING_PLACEMENT_ZONES: SeatingPlacementZone[] = [
+  'front',
+  'back',
+  'edge',
+  'near-teacher',
+  'near-board',
+  'near-door',
+  'not-near-door',
+  'alone'
+];
+
+export const SEATING_PLACEMENT_ZONE_DETAILS: Record<SeatingPlacementZone, { label: string }> = {
+  alone: { label: 'Space around them' },
+  back: { label: 'Back rows' },
+  edge: { label: 'Edge of a row' },
+  front: { label: 'Front rows' },
+  'near-board': { label: 'Near the board' },
+  'near-door': { label: 'Near the door' },
+  'near-teacher': { label: 'Near the teacher desk' },
+  'not-near-door': { label: 'Away from the door' }
+};
+
+export const SEATING_GENERATOR_RESTARTS = 8;
+
+/** Hard cap on scoring passes per shuffle so huge rooms stay responsive. */
+export const SEATING_GENERATOR_MAX_EVALS = 20000;
 
 export const SEATING_UNDO_STACK_LIMIT = 50;
 
@@ -301,6 +376,8 @@ export function SeatingChartEditorContent({
   const [layoutNameDraft, setLayoutNameDraft] = useState(activeLayout.name);
   const [flipView, setFlipView] = useState(false);
   const [rowSeatCount, setRowSeatCount] = useState(6);
+  const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
+  const [lastShuffleReport, setLastShuffleReport] = useState<SeatingShuffleReport | null>(null);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const copyMenuRef = useRef<HTMLDivElement | null>(null);
   const [draggingSeatAssignmentId, setDraggingSeatAssignmentId] = useState<string | null>(null);
@@ -390,6 +467,7 @@ export function SeatingChartEditorContent({
     redoStackRef.current = [];
     setHistoryVersion((version) => version + 1);
     setFlipView(false);
+    setLastShuffleReport(null);
   }, [activeLayout.id]);
 
   useEffect(() => {
@@ -548,6 +626,20 @@ export function SeatingChartEditorContent({
     controller.assignStudentToSeat(studentName, targetSeatId, sourceSeatId);
     const seat = activeLayoutRef.current.items.find((item) => item.id === targetSeatId);
     announce(seat ? `${studentName} assigned to seat ${seat.label}` : `${studentName} assigned`);
+  };
+
+  const seatingRuleCount =
+    controller.apartPairs.length +
+    controller.togetherPairs.length +
+    Object.keys(controller.studentPlacements).length;
+
+  const handleReshuffle = () => {
+    recordUndoSnapshot();
+    const report = controller.reshuffleAssignments();
+    setLastShuffleReport(report);
+    if (report) {
+      announce(describeSeatingShuffleReport(report));
+    }
   };
 
   const handleClearAssignments = () => {
@@ -1070,15 +1162,25 @@ export function SeatingChartEditorContent({
             <button
               className="secondary-link button-tone--utility"
               data-tooltip-content={
-                controller.apartPairs.length > 0 || controller.togetherPairs.length > 0
-                  ? 'Random seats that respect keep-apart and keep-together pairs'
+                seatingRuleCount > 0
+                  ? `Random seats that try to satisfy all ${seatingRuleCount} rule${
+                      seatingRuleCount === 1 ? '' : 's'
+                    }`
                   : 'Shuffle everyone onto random seats'
               }
               disabled={controller.seatCount === 0 || controller.selectedStudents.length === 0}
-              onClick={withHistory(controller.reshuffleAssignments)}
+              onClick={handleReshuffle}
               type="button"
             >
               Randomize
+            </button>
+            <button
+              className="secondary-link button-tone--theme"
+              data-tooltip-content="Keep-apart and keep-together pairs, seat preferences, and randomizer options"
+              onClick={() => setRulesDialogOpen(true)}
+              type="button"
+            >
+              Rules{seatingRuleCount > 0 ? ` (${seatingRuleCount})` : ''}
             </button>
             <button
               className="secondary-link"
@@ -1089,6 +1191,24 @@ export function SeatingChartEditorContent({
               Clear seats
             </button>
           </div>
+
+          {lastShuffleReport && lastShuffleReport.totalRules > 0 ? (
+            (() => {
+              const unmetRules = listUnmetSeatingRules(lastShuffleReport);
+
+              return unmetRules.length === 0 ? (
+                <p className="helper-text seating-chart__shuffle-report">
+                  All {lastShuffleReport.totalRules} rule
+                  {lastShuffleReport.totalRules === 1 ? '' : 's'} satisfied.
+                </p>
+              ) : (
+                <p className="helper-text seating-chart__shuffle-report seating-chart__shuffle-report--unmet">
+                  Couldn&apos;t meet: {unmetRules.slice(0, 4).join(' · ')}
+                  {unmetRules.length > 4 ? ` · +${unmetRules.length - 4} more` : ''}
+                </p>
+              );
+            })()
+          ) : null}
 
           {!controller.hasEnoughSeats ? (
             <div className="action-row seating-chart__missing-seats">
@@ -1186,21 +1306,50 @@ export function SeatingChartEditorContent({
                             value={controller.studentNotes[activeSeat.assignedStudent] ?? ''}
                           />
                         </label>
-                        <label className="seating-chart__front-toggle">
-                          <input
-                            checked={controller.frontRowStudents.includes(activeSeat.assignedStudent)}
+                        <label className="field-stack seating-chart__note-field">
+                          <span className="field-label">Seat preference</span>
+                          <select
+                            className="text-field"
                             onChange={(event) =>
-                              controller.setStudentFrontRow(
+                              controller.setStudentPlacement(
                                 activeSeat.assignedStudent ?? '',
-                                event.currentTarget.checked
+                                event.target.value ? (event.target.value as SeatingPlacementZone) : null
                               )
                             }
-                            type="checkbox"
-                          />
-                          <span>Front row</span>
+                            value={controller.studentPlacements[activeSeat.assignedStudent] ?? ''}
+                          >
+                            <option value="">No preference</option>
+                            {SEATING_PLACEMENT_ZONES.map((zone) => (
+                              <option key={zone} value={zone}>
+                                {SEATING_PLACEMENT_ZONE_DETAILS[zone].label}
+                              </option>
+                            ))}
+                          </select>
                         </label>
                       </>
                     ) : null}
+                    <label
+                      className="seating-chart__front-toggle"
+                      data-tooltip-content={
+                        activeSeat.assignedStudent
+                          ? 'Randomize keeps this student on this seat'
+                          : 'Randomize keeps this seat empty'
+                      }
+                    >
+                      <input
+                        checked={activeSeat.locked}
+                        onChange={(event) => {
+                          const locked = event.currentTarget.checked;
+                          recordUndoSnapshot();
+                          controller.updateItem(activeSeat.id, (item) => ({
+                            ...item,
+                            locked
+                          }));
+                        }}
+                        type="checkbox"
+                      />
+                      <span>Lock during shuffle</span>
+                    </label>
                   </>
                 ) : (
                   <p className="empty-copy">Select a seat to assign or clear a student.</p>
@@ -1318,6 +1467,27 @@ export function SeatingChartEditorContent({
                       </div>
                     ) : null}
 
+                    {activeItem.kind === 'seat' ? (
+                      <label
+                        className="seating-chart__front-toggle"
+                        data-tooltip-content="Randomize keeps this seat's student (or leaves it empty)"
+                      >
+                        <input
+                          checked={activeItem.locked}
+                          onChange={(event) => {
+                            const locked = event.currentTarget.checked;
+                            recordUndoSnapshot();
+                            controller.updateItem(activeItem.id, (item) => ({
+                              ...item,
+                              locked
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                        <span>Lock during shuffle</span>
+                      </label>
+                    ) : null}
+
                     <button
                       className="secondary-link"
                       onClick={() => {
@@ -1338,7 +1508,309 @@ export function SeatingChartEditorContent({
           )}
         </aside>
       </div>
+
+      {rulesDialogOpen ? (
+        <SeatingRulesDialog
+          activeLayout={activeLayout}
+          controller={controller}
+          onClose={() => setRulesDialogOpen(false)}
+          selectedList={selectedList}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Rules & options for the randomizer. Pair rules are stored in the shared
+ * group-rules snapshot so the Group Maker and seating chart stay in sync;
+ * placements and generator options live in the seating snapshot per class.
+ */
+export function SeatingRulesDialog({
+  activeLayout,
+  controller,
+  onClose,
+  selectedList
+}: {
+  activeLayout: SeatingChartLayout;
+  controller: ReturnType<typeof useSeatingChartController>;
+  onClose: () => void;
+  selectedList: ClassList;
+}) {
+  const { theme } = useColorModeAppearance();
+  const [groupRules, setGroupRules] = useGroupRulesState();
+  const students = controller.selectedStudents;
+  const rules = getGroupRulesForList(groupRules, selectedList.id, students);
+  const [firstStudent, setFirstStudent] = useState(students[0] ?? '');
+  const [secondStudent, setSecondStudent] = useState(students[1] ?? '');
+  const [placementStudent, setPlacementStudent] = useState(students[0] ?? '');
+  const [placementZone, setPlacementZone] = useState<SeatingPlacementZone>('front');
+  const canAddPair =
+    Boolean(firstStudent && secondStudent) &&
+    firstStudent.toLowerCase() !== secondStudent.toLowerCase();
+  const options = controller.generatorOptions;
+  const placements = controller.studentPlacements;
+  const layoutKinds = new Set(activeLayout.items.map((item) => item.kind));
+  const missingZoneTargets = Object.values(placements)
+    .flatMap((zone) => {
+      if ((zone === 'near-door' || zone === 'not-near-door') && !layoutKinds.has('door')) {
+        return ['a door'];
+      }
+      if (zone === 'near-teacher' && !layoutKinds.has('teacher-desk')) {
+        return ['a teacher desk'];
+      }
+      if (zone === 'near-board' && !layoutKinds.has('board')) {
+        return ['a board'];
+      }
+      return [];
+    })
+    .filter((label, index, all) => all.indexOf(label) === index);
+  const lockedSeatCount = activeLayout.items.filter(
+    (item) => item.kind === 'seat' && item.locked
+  ).length;
+
+  const addPairRule = (kind: GroupRuleKind) => {
+    if (canAddPair) {
+      setGroupRules((current) =>
+        addGroupRule(current, selectedList.id, kind, firstStudent, secondStudent)
+      );
+    }
+  };
+
+  const renderPairList = (kind: GroupRuleKind, pairs: GroupPairRule[], emptyCopy: string) => (
+    <div className="group-rules__section">
+      <span className="field-label">{kind === 'apart' ? 'Keep apart' : 'Keep together'}</span>
+      {pairs.length > 0 ? (
+        <div className="group-rules__list">
+          {pairs.map((pair) => (
+            <span className="group-rules__chip" key={`${kind}-${pair[0]}-${pair[1]}`}>
+              {pair[0]} {kind === 'apart' ? '×' : '+'} {pair[1]}
+              <button
+                aria-label={`Remove ${kind === 'apart' ? 'keep-apart' : 'keep-together'} rule for ${pair[0]} and ${pair[1]}`}
+                className="group-rules__chip-remove"
+                onClick={() =>
+                  setGroupRules((current) => removeGroupRule(current, selectedList.id, kind, pair))
+                }
+                type="button"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">{emptyCopy}</p>
+      )}
+    </div>
+  );
+
+  const renderOptionToggle = <Value extends string | number>(
+    label: string,
+    choices: { label: string; value: Value }[],
+    current: Value,
+    onPick: (value: Value) => void
+  ) => (
+    <div className="seating-rules__option">
+      <span className="field-label">{label}</span>
+      <div className="segmented-row">
+        {choices.map((choice) => (
+          <button
+            className={`text-toggle button-tone--utility ${
+              current === choice.value ? 'text-toggle--active' : ''
+            }`}
+            key={String(choice.value)}
+            onClick={() => onPick(choice.value)}
+            type="button"
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <WidgetDialog
+      className="seating-rules-dialog"
+      kicker={selectedList.name}
+      onClose={onClose}
+      theme={theme}
+      title="Seating rules & options"
+      wide
+    >
+      <p className="helper-text">
+        Randomize tries every rule below. Keep-apart pairs weigh heaviest, then
+        keep-together pairs, then seat preferences. Pair rules are shared with the
+        Group Maker.
+      </p>
+
+      <div className="group-rules__builder">
+        <StudentCombobox
+          label="Student"
+          onSelect={setFirstStudent}
+          onSubmit={() => addPairRule('apart')}
+          selected={firstStudent}
+          students={students}
+        />
+        <StudentCombobox
+          label="Student"
+          onSelect={setSecondStudent}
+          onSubmit={() => addPairRule('apart')}
+          selected={secondStudent}
+          students={students}
+        />
+        <div className="group-rules__builder-actions">
+          <button
+            className="secondary-link"
+            disabled={!canAddPair}
+            onClick={() => addPairRule('apart')}
+            type="button"
+          >
+            Keep apart
+          </button>
+          <button
+            className="secondary-link button-tone--utility"
+            disabled={!canAddPair}
+            onClick={() => addPairRule('together')}
+            type="button"
+          >
+            Keep together
+          </button>
+        </div>
+      </div>
+
+      {renderPairList('apart', rules.apart, 'No keep-apart pairs yet.')}
+      {renderPairList('together', rules.together, 'No keep-together pairs yet.')}
+
+      <div className="group-rules__section">
+        <span className="field-label">Seat preferences</span>
+        <div className="seating-rules__placement-builder">
+          <StudentCombobox
+            label="Student"
+            onSelect={setPlacementStudent}
+            selected={placementStudent}
+            students={students}
+          />
+          <label className="field-stack">
+            <span className="field-label">Should sit</span>
+            <select
+              className="text-field"
+              onChange={(event) => setPlacementZone(event.target.value as SeatingPlacementZone)}
+              value={placementZone}
+            >
+              {SEATING_PLACEMENT_ZONES.map((zone) => (
+                <option key={zone} value={zone}>
+                  {SEATING_PLACEMENT_ZONE_DETAILS[zone].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="group-rules__builder-actions">
+            <button
+              className="secondary-link button-tone--action"
+              disabled={!placementStudent}
+              onClick={() => controller.setStudentPlacement(placementStudent, placementZone)}
+              type="button"
+            >
+              Add preference
+            </button>
+          </div>
+        </div>
+        {Object.keys(placements).length > 0 ? (
+          <div className="group-rules__list">
+            {Object.entries(placements).map(([student, zone]) => (
+              <span className="group-rules__chip" key={student}>
+                {student} → {SEATING_PLACEMENT_ZONE_DETAILS[zone].label}
+                <button
+                  aria-label={`Remove seat preference for ${student}`}
+                  className="group-rules__chip-remove"
+                  onClick={() => controller.setStudentPlacement(student, null)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-copy">No seat preferences yet.</p>
+        )}
+        {missingZoneTargets.length > 0 ? (
+          <p className="helper-text">
+            This layout has no {missingZoneTargets.join(' or ')}, so those preferences are
+            skipped until one is added in Arrange.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="group-rules__section">
+        <span className="field-label">Randomizer options</span>
+        <div className="seating-rules__options">
+          {renderOptionToggle(
+            'Keep-apart distance',
+            [
+              { label: 'Not neighbours', value: 1 },
+              { label: '2+ seats apart', value: 2 }
+            ],
+            options.apartDistance,
+            (value) => controller.setGeneratorOptions({ apartDistance: value as SeatingApartDistance })
+          )}
+          {renderOptionToggle(
+            'Keep-together means',
+            [
+              { label: 'Any neighbour', value: 'adjacent' },
+              { label: 'Side by side', value: 'side-by-side' }
+            ],
+            options.togetherStyle,
+            (value) =>
+              controller.setGeneratorOptions({ togetherStyle: value as SeatingTogetherStyle })
+          )}
+          {renderOptionToggle(
+            'Empty seats go',
+            [
+              { label: 'Anywhere', value: 'anywhere' },
+              { label: 'To the back', value: 'back' },
+              { label: 'Spread out', value: 'spread' }
+            ],
+            options.emptySeatPlacement,
+            (value) =>
+              controller.setGeneratorOptions({
+                emptySeatPlacement: value as SeatingEmptySeatPlacement
+              })
+          )}
+          <label className="seating-chart__front-toggle">
+            <input
+              checked={options.avoidRepeatNeighbours}
+              onChange={(event) =>
+                controller.setGeneratorOptions({ avoidRepeatNeighbours: event.currentTarget.checked })
+              }
+              type="checkbox"
+            />
+            <span>Avoid repeating current neighbours</span>
+          </label>
+          <label
+            className="seating-chart__front-toggle"
+            data-tooltip-content={
+              lockedSeatCount > 0
+                ? `${lockedSeatCount} seat${lockedSeatCount === 1 ? ' is' : 's are'} locked`
+                : 'Lock seats from the sidebar to pin students or hold seats empty'
+            }
+          >
+            <input
+              checked={options.respectLockedSeats}
+              onChange={(event) =>
+                controller.setGeneratorOptions({ respectLockedSeats: event.currentTarget.checked })
+              }
+              type="checkbox"
+            />
+            <span>
+              Keep locked seats in place
+              {lockedSeatCount > 0 ? ` (${lockedSeatCount} locked)` : ''}
+            </span>
+          </label>
+        </div>
+      </div>
+    </WidgetDialog>
   );
 }
 
@@ -1863,6 +2335,9 @@ export function SeatingChartGrid({
                   {studentNote ? (
                     <span aria-hidden="true" className="seating-chart__note-flag" />
                   ) : null}
+                  {isSeat && item.locked ? (
+                    <span aria-hidden="true" className="seating-chart__lock-flag" />
+                  ) : null}
                   {isSeat ? (
                     item.assignedStudent ? (
                       <span
@@ -1989,9 +2464,12 @@ export function useSeatingChartController(
   const studentNotes = selectedList
     ? getSeatingStudentNotesForList(seatingChart, selectedList)
     : {};
-  const frontRowStudents = selectedList
-    ? getSeatingFrontRowStudentsForList(seatingChart, selectedList)
-    : [];
+  const studentPlacements = selectedList
+    ? getSeatingPlacementsForList(seatingChart, selectedList)
+    : {};
+  const generatorOptions = selectedList
+    ? getSeatingGeneratorOptionsForList(seatingChart, selectedList.id)
+    : DEFAULT_SEATING_GENERATOR_OPTIONS;
   const classState = selectedList
     ? getSeatingChartClassState(seatingChart, selectedList.id, selectedStudents.length)
     : null;
@@ -2039,7 +2517,7 @@ export function useSeatingChartController(
     apartPairs,
     assignedSeatCount: assignedStudentNames.length,
     canDeleteLayout: Boolean(classState && classState.layouts.length > 1),
-    frontRowStudents,
+    generatorOptions,
     hasEnoughSeats,
     layoutCount: classState?.layouts.length ?? 0,
     layoutOptions: classState?.layouts ?? [],
@@ -2050,6 +2528,7 @@ export function useSeatingChartController(
     selectedStudents,
     seatingChart,
     studentNotes,
+    studentPlacements,
     togetherPairs,
     unseatedStudents,
     addLayout: () =>
@@ -2090,13 +2569,25 @@ export function useSeatingChartController(
         )
       );
     },
-    setStudentFrontRow: (studentName: string, isFrontRow: boolean) => {
+    setGeneratorOptions: (updates: Partial<SeatingGeneratorOptions>) => {
       if (!selectedList) {
         return;
       }
 
       setSeatingChart((current) =>
-        setSeatingStudentFrontRow(current, selectedList.id, studentName, isFrontRow)
+        setSeatingGeneratorOptionsForList(current, selectedList.id, {
+          ...getSeatingGeneratorOptionsForList(current, selectedList.id),
+          ...updates
+        })
+      );
+    },
+    setStudentPlacement: (studentName: string, zone: SeatingPlacementZone | null) => {
+      if (!selectedList) {
+        return;
+      }
+
+      setSeatingChart((current) =>
+        setSeatingStudentPlacement(current, selectedList.id, studentName, zone)
       );
     },
     setStudentNote: (studentName: string, note: string) => {
@@ -2136,16 +2627,24 @@ export function useSeatingChartController(
       ),
     renumberSeats: () =>
       updateActiveLayout((layout) => renumberSeatingChartSeats(layout)),
-    reshuffleAssignments: () =>
-      updateActiveLayout((layout) =>
-        reshuffleSeatingChartLayout(
-          layout,
-          presentStudents,
+    reshuffleAssignments: (): SeatingShuffleReport | null => {
+      if (!activeLayout) {
+        return null;
+      }
+
+      const { layout: nextLayout, report } = reshuffleSeatingChartLayout(
+        activeLayout,
+        presentStudents,
+        {
           apartPairs,
-          togetherPairs,
-          filterAbsentStudents(frontRowStudents, absentStudents)
-        )
-      ),
+          options: generatorOptions,
+          placements: studentPlacements,
+          togetherPairs
+        }
+      );
+      updateActiveLayout(() => nextLayout);
+      return report;
+    },
     restoreDeletedLayout: (layout: SeatingChartLayout) =>
       updateSelectedListChart((current) =>
         current.layouts.some((existing) => existing.id === layout.id)
@@ -2191,10 +2690,13 @@ export function normalizeSeatingChartSnapshot(
   const nextRaw = raw as {
     chartsByListId?: Record<string, unknown>;
     frontRowByListId?: Record<string, unknown>;
+    generatorOptionsByListId?: Record<string, unknown>;
+    placementsByListId?: Record<string, unknown>;
     studentNotesByListId?: Record<string, unknown>;
   };
   const chartsByListId: Record<string, SeatingChartClassState> = {};
-  const frontRowByListId: Record<string, string[]> = {};
+  const generatorOptionsByListId: Record<string, SeatingGeneratorOptions> = {};
+  const placementsByListId: Record<string, Record<string, SeatingPlacementZone>> = {};
   const studentNotesByListId: Record<string, Record<string, string>> = {};
 
   if (nextRaw.chartsByListId && typeof nextRaw.chartsByListId === 'object') {
@@ -2203,25 +2705,53 @@ export function normalizeSeatingChartSnapshot(
     }
   }
 
+  if (nextRaw.placementsByListId && typeof nextRaw.placementsByListId === 'object') {
+    for (const [listId, placementsRaw] of Object.entries(nextRaw.placementsByListId)) {
+      if (!placementsRaw || typeof placementsRaw !== 'object') {
+        continue;
+      }
+
+      const placements: Record<string, SeatingPlacementZone> = {};
+
+      for (const [studentName, zoneRaw] of Object.entries(placementsRaw as Record<string, unknown>)) {
+        if (studentName.trim() && isSeatingPlacementZone(zoneRaw)) {
+          placements[studentName] = zoneRaw;
+        }
+      }
+
+      if (Object.keys(placements).length > 0) {
+        placementsByListId[listId] = placements;
+      }
+    }
+  }
+
+  // Migration: front-row flags predate placement zones. Fold them in unless a
+  // newer placement already covers the student.
   if (nextRaw.frontRowByListId && typeof nextRaw.frontRowByListId === 'object') {
     for (const [listId, namesRaw] of Object.entries(nextRaw.frontRowByListId)) {
       if (!Array.isArray(namesRaw)) {
         continue;
       }
 
-      const seen = new Set<string>();
-      const names = namesRaw.filter((name): name is string => {
-        if (!isString(name) || !name.trim() || seen.has(name.toLowerCase())) {
-          return false;
+      const placements = { ...(placementsByListId[listId] ?? {}) };
+      const placedLower = new Set(Object.keys(placements).map((name) => name.toLowerCase()));
+
+      for (const name of namesRaw) {
+        if (isString(name) && name.trim() && !placedLower.has(name.toLowerCase())) {
+          placedLower.add(name.toLowerCase());
+          placements[name] = 'front';
         }
-
-        seen.add(name.toLowerCase());
-        return true;
-      });
-
-      if (names.length > 0) {
-        frontRowByListId[listId] = names;
       }
+
+      if (Object.keys(placements).length > 0) {
+        placementsByListId[listId] = placements;
+      }
+    }
+  }
+
+  if (nextRaw.generatorOptionsByListId && typeof nextRaw.generatorOptionsByListId === 'object') {
+    for (const [listId, optionsRaw] of Object.entries(nextRaw.generatorOptionsByListId)) {
+      generatorOptionsByListId[listId] = normalizeSeatingGeneratorOptions(optionsRaw);
     }
   }
 
@@ -2247,8 +2777,32 @@ export function normalizeSeatingChartSnapshot(
 
   return {
     chartsByListId,
-    frontRowByListId,
+    generatorOptionsByListId,
+    placementsByListId,
     studentNotesByListId
+  };
+}
+
+export function isSeatingPlacementZone(value: unknown): value is SeatingPlacementZone {
+  return isString(value) && (SEATING_PLACEMENT_ZONES as string[]).includes(value);
+}
+
+export function normalizeSeatingGeneratorOptions(raw: unknown): SeatingGeneratorOptions {
+  if (!raw || typeof raw !== 'object') {
+    return DEFAULT_SEATING_GENERATOR_OPTIONS;
+  }
+
+  const nextRaw = raw as Partial<Record<keyof SeatingGeneratorOptions, unknown>>;
+
+  return {
+    apartDistance: nextRaw.apartDistance === 2 ? 2 : 1,
+    avoidRepeatNeighbours: nextRaw.avoidRepeatNeighbours === true,
+    emptySeatPlacement:
+      nextRaw.emptySeatPlacement === 'back' || nextRaw.emptySeatPlacement === 'spread'
+        ? nextRaw.emptySeatPlacement
+        : 'anywhere',
+    respectLockedSeats: nextRaw.respectLockedSeats !== false,
+    togetherStyle: nextRaw.togetherStyle === 'side-by-side' ? 'side-by-side' : 'adjacent'
   };
 }
 
@@ -2345,6 +2899,7 @@ export function normalizeSeatingChartItem(raw: unknown): SeatingChartLayoutItem 
     id?: unknown;
     kind?: unknown;
     label?: unknown;
+    locked?: unknown;
     seatStyle?: unknown;
     x?: unknown;
     y?: unknown;
@@ -2373,6 +2928,7 @@ export function normalizeSeatingChartItem(raw: unknown): SeatingChartLayoutItem 
       typeof nextRaw.label === 'string' && nextRaw.label.trim()
         ? nextRaw.label
         : details.defaultLabel,
+    locked: nextRaw.kind === 'seat' && nextRaw.locked === true,
     seatStyle: isSeatingChartSeatStyle(nextRaw.seatStyle) ? nextRaw.seatStyle : 'desk',
     x: clampNumber(Math.round(nextRaw.x), 0, SEATING_CHART_GRID_COLUMNS - 1),
     y: clampNumber(Math.round(nextRaw.y), 0, SEATING_CHART_GRID_ROWS - 1)
@@ -2548,6 +3104,7 @@ export function createDefaultSeatingChartItems(studentCount: number) {
         id: `seating-default-seat-${seatNumber}`,
         kind: 'seat',
         label: String(seatNumber),
+        locked: false,
         seatStyle: 'desk',
         x,
         y
@@ -2594,6 +3151,7 @@ export function createSeatingChartLayoutItem(
     id: options?.id ?? createSeatingChartLayoutItemId(),
     kind,
     label: kind === 'seat' ? String(getNextSeatLabelNumber(items)) : details.defaultLabel,
+    locked: false,
     seatStyle: 'desk',
     x,
     y
@@ -2937,6 +3495,7 @@ export function resetSeatingChartItemKind(
     color: details.defaultColor,
     kind,
     label: kind === 'seat' ? String(getNextSeatLabelNumber(items.filter((entry) => entry.id !== item.id))) : details.defaultLabel,
+    locked: false,
     seatStyle: 'desk'
   };
 }
@@ -3129,165 +3688,466 @@ export function autofillSeatingChartLayout(layout: SeatingChartLayout, students:
   return applySeatingChartAssignments(layout, students);
 }
 
+export type SeatingGeneratorContext = {
+  apartPairs: GroupPairRule[];
+  options: SeatingGeneratorOptions;
+  placements: Record<string, SeatingPlacementZone>;
+  togetherPairs: GroupPairRule[];
+};
+
+const SEATING_APART_WEIGHT = 120;
+const SEATING_TOGETHER_WEIGHT = 60;
+const SEATING_PLACEMENT_WEIGHT = 30;
+const SEATING_EMPTY_WEIGHT = 4;
+const SEATING_REPEAT_WEIGHT = 1;
+
+/**
+ * Random-restart local search: each attempt seeds a shuffled assignment
+ * (zone-constrained students get first pick of a satisfying seat), then swaps
+ * pairs of seats while any swap lowers the weighted violation score.
+ * Keep-apart outweighs keep-together, which outweighs placement zones; empty
+ * seat position and repeated neighbours only break ties.
+ */
 export function reshuffleSeatingChartLayout(
   layout: SeatingChartLayout,
   students: string[],
-  apartPairs: GroupPairRule[] = [],
-  togetherPairs: GroupPairRule[] = [],
-  frontRowStudents: string[] = []
-) {
-  const buildCandidate = () =>
-    applySeatingChartAssignments(
-      layout,
-      buildSeatingReshuffleOrder(layout, students, frontRowStudents)
+  context: SeatingGeneratorContext
+): { layout: SeatingChartLayout; report: SeatingShuffleReport } {
+  const seats = getSeatingChartSeatItems(layout);
+  const { options } = context;
+  const presentLower = new Set(students.map((name) => name.toLowerCase()));
+
+  // Locked seats keep their occupant (or stay empty); everyone else re-enters
+  // the pool.
+  const fixedStudentBySeatIndex = new Map<number, string | null>();
+  seats.forEach((seat, index) => {
+    if (options.respectLockedSeats && seat.locked) {
+      fixedStudentBySeatIndex.set(
+        index,
+        seat.assignedStudent && presentLower.has(seat.assignedStudent.toLowerCase())
+          ? seat.assignedStudent
+          : null
+      );
+    }
+  });
+  const fixedLower = new Set(
+    [...fixedStudentBySeatIndex.values()]
+      .filter((name): name is string => Boolean(name))
+      .map((name) => name.toLowerCase())
+  );
+  const pool = students.filter((name) => !fixedLower.has(name.toLowerCase()));
+  const freeSeatIndexes = seats
+    .map((_seat, index) => index)
+    .filter((index) => !fixedStudentBySeatIndex.has(index));
+  const freeSeatSet = new Set(freeSeatIndexes);
+  const emptyFreeSeatCount = Math.max(0, freeSeatIndexes.length - pool.length);
+
+  const chebyshevBetween = (left: number, right: number) =>
+    Math.max(
+      Math.abs(seats[left].x - seats[right].x),
+      Math.abs(seats[left].y - seats[right].y)
     );
 
-  if (apartPairs.length === 0 && togetherPairs.length === 0) {
-    return buildCandidate();
+  const neighboursByIndex = seats.map((_seat, index) =>
+    seats
+      .map((_other, otherIndex) => otherIndex)
+      .filter((otherIndex) => otherIndex !== index && chebyshevBetween(index, otherIndex) <= 1)
+  );
+
+  // Front/back bands grow row by row until they can hold everyone who asked
+  // for them, mirroring how a teacher would stretch "the front" on demand.
+  const rowYs = [...new Set(seats.map((seat) => seat.y))].sort((left, right) => left - right);
+  const rowRankByY = new Map(rowYs.map((y, rank) => [y, rank]));
+  const seatCountByRank = rowYs.map((y) => seats.filter((seat) => seat.y === y).length);
+  const zoneByLowerName = new Map(
+    Object.entries(context.placements)
+      .filter(([name]) => presentLower.has(name.toLowerCase()))
+      .map(([name, zone]) => [name.toLowerCase(), zone])
+  );
+  const countZone = (zone: SeatingPlacementZone) =>
+    [...zoneByLowerName.values()].filter((entry) => entry === zone).length;
+  const expandBand = (demand: number, countsInOrder: number[]) => {
+    let rows = 1;
+    let capacity = countsInOrder[0] ?? 0;
+
+    while (capacity < demand && rows < countsInOrder.length) {
+      capacity += countsInOrder[rows];
+      rows += 1;
+    }
+
+    return rows;
+  };
+  const frontRankLimit = expandBand(countZone('front'), seatCountByRank);
+  const backRankStart = rowYs.length - expandBand(countZone('back'), [...seatCountByRank].reverse());
+  const rowEdgeByY = new Map(
+    rowYs.map((y) => {
+      const xs = seats.filter((seat) => seat.y === y).map((seat) => seat.x);
+      return [y, { max: Math.max(...xs), min: Math.min(...xs) }];
+    })
+  );
+  const targetCoords: Record<'board' | 'door' | 'teacher-desk', { x: number; y: number }[]> = {
+    board: [],
+    door: [],
+    'teacher-desk': []
+  };
+  layout.items.forEach((item) => {
+    if (item.kind === 'board' || item.kind === 'door' || item.kind === 'teacher-desk') {
+      targetCoords[item.kind].push({ x: item.x, y: item.y });
+    }
+  });
+  const distanceToNearest = (index: number, kind: 'board' | 'door' | 'teacher-desk') => {
+    const targets = targetCoords[kind];
+    if (targets.length === 0) {
+      return null;
+    }
+
+    return Math.min(
+      ...targets.map((target) =>
+        Math.max(Math.abs(seats[index].x - target.x), Math.abs(seats[index].y - target.y))
+      )
+    );
+  };
+  // Zones whose target is missing from the layout count as satisfied.
+  const seatSatisfiesZone = (index: number, zone: SeatingPlacementZone): boolean => {
+    const seat = seats[index];
+    const rank = rowRankByY.get(seat.y) ?? 0;
+
+    switch (zone) {
+      case 'front':
+        return rank < frontRankLimit;
+      case 'back':
+        return rank >= backRankStart;
+      case 'edge': {
+        const edge = rowEdgeByY.get(seat.y);
+        return !edge || seat.x === edge.min || seat.x === edge.max;
+      }
+      case 'near-teacher': {
+        const distance = distanceToNearest(index, 'teacher-desk');
+        return distance === null || distance <= 2;
+      }
+      case 'near-board': {
+        const distance = distanceToNearest(index, 'board');
+        return distance === null || distance <= 2;
+      }
+      case 'near-door': {
+        const distance = distanceToNearest(index, 'door');
+        return distance === null || distance <= 2;
+      }
+      case 'not-near-door': {
+        const distance = distanceToNearest(index, 'door');
+        return distance === null || distance >= 3;
+      }
+      case 'alone':
+        return true;
+    }
+  };
+
+  const placementEntries = students
+    .map((name) => ({ name, zone: zoneByLowerName.get(name.toLowerCase()) }))
+    .filter((entry): entry is { name: string; zone: SeatingPlacementZone } => Boolean(entry.zone))
+    .map((entry) => ({
+      allowed: seats.map((_seat, index) =>
+        entry.zone === 'alone' ? true : seatSatisfiesZone(index, entry.zone)
+      ),
+      lower: entry.name.toLowerCase(),
+      name: entry.name,
+      zone: entry.zone
+    }));
+  const placementEntryByLower = new Map(placementEntries.map((entry) => [entry.lower, entry]));
+  const apartLowerPairs = context.apartPairs.map(
+    (pair) => [pair[0].toLowerCase(), pair[1].toLowerCase()] as const
+  );
+  const togetherLowerPairs = context.togetherPairs.map(
+    (pair) => [pair[0].toLowerCase(), pair[1].toLowerCase()] as const
+  );
+  const togetherSeatsOk = (left: number, right: number) =>
+    options.togetherStyle === 'side-by-side'
+      ? seats[left].y === seats[right].y && Math.abs(seats[left].x - seats[right].x) === 1
+      : chebyshevBetween(left, right) <= 1;
+
+  const previousNeighbourKeys = new Set<string>();
+  if (options.avoidRepeatNeighbours) {
+    const previous = seats.map((seat) => seat.assignedStudent?.toLowerCase() ?? null);
+    seats.forEach((_seat, index) => {
+      for (const neighbour of neighboursByIndex[index]) {
+        const left = previous[index];
+        const right = previous[neighbour];
+        if (neighbour > index && left && right) {
+          previousNeighbourKeys.add([left, right].sort().join('|'));
+        }
+      }
+    });
   }
 
-  // Best-effort: retry random shuffles and keep the candidate with the fewest
-  // rule violations. Keep-apart weighs heavier than keep-together.
-  let bestLayout: SeatingChartLayout | null = null;
+  const scoreOrder = (order: (string | null)[]) => {
+    const seatIndexByLower = new Map<string, number>();
+    order.forEach((name, index) => {
+      if (name) {
+        seatIndexByLower.set(name.toLowerCase(), index);
+      }
+    });
+
+    let score = 0;
+
+    for (const [left, right] of apartLowerPairs) {
+      const leftIndex = seatIndexByLower.get(left);
+      const rightIndex = seatIndexByLower.get(right);
+      if (
+        leftIndex !== undefined &&
+        rightIndex !== undefined &&
+        chebyshevBetween(leftIndex, rightIndex) <= options.apartDistance
+      ) {
+        score += SEATING_APART_WEIGHT;
+      }
+    }
+
+    for (const [left, right] of togetherLowerPairs) {
+      const leftIndex = seatIndexByLower.get(left);
+      const rightIndex = seatIndexByLower.get(right);
+      if (
+        leftIndex !== undefined &&
+        rightIndex !== undefined &&
+        !togetherSeatsOk(leftIndex, rightIndex)
+      ) {
+        score += SEATING_TOGETHER_WEIGHT;
+      }
+    }
+
+    for (const entry of placementEntries) {
+      const index = seatIndexByLower.get(entry.lower);
+      if (index === undefined) {
+        continue;
+      }
+
+      if (entry.zone === 'alone') {
+        if (neighboursByIndex[index].some((neighbour) => order[neighbour] !== null)) {
+          score += SEATING_PLACEMENT_WEIGHT;
+        }
+      } else if (!entry.allowed[index]) {
+        score += SEATING_PLACEMENT_WEIGHT;
+      }
+    }
+
+    if (options.emptySeatPlacement === 'back' && emptyFreeSeatCount > 0) {
+      const backStart = freeSeatIndexes.length - emptyFreeSeatCount;
+      freeSeatIndexes.forEach((seatIndex, position) => {
+        if (order[seatIndex] === null && position < backStart) {
+          score += SEATING_EMPTY_WEIGHT;
+        }
+      });
+    } else if (options.emptySeatPlacement === 'spread' && emptyFreeSeatCount > 1) {
+      for (const seatIndex of freeSeatIndexes) {
+        if (order[seatIndex] !== null) {
+          continue;
+        }
+
+        for (const neighbour of neighboursByIndex[seatIndex]) {
+          if (neighbour > seatIndex && freeSeatSet.has(neighbour) && order[neighbour] === null) {
+            score += SEATING_EMPTY_WEIGHT;
+          }
+        }
+      }
+    }
+
+    if (previousNeighbourKeys.size > 0) {
+      seats.forEach((_seat, index) => {
+        for (const neighbour of neighboursByIndex[index]) {
+          const left = order[index]?.toLowerCase();
+          const right = order[neighbour]?.toLowerCase();
+          if (
+            neighbour > index &&
+            left &&
+            right &&
+            (freeSeatSet.has(index) || freeSeatSet.has(neighbour)) &&
+            previousNeighbourKeys.has([left, right].sort().join('|'))
+          ) {
+            score += SEATING_REPEAT_WEIGHT;
+          }
+        }
+      });
+    }
+
+    return score;
+  };
+
+  const buildSeedOrder = () => {
+    const order: (string | null)[] = new Array(seats.length).fill(null);
+    fixedStudentBySeatIndex.forEach((name, index) => {
+      order[index] = name;
+    });
+
+    const seated = shuffleNames(pool).slice(0, freeSeatIndexes.length);
+    const openSeats = new Set(freeSeatIndexes);
+    const placedLower = new Set<string>();
+
+    for (const name of seated) {
+      const entry = placementEntryByLower.get(name.toLowerCase());
+      if (!entry || entry.zone === 'alone') {
+        continue;
+      }
+
+      const candidates = [...openSeats].filter((index) => entry.allowed[index]);
+      if (candidates.length === 0) {
+        continue;
+      }
+
+      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+      order[pick] = name;
+      openSeats.delete(pick);
+      placedLower.add(name.toLowerCase());
+    }
+
+    const rest = seated.filter((name) => !placedLower.has(name.toLowerCase()));
+    // Remaining seats stay in reading order when empties belong at the back,
+    // so the seed already pushes gaps toward the last rows.
+    const shuffledOpenSeats = [...openSeats];
+    for (let index = shuffledOpenSeats.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffledOpenSeats[index], shuffledOpenSeats[swapIndex]] = [
+        shuffledOpenSeats[swapIndex],
+        shuffledOpenSeats[index]
+      ];
+    }
+    const fillSeats =
+      options.emptySeatPlacement === 'back' ? [...openSeats] : shuffledOpenSeats;
+    rest.forEach((name, position) => {
+      order[fillSeats[position]] = name;
+    });
+
+    return order;
+  };
+
+  let evals = 0;
+  const repairOrder = (order: (string | null)[], startScore: number) => {
+    let score = startScore;
+    let improved = true;
+
+    while (improved && score > 0 && evals < SEATING_GENERATOR_MAX_EVALS) {
+      improved = false;
+
+      for (const left of freeSeatIndexes) {
+        for (const right of freeSeatIndexes) {
+          if (right <= left || (order[left] === null && order[right] === null)) {
+            continue;
+          }
+
+          [order[left], order[right]] = [order[right], order[left]];
+          evals += 1;
+          const nextScore = scoreOrder(order);
+
+          if (nextScore < score) {
+            score = nextScore;
+            improved = true;
+            if (score === 0) {
+              return score;
+            }
+          } else {
+            [order[left], order[right]] = [order[right], order[left]];
+          }
+
+          if (evals >= SEATING_GENERATOR_MAX_EVALS) {
+            return score;
+          }
+        }
+      }
+    }
+
+    return score;
+  };
+
+  let bestOrder: (string | null)[] | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (let attempt = 0; attempt < SEATING_RESHUFFLE_ATTEMPTS; attempt += 1) {
-    const candidate = buildCandidate();
-    const score =
-      countSeatingApartViolations(candidate, apartPairs) * 100 +
-      countSeatingTogetherViolations(candidate, togetherPairs);
+  for (let attempt = 0; attempt < SEATING_GENERATOR_RESTARTS; attempt += 1) {
+    const order = buildSeedOrder();
+    evals += 1;
+    const score = repairOrder(order, scoreOrder(order));
 
     if (score < bestScore) {
-      bestLayout = candidate;
       bestScore = score;
+      bestOrder = order;
     }
 
-    if (bestScore === 0) {
+    if (bestScore === 0 || evals >= SEATING_GENERATOR_MAX_EVALS) {
       break;
     }
   }
 
-  return bestLayout ?? buildCandidate();
-}
-
-/**
- * Builds a randomized seat order (indexed against the layout's seats in
- * reading order) that pins front-row-flagged students to the lowest-y
- * occupied row(s).
- */
-export function buildSeatingReshuffleOrder(
-  layout: SeatingChartLayout,
-  students: string[],
-  frontRowStudents: string[]
-): (string | null)[] {
-  const seats = getSeatingChartSeatItems(layout);
-  const frontRowSet = new Set(frontRowStudents.map((name) => name.toLowerCase()));
-  const frontStudents = shuffleNames(students.filter((name) => frontRowSet.has(name.toLowerCase())));
-  const restStudents = shuffleNames(students.filter((name) => !frontRowSet.has(name.toLowerCase())));
-
-  if (frontStudents.length === 0 || seats.length === 0) {
-    return [...frontStudents, ...restStudents];
-  }
-
-  // Collect the front rows (lowest y values) until they can hold every
-  // front-row student, then scatter those students within them.
-  const frontRowYs = new Set<number>();
-  let frontSeatCount = 0;
-
-  for (const seat of seats) {
-    if (frontSeatCount >= frontStudents.length && !frontRowYs.has(seat.y)) {
-      break;
+  const finalOrder = bestOrder ?? buildSeedOrder();
+  const seatIndexByLower = new Map<string, number>();
+  finalOrder.forEach((name, index) => {
+    if (name) {
+      seatIndexByLower.set(name.toLowerCase(), index);
     }
-
-    frontRowYs.add(seat.y);
-    frontSeatCount += 1;
-  }
-
-  const frontSeatIndexes = seats
-    .map((seat, index) => (frontRowYs.has(seat.y) ? index : -1))
-    .filter((index) => index >= 0);
-
-  for (let index = frontSeatIndexes.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [frontSeatIndexes[index], frontSeatIndexes[swapIndex]] = [
-      frontSeatIndexes[swapIndex],
-      frontSeatIndexes[index]
-    ];
-  }
-
-  const chosenFrontIndexes = frontSeatIndexes.slice(0, frontStudents.length);
-  const order: (string | null)[] = new Array(seats.length).fill(null);
-
-  chosenFrontIndexes.forEach((seatIndex, position) => {
-    order[seatIndex] = frontStudents[position] ?? null;
   });
+  const bothSeated = (pair: GroupPairRule) => {
+    const leftIndex = seatIndexByLower.get(pair[0].toLowerCase());
+    const rightIndex = seatIndexByLower.get(pair[1].toLowerCase());
+    return leftIndex !== undefined && rightIndex !== undefined
+      ? ([leftIndex, rightIndex] as const)
+      : null;
+  };
+  const report: SeatingShuffleReport = {
+    totalRules: context.apartPairs.length + context.togetherPairs.length + placementEntries.length,
+    unmetApartPairs: context.apartPairs.filter((pair) => {
+      const indexes = bothSeated(pair);
+      return indexes !== null && chebyshevBetween(indexes[0], indexes[1]) <= options.apartDistance;
+    }),
+    unmetPlacements: placementEntries
+      .filter((entry) => {
+        const index = seatIndexByLower.get(entry.lower);
+        if (index === undefined) {
+          return false;
+        }
 
-  let restPosition = 0;
-  for (let index = 0; index < order.length && restPosition < restStudents.length; index += 1) {
-    if (order[index] === null) {
-      order[index] = restStudents[restPosition];
-      restPosition += 1;
-    }
-  }
+        return entry.zone === 'alone'
+          ? neighboursByIndex[index].some((neighbour) => finalOrder[neighbour] !== null)
+          : !entry.allowed[index];
+      })
+      .map((entry) => ({ student: entry.name, zone: entry.zone })),
+    unmetTogetherPairs: context.togetherPairs.filter((pair) => {
+      const indexes = bothSeated(pair);
+      return indexes !== null && !togetherSeatsOk(indexes[0], indexes[1]);
+    })
+  };
 
-  return order;
+  return {
+    layout: applySeatingChartAssignments(layout, finalOrder),
+    report
+  };
 }
 
-/**
- * A keep-together pair violates seating when both students are seated but not
- * on touching cells (including diagonals).
- */
-export function countSeatingTogetherViolations(
-  layout: SeatingChartLayout,
-  togetherPairs: GroupPairRule[]
-) {
-  const cellByStudent = new Map<string, { x: number; y: number }>();
-
-  for (const item of layout.items) {
-    if (item.kind === 'seat' && item.assignedStudent) {
-      cellByStudent.set(item.assignedStudent.toLowerCase(), { x: item.x, y: item.y });
-    }
+/** One-line summary of a shuffle result for toasts and the live region. */
+export function describeSeatingShuffleReport(report: SeatingShuffleReport) {
+  if (report.totalRules === 0) {
+    return 'Shuffled seats.';
   }
 
-  return togetherPairs.filter((pair) => {
-    const first = cellByStudent.get(pair[0].toLowerCase());
-    const second = cellByStudent.get(pair[1].toLowerCase());
+  const unmetCount =
+    report.unmetApartPairs.length +
+    report.unmetPlacements.length +
+    report.unmetTogetherPairs.length;
 
-    return (
-      first !== undefined &&
-      second !== undefined &&
-      (Math.abs(first.x - second.x) > 1 || Math.abs(first.y - second.y) > 1)
-    );
-  }).length;
+  if (unmetCount === 0) {
+    return `Shuffled seats — all ${report.totalRules} rule${
+      report.totalRules === 1 ? '' : 's'
+    } satisfied.`;
+  }
+
+  return `Shuffled seats — ${unmetCount} of ${report.totalRules} rule${
+    report.totalRules === 1 ? '' : 's'
+  } could not be met.`;
 }
 
-/**
- * A keep-apart pair violates seating when the two students sit on touching
- * cells (including diagonals).
- */
-export function countSeatingApartViolations(
-  layout: SeatingChartLayout,
-  apartPairs: GroupPairRule[]
-) {
-  const cellByStudent = new Map<string, { x: number; y: number }>();
-
-  for (const item of layout.items) {
-    if (item.kind === 'seat' && item.assignedStudent) {
-      cellByStudent.set(item.assignedStudent.toLowerCase(), { x: item.x, y: item.y });
-    }
-  }
-
-  return apartPairs.filter((pair) => {
-    const first = cellByStudent.get(pair[0].toLowerCase());
-    const second = cellByStudent.get(pair[1].toLowerCase());
-
-    return (
-      first !== undefined &&
-      second !== undefined &&
-      Math.abs(first.x - second.x) <= 1 &&
-      Math.abs(first.y - second.y) <= 1
-    );
-  }).length;
+/** Short labels for the unmet rules, e.g. "Ava × Ben" or "Cara → Front rows". */
+export function listUnmetSeatingRules(report: SeatingShuffleReport) {
+  return [
+    ...report.unmetApartPairs.map((pair) => `${pair[0]} × ${pair[1]}`),
+    ...report.unmetTogetherPairs.map((pair) => `${pair[0]} + ${pair[1]}`),
+    ...report.unmetPlacements.map(
+      (entry) => `${entry.student} → ${SEATING_PLACEMENT_ZONE_DETAILS[entry.zone].label}`
+    )
+  ];
 }
 
 /**
@@ -3368,43 +4228,81 @@ export function setSeatingStudentNote(
   };
 }
 
-export function getSeatingFrontRowStudentsForList(
+/**
+ * Placement zones keyed by the roster's canonical casing, dropping entries for
+ * students no longer on the list.
+ */
+export function getSeatingPlacementsForList(
   snapshot: SeatingChartSnapshot,
   list: ClassList
-): string[] {
-  const flagged = new Set(
-    (snapshot.frontRowByListId[list.id] ?? []).map((name) => name.toLowerCase())
+): Record<string, SeatingPlacementZone> {
+  const saved = snapshot.placementsByListId[list.id] ?? {};
+  const zoneByLowerName = new Map(
+    Object.entries(saved).map(([name, zone]) => [name.toLowerCase(), zone])
   );
+  const placements: Record<string, SeatingPlacementZone> = {};
 
-  return list.students.filter((student) => flagged.has(student.toLowerCase()));
+  for (const student of list.students) {
+    const zone = zoneByLowerName.get(student.toLowerCase());
+    if (zone) {
+      placements[student] = zone;
+    }
+  }
+
+  return placements;
 }
 
-export function setSeatingStudentFrontRow(
+export function setSeatingStudentPlacement(
   snapshot: SeatingChartSnapshot,
   listId: string,
   studentName: string,
-  isFrontRow: boolean
+  zone: SeatingPlacementZone | null
 ): SeatingChartSnapshot {
-  const currentNames = snapshot.frontRowByListId[listId] ?? [];
-  const nextNames = currentNames.filter(
-    (name) => name.toLowerCase() !== studentName.toLowerCase()
-  );
+  const currentPlacements = snapshot.placementsByListId[listId] ?? {};
+  const nextPlacements: Record<string, SeatingPlacementZone> = {};
 
-  if (isFrontRow) {
-    nextNames.push(studentName);
+  for (const [name, existingZone] of Object.entries(currentPlacements)) {
+    if (name.toLowerCase() !== studentName.toLowerCase()) {
+      nextPlacements[name] = existingZone;
+    }
   }
 
-  const nextFrontRowByListId = { ...snapshot.frontRowByListId };
+  if (zone) {
+    nextPlacements[studentName] = zone;
+  }
 
-  if (nextNames.length > 0) {
-    nextFrontRowByListId[listId] = nextNames;
+  const nextPlacementsByListId = { ...snapshot.placementsByListId };
+
+  if (Object.keys(nextPlacements).length > 0) {
+    nextPlacementsByListId[listId] = nextPlacements;
   } else {
-    delete nextFrontRowByListId[listId];
+    delete nextPlacementsByListId[listId];
   }
 
   return {
     ...snapshot,
-    frontRowByListId: nextFrontRowByListId
+    placementsByListId: nextPlacementsByListId
+  };
+}
+
+export function getSeatingGeneratorOptionsForList(
+  snapshot: SeatingChartSnapshot,
+  listId: string
+): SeatingGeneratorOptions {
+  return snapshot.generatorOptionsByListId[listId] ?? DEFAULT_SEATING_GENERATOR_OPTIONS;
+}
+
+export function setSeatingGeneratorOptionsForList(
+  snapshot: SeatingChartSnapshot,
+  listId: string,
+  options: SeatingGeneratorOptions
+): SeatingChartSnapshot {
+  return {
+    ...snapshot,
+    generatorOptionsByListId: {
+      ...snapshot.generatorOptionsByListId,
+      [listId]: options
+    }
   };
 }
 
@@ -3450,7 +4348,8 @@ export function buildSeatingChartItemTitle(item: SeatingChartLayoutItem) {
     return `${SEATING_CHART_ITEM_DETAILS[item.kind].title}: ${item.label}`;
   }
 
-  return item.assignedStudent ? item.assignedStudent : 'Empty seat';
+  const title = item.assignedStudent ? item.assignedStudent : 'Empty seat';
+  return item.locked ? `${title} (locked)` : title;
 }
 
 export function getSeatingChartPreviewToken(item: SeatingChartLayoutItem) {
